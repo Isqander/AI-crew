@@ -1,0 +1,132 @@
+# ===========================================
+# AI-crew Docker Compose Configuration
+# ===========================================
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose logs -f aegra  # View Aegra logs
+#   docker-compose down           # Stop all services
+
+version: "3.8"
+
+services:
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aicrew-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aicrew}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aicrew_secret_password}
+      POSTGRES_DB: ${POSTGRES_DB:-aicrew}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aicrew} -d ${POSTGRES_DB:-aicrew}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================
+  # Aegra Server (LangGraph Backend)
+  # ===========================================
+  aegra:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aicrew-aegra
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
+      POSTGRES_HOST: postgres
+      
+      # Aegra Config
+      AEGRA_CONFIG: /app/aegra.json
+      HOST: 0.0.0.0
+      PORT: 8000
+      DEBUG: ${DEBUG:-true}
+      
+      # LLM Providers
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      
+      # Langfuse
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-true}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_HOST: http://langfuse:3000
+      
+      # GitHub
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENV_MODE: ${ENV_MODE:-LOCAL}
+    volumes:
+      - ./graphs:/app/graphs:ro
+      - ./aegra.json:/app/aegra.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================
+  # Langfuse (Observability)
+  # ===========================================
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: aicrew-langfuse
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mysecretkey}
+      SALT: ${LANGFUSE_SALT:-mysalt}
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ===========================================
+  # Frontend (React) - Development
+  # ===========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: aicrew-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    depends_on:
+      - aegra
+    profiles:
+      - frontend
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: aicrew-network

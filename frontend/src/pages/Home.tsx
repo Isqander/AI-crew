@@ -1,0 +1,129 @@
+import { useNavigate } from 'react-router-dom'
+import { Bot, Zap, GitBranch, MessageSquare, ArrowRight } from 'lucide-react'
+import { TaskForm } from '../components/TaskForm'
+import { useTask, useThreads } from '../hooks/useTask'
+import type { CreateTaskInput } from '../types'
+
+export function Home() {
+  const navigate = useNavigate()
+  const { createTask, isCreating, thread } = useTask()
+  const { data: threads } = useThreads()
+
+  const handleSubmit = async (input: CreateTaskInput) => {
+    await createTask(input)
+  }
+
+  // Redirect to task detail when thread is created
+  if (thread) {
+    navigate(`/task/${thread.thread_id}`)
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-12">
+      {/* Hero section */}
+      <section className="text-center py-8">
+        <div className="inline-flex items-center gap-2 bg-accent-cyan/10 text-accent-cyan px-4 py-2 rounded-full mb-6 font-mono text-sm">
+          <Zap className="w-4 h-4" />
+          Powered by LangGraph + Aegra
+        </div>
+        
+        <h1 className="text-4xl md:text-5xl font-bold mb-4">
+          <span className="text-glow-cyan text-accent-cyan">AI-crew</span>
+          <br />
+          <span className="text-midnight-200">Мультиагентная команда разработки</span>
+        </h1>
+        
+        <p className="text-midnight-400 max-w-2xl mx-auto text-lg">
+          Опишите задачу — и команда ИИ-агентов (аналитик, архитектор, разработчик, тестировщик) 
+          создаст для вас решение. Полный цикл разработки с человеком в процессе.
+        </p>
+      </section>
+
+      {/* Task form */}
+      <section className="bg-midnight-900/50 rounded-2xl border border-midnight-800 p-6">
+        <h2 className="text-xl font-mono font-semibold text-accent-cyan mb-4 flex items-center gap-2">
+          <Bot className="w-5 h-5" />
+          Новая задача
+        </h2>
+        <TaskForm onSubmit={handleSubmit} isLoading={isCreating} />
+      </section>
+
+      {/* Features grid */}
+      <section className="grid md:grid-cols-3 gap-6">
+        <FeatureCard
+          icon={<Bot className="w-6 h-6" />}
+          title="5 специализированных агентов"
+          description="PM, Аналитик, Архитектор, Разработчик и QA работают вместе"
+          color="cyan"
+        />
+        <FeatureCard
+          icon={<MessageSquare className="w-6 h-6" />}
+          title="Human-in-the-Loop"
+          description="Агенты задают уточняющие вопросы на каждом этапе"
+          color="magenta"
+        />
+        <FeatureCard
+          icon={<GitBranch className="w-6 h-6" />}
+          title="GitHub интеграция"
+          description="Автоматическое создание PR с готовым кодом"
+          color="lime"
+        />
+      </section>
+
+      {/* Recent tasks */}
+      {threads && threads.length > 0 && (
+        <section>
+          <h2 className="text-lg font-mono font-semibold text-midnight-200 mb-4">
+            Недавние задачи
+          </h2>
+          <div className="space-y-2">
+            {threads.slice(0, 5).map((t) => (
+              <button
+                key={t.thread_id}
+                onClick={() => navigate(`/task/${t.thread_id}`)}
+                className="w-full bg-midnight-900 border border-midnight-800 rounded-lg p-4
+                           hover:border-accent-cyan/50 transition-colors text-left
+                           flex items-center justify-between group"
+              >
+                <div>
+                  <p className="font-mono text-midnight-200 text-sm">
+                    {(t.metadata as any)?.task || 'Без названия'}
+                  </p>
+                  <p className="text-xs text-midnight-500 font-mono mt-1">
+                    {new Date(t.created_at).toLocaleString('ru-RU')}
+                  </p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-midnight-500 group-hover:text-accent-cyan transition-colors" />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
+interface FeatureCardProps {
+  icon: React.ReactNode
+  title: string
+  description: string
+  color: 'cyan' | 'magenta' | 'lime'
+}
+
+function FeatureCard({ icon, title, description, color }: FeatureCardProps) {
+  const colorClasses = {
+    cyan: 'text-accent-cyan bg-accent-cyan/10 border-accent-cyan/30',
+    magenta: 'text-accent-magenta bg-accent-magenta/10 border-accent-magenta/30',
+    lime: 'text-accent-lime bg-accent-lime/10 border-accent-lime/30',
+  }
+
+  return (
+    <div className="bg-midnight-900/50 rounded-xl border border-midnight-800 p-6 hover:border-midnight-700 transition-colors">
+      <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 border ${colorClasses[color]}`}>
+        {icon}
+      </div>
+      <h3 className="font-mono font-semibold text-midnight-100 mb-2">{title}</h3>
+      <p className="text-midnight-400 text-sm">{description}</p>
+    </div>
+  )
+}
