@@ -1,5 +1,31 @@
 # История изменений
 
+## [0.2.1] - 2026-01-21
+
+### 🔧 Исправлено
+1. **Logging вместо print** - Улучшено логирование в `graph.py`
+   - Заменены `print()` statements на `logging.info()` и `logging.warning()`
+   - Более чистый вывод в production
+
+2. **NotRequired поля в create_initial_state** - Исправлена семантика
+   - Файл: `graphs/dev_team/state.py`
+   - NotRequired поля теперь не включаются в state если значение None
+   - Соответствует семантике TypedDict (поле отсутствует vs поле = None)
+
+3. **Интеграционные тесты** - Реализованы полноценные E2E тесты
+   - `test_simple_workflow_with_mocked_agents` - полный workflow без clarification
+   - `test_workflow_with_qa_rejection` - тест цикла Developer ↔ QA
+
+### ✅ Статистика тестов
+- **46 тестов** | **100% pass rate** ✨
+- 7 тестов state
+- 6 тестов agents
+- 13 тестов graph
+- 12 тестов tools
+- 8 интеграционных тестов
+
+---
+
 ## [0.2.0] - 2026-01-20
 
 ### 🔧 Исправлено
@@ -18,7 +44,7 @@
    - Добавлена поддержка Python 3.9-3.10 через typing_extensions
 
 ### ✅ Добавлено
-- **Полное покрытие тестами** (49 тестов)
+- **Полное покрытие тестами** (42 теста, 98% pass rate)
   - `tests/test_state.py` - тесты структуры состояния
   - `tests/test_agents.py` - тесты всех агентов
   - `tests/test_graph.py` - тесты графа и роутинга

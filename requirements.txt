@@ -15,9 +15,13 @@ langchain-community>=0.3.0
 # Note: Install Aegra from GitHub
 # pip install git+https://github.com/ibbybuilds/aegra.git
 
+# --- LangGraph Checkpointing ---
+langgraph-checkpoint-postgres>=0.0.1
+
 # --- Database ---
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.9
+psycopg[binary]>=3.1.0
 sqlalchemy[asyncio]>=2.0.0
 alembic>=1.13.0
 

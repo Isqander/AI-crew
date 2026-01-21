@@ -5,13 +5,16 @@ Main LangGraph definition for the AI development team.
 """
 
 from typing import Literal
-
+import logging
 import os
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.memory import MemorySaver
 
 from .state import DevTeamState
+
+logger = logging.getLogger(__name__)
 from .agents.pm import pm_agent
 from .agents.analyst import analyst_agent
 from .agents.architect import architect_agent
@@ -208,12 +211,13 @@ database_url = os.getenv("DATABASE_URL")
 
 if database_url:
     # Production: persistent storage with PostgreSQL
-    print(f"✓ Using PostgreSQL checkpointer: {database_url.split('@')[1] if '@' in database_url else 'configured'}")
+    db_host = database_url.split('@')[1] if '@' in database_url else 'configured'
+    logger.info(f"Using PostgreSQL checkpointer: {db_host}")
     checkpointer = PostgresSaver.from_conn_string(database_url)
 else:
     # Development: in-memory storage (states will be lost on restart)
-    print("⚠️  WARNING: Using MemorySaver - all states will be lost on restart!")
-    print("   Set DATABASE_URL environment variable to use persistent storage.")
+    logger.warning("Using MemorySaver - all states will be lost on restart!")
+    logger.warning("Set DATABASE_URL environment variable to use persistent storage.")
     checkpointer = MemorySaver()
 
 graph = create_graph().compile(

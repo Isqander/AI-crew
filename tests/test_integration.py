@@ -3,35 +3,163 @@ Integration tests for the complete workflow
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch, MagicMock
 from langchain_core.messages import AIMessage
 
-from graphs.dev_team.graph import create_graph
+from graphs.dev_team.graph import create_graph, clarification_node, git_commit_node
 from graphs.dev_team.state import create_initial_state
 
 
 class TestEndToEndWorkflow:
     """Test complete workflow from task to completion."""
     
-    @pytest.mark.skip(reason="Requires LLM mocking at graph level - complex integration test")
-    @patch('graphs.dev_team.agents.pm.get_llm')
-    @patch('graphs.dev_team.agents.analyst.get_llm')
-    @patch('graphs.dev_team.agents.architect.get_llm')
-    @patch('graphs.dev_team.agents.developer.get_llm')
-    @patch('graphs.dev_team.agents.qa.get_llm')
-    def test_simple_task_workflow_without_clarification(
-        self,
-        mock_qa_llm,
-        mock_dev_llm,
-        mock_arch_llm,
-        mock_analyst_llm,
-        mock_pm_llm,
-    ):
-        """Test a simple task that goes through all agents without clarification."""
-        # This is a complex integration test that would require
-        # mocking all LLM calls throughout the workflow
-        # For now, we'll skip it and focus on unit tests
-        pass
+    def test_simple_workflow_with_mocked_agents(self):
+        """
+        Test workflow execution with mocked agent functions.
+        
+        This test verifies the graph structure and routing by replacing
+        agent functions with mocks that return predictable state updates.
+        """
+        # Create mock agent responses
+        def mock_pm_agent(state):
+            return {
+                "messages": [AIMessage(content="Task decomposed", name="pm")],
+                "current_agent": "pm",
+            }
+        
+        def mock_analyst_agent(state):
+            return {
+                "messages": [AIMessage(content="Requirements gathered", name="analyst")],
+                "requirements": ["Requirement 1", "Requirement 2"],
+                "current_agent": "analyst",
+                "needs_clarification": False,
+            }
+        
+        def mock_architect_agent(state):
+            return {
+                "messages": [AIMessage(content="Architecture designed", name="architect")],
+                "architecture": {"design": "Simple architecture"},
+                "tech_stack": ["Python", "FastAPI"],
+                "current_agent": "architect",
+                "needs_clarification": False,
+            }
+        
+        def mock_developer_agent(state):
+            return {
+                "messages": [AIMessage(content="Code implemented", name="developer")],
+                "code_files": [
+                    {"path": "main.py", "content": "print('hello')", "language": "python"}
+                ],
+                "current_agent": "developer",
+            }
+        
+        def mock_qa_agent(state):
+            return {
+                "messages": [AIMessage(content="Code approved", name="qa")],
+                "review_comments": ["Looks good!"],
+                "issues_found": [],
+                "test_results": {"approved": True},
+                "current_agent": "qa",
+            }
+        
+        # Patch agent functions at the graph module level
+        with patch('graphs.dev_team.graph.pm_agent', mock_pm_agent), \
+             patch('graphs.dev_team.graph.analyst_agent', mock_analyst_agent), \
+             patch('graphs.dev_team.graph.architect_agent', mock_architect_agent), \
+             patch('graphs.dev_team.graph.developer_agent', mock_developer_agent), \
+             patch('graphs.dev_team.graph.qa_agent', mock_qa_agent):
+            
+            # Create fresh graph with mocked agents
+            from langgraph.checkpoint.memory import MemorySaver
+            builder = create_graph()
+            graph = builder.compile(checkpointer=MemorySaver())
+            
+            # Create initial state
+            initial_state = create_initial_state(
+                task="Create a simple hello world script",
+                repository="test/repo",
+            )
+            
+            # Run the graph
+            config = {"configurable": {"thread_id": "test-thread-1"}}
+            result = graph.invoke(initial_state, config)
+            
+            # Verify workflow completed
+            assert result["current_agent"] == "complete"
+            assert "pr_url" in result
+            assert len(result["code_files"]) > 0
+            assert result["requirements"] == ["Requirement 1", "Requirement 2"]
+    
+    def test_workflow_with_qa_rejection(self):
+        """Test workflow when QA finds issues and sends back to developer."""
+        call_count = {"developer": 0, "qa": 0}
+        
+        def mock_pm_agent(state):
+            return {
+                "messages": [AIMessage(content="Task decomposed", name="pm")],
+                "current_agent": "pm",
+            }
+        
+        def mock_analyst_agent(state):
+            return {
+                "messages": [AIMessage(content="Requirements", name="analyst")],
+                "requirements": ["Req 1"],
+                "needs_clarification": False,
+            }
+        
+        def mock_architect_agent(state):
+            return {
+                "messages": [AIMessage(content="Architecture", name="architect")],
+                "architecture": {"design": "Simple"},
+                "needs_clarification": False,
+            }
+        
+        def mock_developer_agent(state):
+            call_count["developer"] += 1
+            return {
+                "messages": [AIMessage(content=f"Code v{call_count['developer']}", name="developer")],
+                "code_files": [{"path": "main.py", "content": "code", "language": "python"}],
+                "issues_found": [],  # Clear issues after fix
+            }
+        
+        def mock_qa_agent(state):
+            call_count["qa"] += 1
+            if call_count["qa"] == 1:
+                # First review: find issues
+                return {
+                    "messages": [AIMessage(content="Issues found", name="qa")],
+                    "issues_found": ["Bug found"],
+                    "test_results": {"approved": False},
+                }
+            else:
+                # Second review: approve
+                return {
+                    "messages": [AIMessage(content="Approved", name="qa")],
+                    "issues_found": [],
+                    "test_results": {"approved": True},
+                }
+        
+        with patch('graphs.dev_team.graph.pm_agent', mock_pm_agent), \
+             patch('graphs.dev_team.graph.analyst_agent', mock_analyst_agent), \
+             patch('graphs.dev_team.graph.architect_agent', mock_architect_agent), \
+             patch('graphs.dev_team.graph.developer_agent', mock_developer_agent), \
+             patch('graphs.dev_team.graph.qa_agent', mock_qa_agent):
+            
+            from langgraph.checkpoint.memory import MemorySaver
+            builder = create_graph()
+            graph = builder.compile(checkpointer=MemorySaver())
+            
+            initial_state = create_initial_state(task="Build API", repository="test/repo")
+            config = {"configurable": {"thread_id": "test-thread-2"}}
+            
+            result = graph.invoke(initial_state, config)
+            
+            # Developer should have been called twice (initial + fix)
+            assert call_count["developer"] == 2
+            # QA should have been called twice (reject + approve)
+            assert call_count["qa"] == 2
+            # Final state should be complete
+            assert result["current_agent"] == "complete"
 
 
 class TestHumanInTheLoop:
@@ -80,11 +208,12 @@ class TestErrorHandling:
         """Test that errors are stored in state."""
         state = create_initial_state(task="Test task")
         
-        assert state["error"] is None
+        # Error is NotRequired, so it's not present by default
+        assert state.get("error") is None
         
         # Simulate error
         state["error"] = "LLM API timeout"
-        assert state["error"] is not None
+        assert state["error"] == "LLM API timeout"
 
 
 class TestMultiAgentCollaboration:

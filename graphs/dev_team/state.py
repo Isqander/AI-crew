@@ -107,41 +107,41 @@ def create_initial_state(
     Returns:
         Initialized DevTeamState
     """
-    return DevTeamState(
-        # Input
-        task=task,
-        repository=repository,
-        context=context,
+    # Build state dict, only including NotRequired fields if they have values
+    state: dict = {
+        # Required input
+        "task": task,
         
-        # Empty outputs
-        requirements=[],
-        user_stories=[],
-        architecture={},
-        tech_stack=[],
-        architecture_decisions=[],
-        code_files=[],
-        implementation_notes="",
-        review_comments=[],
-        test_results={},
-        issues_found=[],
-        pr_url=None,
-        commit_sha=None,
-        summary="",
+        # Required outputs (empty by default)
+        "requirements": [],
+        "user_stories": [],
+        "architecture": {},
+        "tech_stack": [],
+        "architecture_decisions": [],
+        "code_files": [],
+        "implementation_notes": "",
+        "review_comments": [],
+        "test_results": {},
+        "issues_found": [],
+        "summary": "",
         
         # Conversation
-        messages=[],
+        "messages": [],
         
         # Control
-        current_agent="pm",
-        next_agent=None,
+        "current_agent": "pm",
         
         # HITL
-        needs_clarification=False,
-        clarification_question=None,
-        clarification_context=None,
-        clarification_response=None,
+        "needs_clarification": False,
         
-        # Error
-        error=None,
-        retry_count=0,
-    )
+        # Error handling
+        "retry_count": 0,
+    }
+    
+    # Only add NotRequired fields if they have values
+    if repository is not None:
+        state["repository"] = repository
+    if context is not None:
+        state["context"] = context
+    
+    return DevTeamState(**state)

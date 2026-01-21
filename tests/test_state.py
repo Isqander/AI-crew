@@ -14,8 +14,9 @@ class TestDevTeamState:
         state = create_initial_state(task="Test task")
         
         assert state["task"] == "Test task"
-        assert state["repository"] is None
-        assert state["context"] is None
+        # NotRequired fields should not be present when None
+        assert "repository" not in state
+        assert "context" not in state
         assert state["requirements"] == []
         assert state["messages"] == []
         assert state["current_agent"] == "pm"
@@ -38,21 +39,42 @@ class TestDevTeamState:
         """Test that initial state has all required fields."""
         state = create_initial_state(task="Test")
         
+        # Required fields that should always be present
         required_fields = [
-            "task", "repository", "context",
+            "task",
             "requirements", "user_stories", "architecture",
             "tech_stack", "architecture_decisions",
             "code_files", "implementation_notes",
             "review_comments", "test_results", "issues_found",
-            "pr_url", "commit_sha", "summary",
-            "messages", "current_agent", "next_agent",
-            "needs_clarification", "clarification_question",
-            "clarification_context", "clarification_response",
-            "error", "retry_count",
+            "summary",
+            "messages", "current_agent",
+            "needs_clarification",
+            "retry_count",
         ]
         
         for field in required_fields:
             assert field in state, f"Missing required field: {field}"
+    
+    def test_state_optional_fields_when_provided(self):
+        """Test that NotRequired fields are present when values provided."""
+        state = create_initial_state(
+            task="Test",
+            repository="owner/repo",
+            context="Some context",
+        )
+        
+        assert state["repository"] == "owner/repo"
+        assert state["context"] == "Some context"
+    
+    def test_state_get_optional_fields_safely(self):
+        """Test that NotRequired fields can be accessed safely with .get()."""
+        state = create_initial_state(task="Test")
+        
+        # These should return None or default when not set
+        assert state.get("repository") is None
+        assert state.get("context") is None
+        assert state.get("pr_url") is None
+        assert state.get("error") is None
 
 
 class TestCodeFile:
