@@ -7,49 +7,145 @@ Provides base utilities and LLM configuration for all agents.
 import os
 import yaml
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI  # Used for OpenAI-compatible API
 
 
+# ===========================================
 # LLM Configuration
+# ===========================================
+
 DEFAULT_TEMPERATURE = 0.7
 CODE_TEMPERATURE = 0.2  # Lower temperature for code generation
 
+# Default API endpoint
+DEFAULT_LLM_API_URL = "https://clipapi4me.31.59.58.143.nip.io/v1"
 
-def get_llm(
-    provider: str = "openai",
-    model: Optional[str] = None,
-    temperature: float = DEFAULT_TEMPERATURE,
-) -> BaseChatModel:
+# Default models for each agent role
+DEFAULT_MODELS = {
+    "default": "claude-sonnet-4-5-thinking",
+    "pm": "claude-sonnet-4-5-thinking",
+    "analyst": "claude-sonnet-4-5-thinking", 
+    "architect": "claude-opus-4-5-thinking",
+    "developer": "gemini-3-pro-high",
+    "qa": "gemini-3-flash-preview",
+}
+
+# Available models (for reference)
+AVAILABLE_MODELS = [
+    "claude-opus-4-5-thinking",
+    "claude-sonnet-4-5-thinking",
+    "gemini-3-pro-high",
+    "gemini-3-flash-preview",
+    "glm-4.7",
+]
+
+
+def get_llm_endpoint(endpoint_name: str = "default") -> Dict[str, str]:
     """
-    Get a configured LLM instance.
+    Get LLM endpoint configuration by name.
+    
+    Supports multiple endpoints via environment variables:
+    - LLM_API_URL, LLM_API_KEY - default endpoint
+    - LLM_<NAME>_URL, LLM_<NAME>_KEY - named endpoints
     
     Args:
-        provider: LLM provider ("openai", "anthropic")
-        model: Specific model name (optional)
+        endpoint_name: Name of the endpoint ("default" or custom name)
+        
+    Returns:
+        Dict with "url" and "api_key"
+    """
+    if endpoint_name == "default":
+        url = os.getenv("LLM_API_URL", DEFAULT_LLM_API_URL)
+        api_key = os.getenv("LLM_API_KEY", "")
+    else:
+        # Named endpoint: LLM_BACKUP_URL, LLM_BACKUP_KEY
+        env_prefix = f"LLM_{endpoint_name.upper()}"
+        url = os.getenv(f"{env_prefix}_URL", DEFAULT_LLM_API_URL)
+        api_key = os.getenv(f"{env_prefix}_KEY", "")
+    
+    return {"url": url, "api_key": api_key}
+
+
+def get_model_for_role(role: str) -> str:
+    """
+    Get the model name for a specific agent role.
+    
+    Checks environment variable first (LLM_MODEL_<ROLE>),
+    falls back to DEFAULT_MODELS.
+    
+    Args:
+        role: Agent role (pm, analyst, architect, developer, qa)
+        
+    Returns:
+        Model name
+    """
+    # Check environment variable first: LLM_MODEL_PM, LLM_MODEL_DEVELOPER, etc.
+    env_var = f"LLM_MODEL_{role.upper()}"
+    env_model = os.getenv(env_var)
+    
+    if env_model:
+        return env_model
+    
+    # Check default model override
+    default_override = os.getenv("LLM_DEFAULT_MODEL")
+    if default_override and role not in DEFAULT_MODELS:
+        return default_override
+    
+    return DEFAULT_MODELS.get(role, DEFAULT_MODELS["default"])
+
+
+def get_llm(
+    role: Optional[str] = None,
+    model: Optional[str] = None,
+    temperature: float = DEFAULT_TEMPERATURE,
+    endpoint: str = "default",
+) -> BaseChatModel:
+    """
+    Get a configured LLM instance via OpenAI-compatible API.
+    
+    All models are accessed through a unified proxy API that supports
+    OpenAI-compatible endpoints.
+    
+    Args:
+        role: Agent role for automatic model selection (pm, analyst, etc.)
+        model: Explicit model name (overrides role-based selection)
         temperature: Sampling temperature
+        endpoint: Endpoint name for multi-endpoint setups
         
     Returns:
         Configured LLM instance
+        
+    Example:
+        # Automatic model selection based on role
+        llm = get_llm(role="architect")
+        
+        # Explicit model
+        llm = get_llm(model="claude-opus-4-5-thinking")
+        
+        # Using alternative endpoint
+        llm = get_llm(role="developer", endpoint="backup")
     """
-    if provider == "openai":
-        return ChatOpenAI(
-            model=model or "gpt-4o",
-            temperature=temperature,
-            api_key=os.getenv("OPENAI_API_KEY"),
-        )
-    elif provider == "anthropic":
-        return ChatAnthropic(
-            model=model or "claude-3-5-sonnet-20241022",
-            temperature=temperature,
-            api_key=os.getenv("ANTHROPIC_API_KEY"),
-        )
+    # Get endpoint configuration
+    endpoint_config = get_llm_endpoint(endpoint)
+    
+    # Determine model
+    if model:
+        selected_model = model
+    elif role:
+        selected_model = get_model_for_role(role)
     else:
-        raise ValueError(f"Unknown LLM provider: {provider}")
+        selected_model = os.getenv("LLM_DEFAULT_MODEL", DEFAULT_MODELS["default"])
+    
+    return ChatOpenAI(
+        model=selected_model,
+        temperature=temperature,
+        api_key=endpoint_config["api_key"],
+        base_url=endpoint_config["url"],
+    )
 
 
 def load_prompts(agent_name: str) -> dict:

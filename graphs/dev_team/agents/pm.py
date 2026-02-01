@@ -15,7 +15,7 @@ class ProjectManagerAgent(BaseAgent):
     
     def __init__(self):
         prompts = load_prompts("pm")
-        llm = get_llm(provider="openai", model="gpt-4o", temperature=0.7)
+        llm = get_llm(role="pm", temperature=0.7)
         super().__init__(name="pm", llm=llm, prompts=prompts)
     
     def decompose_task(self, state: DevTeamState) -> dict:

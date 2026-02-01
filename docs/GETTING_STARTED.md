@@ -10,8 +10,7 @@
 - **Node.js** 18+ (для frontend)
 - **Python** 3.9+ (для локальной разработки)
 - API ключи:
-  - OpenAI API key (обязательно)
-  - Anthropic API key (рекомендуется)
+  - LLM API key (для прокси сервера)
   - GitHub Token (опционально, для создания PR)
 
 ---
@@ -28,14 +27,12 @@ cp env.example .env
 
 ## Шаг 2: Настройка переменных окружения
 
-Отредактируйте `.env` и добавьте ваши API ключи:
+Отредактируйте `.env` и добавьте настройки LLM:
 
 ```bash
-# === Обязательно ===
-OPENAI_API_KEY=sk-...
-
-# === Рекомендуется ===
-ANTHROPIC_API_KEY=sk-ant-...
+# === LLM API (обязательно) ===
+LLM_API_URL=https://clipapi4me.31.59.58.143.nip.io/v1
+LLM_API_KEY=your-api-key
 
 # === Опционально ===
 GITHUB_TOKEN=ghp_...
@@ -43,10 +40,51 @@ LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 ```
 
+### Модели по умолчанию для агентов
+
+Система использует OpenAI-совместимый прокси API с разными моделями для разных агентов:
+
+| Агент | Модель по умолчанию | Назначение |
+|-------|---------------------|------------|
+| PM | claude-sonnet-4-5-thinking | Декомпозиция задач |
+| Analyst | claude-sonnet-4-5-thinking | Сбор требований |
+| Architect | claude-opus-4-5-thinking | Проектирование архитектуры |
+| Developer | gemini-3-pro-high | Генерация кода |
+| QA | gemini-3-flash-preview | Ревью кода |
+
+### Переопределение моделей
+
+Можно переопределить модель для любого агента через переменные окружения:
+
+```bash
+LLM_MODEL_ARCHITECT=claude-opus-4-5-thinking
+LLM_MODEL_DEVELOPER=gemini-3-pro-high
+```
+
+### Несколько API endpoints
+
+Поддерживается несколько API endpoints с разными ключами:
+
+```bash
+# Основной endpoint
+LLM_API_URL=https://clipapi4me.31.59.58.143.nip.io/v1
+LLM_API_KEY=main-key
+
+# Дополнительный endpoint "backup"
+LLM_BACKUP_URL=https://other-api.example.com/v1
+LLM_BACKUP_KEY=backup-key
+```
+
+### Доступные модели
+
+- `claude-opus-4-5-thinking` - самая мощная, для сложных задач
+- `claude-sonnet-4-5-thinking` - сбалансированная
+- `gemini-3-pro-high` - хороша для генерации кода
+- `gemini-3-flash-preview` - быстрая, для простых задач
+- `glm-4.7` - альтернативная модель
+
 ### Где взять API ключи?
 
-- **OpenAI**: https://platform.openai.com/api-keys
-- **Anthropic**: https://console.anthropic.com/settings/keys
 - **GitHub**: https://github.com/settings/tokens (нужны права: repo, write:packages)
 - **Langfuse**: https://cloud.langfuse.com/ (или будет создан локально)
 

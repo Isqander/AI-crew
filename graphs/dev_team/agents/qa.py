@@ -15,7 +15,7 @@ class QAAgent(BaseAgent):
     
     def __init__(self):
         prompts = load_prompts("qa")
-        llm = get_llm(provider="openai", model="gpt-4o-mini", temperature=0.3)
+        llm = get_llm(role="qa", temperature=0.3)
         super().__init__(name="qa", llm=llm, prompts=prompts)
     
     def review_code(self, state: DevTeamState) -> dict:

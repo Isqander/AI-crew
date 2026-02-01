@@ -15,7 +15,7 @@ class ArchitectAgent(BaseAgent):
     
     def __init__(self):
         prompts = load_prompts("architect")
-        llm = get_llm(provider="anthropic", model="claude-3-5-sonnet-20241022", temperature=0.7)
+        llm = get_llm(role="architect", temperature=0.7)
         super().__init__(name="architect", llm=llm, prompts=prompts)
     
     def design_architecture(self, state: DevTeamState) -> dict:

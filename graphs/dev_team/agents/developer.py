@@ -17,7 +17,7 @@ class DeveloperAgent(BaseAgent):
     def __init__(self):
         prompts = load_prompts("developer")
         # Use lower temperature for more deterministic code generation
-        llm = get_llm(provider="openai", model="gpt-4o", temperature=CODE_TEMPERATURE)
+        llm = get_llm(role="developer", temperature=CODE_TEMPERATURE)
         super().__init__(name="developer", llm=llm, prompts=prompts)
     
     def implement(self, state: DevTeamState) -> dict:
