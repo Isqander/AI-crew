@@ -4,11 +4,14 @@ Developer Agent
 Responsible for code implementation based on architecture specs.
 """
 
+import logging
 import re
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template, CODE_TEMPERATURE
 from ..state import DevTeamState, CodeFile
+
+logger = logging.getLogger(__name__)
 
 
 class DeveloperAgent(BaseAgent):
@@ -24,6 +27,7 @@ class DeveloperAgent(BaseAgent):
         """
         Implement code based on architecture specification.
         """
+        logger.info("Developer: implement start")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["implementation"]
@@ -43,6 +47,7 @@ class DeveloperAgent(BaseAgent):
         
         # Parse code files from response
         code_files = self._parse_code_files(content)
+        logger.debug("Developer: parsed code_files=%s", len(code_files))
         
         return {
             "messages": [AIMessage(content=content, name="developer")],
@@ -56,6 +61,7 @@ class DeveloperAgent(BaseAgent):
         """
         Fix issues found by QA.
         """
+        logger.info("Developer: fix_issues start (issues=%s)", len(state.get("issues_found", [])))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["fix_issues"]
@@ -75,6 +81,7 @@ class DeveloperAgent(BaseAgent):
         
         # Parse updated code files
         code_files = self._parse_code_files(content)
+        logger.debug("Developer: parsed updated code_files=%s", len(code_files))
         
         # Merge with existing files (update or add)
         existing_files = {f["path"]: f for f in state.get("code_files", [])}
@@ -163,7 +170,9 @@ def developer_agent(state: DevTeamState) -> dict:
     
     # If there are issues to fix
     if state.get("issues_found"):
+        logger.debug("Developer: routing to fix_issues")
         return agent.fix_issues(state)
     
     # Otherwise, implement
+    logger.debug("Developer: routing to implement")
     return agent.implement(state)

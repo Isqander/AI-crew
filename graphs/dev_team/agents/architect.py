@@ -4,10 +4,14 @@ Software Architect Agent
 Responsible for system design and technology decisions.
 """
 
+import logging
+
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
 from ..state import DevTeamState
+
+logger = logging.getLogger(__name__)
 
 
 class ArchitectAgent(BaseAgent):
@@ -22,6 +26,7 @@ class ArchitectAgent(BaseAgent):
         """
         Design the system architecture based on requirements.
         """
+        logger.info("Architect: design_architecture start")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["architecture_design"]
@@ -45,6 +50,7 @@ class ArchitectAgent(BaseAgent):
         needs_approval = False  # Set to True to enable HITL for architecture
         
         if needs_approval:
+            logger.info("Architect: clarification requested for approval")
             return {
                 "messages": [AIMessage(content=content, name="architect")],
                 "current_agent": "architect",
@@ -66,6 +72,7 @@ class ArchitectAgent(BaseAgent):
         if "postgresql" in content.lower() or "postgres" in content.lower():
             tech_stack.append("PostgreSQL")
         
+        logger.debug("Architect: tech_stack=%s", tech_stack or ["Python"])
         return {
             "messages": [AIMessage(content=content, name="architect")],
             "architecture": {"design": content},
@@ -79,6 +86,7 @@ class ArchitectAgent(BaseAgent):
         """
         Create detailed implementation specification for developers.
         """
+        logger.info("Architect: create_implementation_spec start")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["implementation_spec"]
@@ -96,6 +104,7 @@ class ArchitectAgent(BaseAgent):
             "important_notes": "Ensure code is well-documented and tested",
         })
         
+        logger.debug("Architect: create_implementation_spec completed")
         return {
             "messages": [AIMessage(content=response.content, name="architect")],
             "architecture": {
@@ -126,7 +135,9 @@ def architect_agent(state: DevTeamState) -> dict:
     # If clarification response received, continue with design
     if state.get("clarification_response"):
         # Process approval and continue
+        logger.debug("Architect: routing to design_architecture (clarification)")
         return agent.design_architecture(state)
     
     # Design architecture
+    logger.debug("Architect: routing to design_architecture")
     return agent.design_architecture(state)

@@ -1,0 +1,16 @@
+{
+  "graphs": {
+    "dev_team": "./graphs/dev_team/graph.py:graph"
+  },
+  "dependencies": [
+    "./graphs"
+  ],
+  "http": {
+    "cors": {
+      "allow_origins": ["*"],
+      "allow_credentials": false,
+      "allow_methods": ["*"],
+      "allow_headers": ["*"]
+    }
+  }
+}

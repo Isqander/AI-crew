@@ -4,10 +4,14 @@ QA Engineer Agent
 Responsible for code review and quality assurance.
 """
 
+import logging
+
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
 from ..state import DevTeamState
+
+logger = logging.getLogger(__name__)
 
 
 class QAAgent(BaseAgent):
@@ -22,6 +26,7 @@ class QAAgent(BaseAgent):
         """
         Review the implemented code.
         """
+        logger.info("QA: review_code start (code_files=%s)", len(state.get("code_files", [])))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["code_review"]
@@ -70,6 +75,12 @@ class QAAgent(BaseAgent):
         else:
             next_agent = "pm"  # Final review
         
+        logger.debug(
+            "QA: review_code result approved=%s issues=%s next_agent=%s",
+            approved,
+            len(issues_found),
+            next_agent,
+        )
         return {
             "messages": [AIMessage(content=content, name="qa")],
             "review_comments": review_comments,
@@ -87,6 +98,7 @@ class QAAgent(BaseAgent):
         """
         Verify that previous issues have been fixed.
         """
+        logger.info("QA: verify_fixes start")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["verify_fixes"]
@@ -115,6 +127,7 @@ class QAAgent(BaseAgent):
         # Check if all issues are fixed
         all_fixed = "fixed" in content.lower() and "not fixed" not in content.lower()
         
+        logger.debug("QA: verify_fixes all_fixed=%s", all_fixed)
         return {
             "messages": [AIMessage(content=content, name="qa")],
             "issues_found": [] if all_fixed else state.get("issues_found", []),
@@ -126,6 +139,7 @@ class QAAgent(BaseAgent):
         """
         Give final approval for deployment.
         """
+        logger.info("QA: final_approval start")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["final_approval"]
@@ -169,4 +183,5 @@ def qa_agent(state: DevTeamState) -> dict:
     agent = get_qa_agent()
     
     # Review the code
+    logger.debug("QA: routing to review_code")
     return agent.review_code(state)

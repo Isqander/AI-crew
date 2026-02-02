@@ -4,10 +4,14 @@ Project Manager Agent
 Responsible for task decomposition, coordination, and progress tracking.
 """
 
+import logging
+
 from langchain_core.messages import AIMessage, HumanMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
 from ..state import DevTeamState
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectManagerAgent(BaseAgent):
@@ -22,6 +26,7 @@ class ProjectManagerAgent(BaseAgent):
         """
         Decompose the incoming task into subtasks.
         """
+        logger.info("PM: decompose_task start (task_len=%s)", len(state.get("task", "")))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["task_decomposition"]
@@ -33,7 +38,7 @@ class ProjectManagerAgent(BaseAgent):
             "task": state["task"],
             "context": state.get("context", "No additional context provided"),
         })
-        
+        logger.debug("PM: decompose_task completed")
         return {
             "messages": [AIMessage(content=response.content, name="pm")],
             "current_agent": "pm",
@@ -44,6 +49,7 @@ class ProjectManagerAgent(BaseAgent):
         """
         Check the progress of the current task.
         """
+        logger.info("PM: check_progress start")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["progress_check"]
@@ -58,7 +64,7 @@ class ProjectManagerAgent(BaseAgent):
             "implementation_status": "Complete" if state.get("code_files") else "Pending",
             "qa_status": "Complete" if state.get("review_comments") else "Pending",
         })
-        
+        logger.debug("PM: check_progress completed")
         return {
             "messages": [AIMessage(content=response.content, name="pm")],
         }
@@ -67,6 +73,7 @@ class ProjectManagerAgent(BaseAgent):
         """
         Conduct final review before completion.
         """
+        logger.info("PM: final_review start (code_files=%s)", len(state.get("code_files", [])))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["final_review"]
@@ -80,7 +87,7 @@ class ProjectManagerAgent(BaseAgent):
             "tests_status": "Passed" if not state.get("issues_found") else "Issues found",
             "docs_status": "Included" if state.get("implementation_notes") else "Missing",
         })
-        
+        logger.debug("PM: final_review completed")
         return {
             "messages": [AIMessage(content=response.content, name="pm")],
             "summary": response.content,
@@ -109,11 +116,14 @@ def pm_agent(state: DevTeamState) -> dict:
     
     # Initial task - decompose
     if not state.get("requirements"):
+        logger.debug("PM: routing to decompose_task")
         return agent.decompose_task(state)
     
     # All done - final review
     if state.get("code_files") and not state.get("issues_found"):
+        logger.debug("PM: routing to final_review")
         return agent.final_review(state)
     
     # Check progress
+    logger.debug("PM: routing to check_progress")
     return agent.check_progress(state)

@@ -4,10 +4,14 @@ Business Analyst Agent
 Responsible for requirements gathering and user story creation.
 """
 
+import logging
+
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
 from ..state import DevTeamState, UserStory
+
+logger = logging.getLogger(__name__)
 
 
 class AnalystAgent(BaseAgent):
@@ -22,6 +26,7 @@ class AnalystAgent(BaseAgent):
         """
         Analyze the task and extract requirements.
         """
+        logger.info("Analyst: gather_requirements start (task_len=%s)", len(state.get("task", "")))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["requirements_gathering"]
@@ -42,6 +47,7 @@ class AnalystAgent(BaseAgent):
         needs_clarification = "clarification" in content.lower() and "?" in content
         
         if needs_clarification:
+            logger.info("Analyst: clarification requested")
             # Extract the question for clarification
             return {
                 "messages": [AIMessage(content=content, name="analyst")],
@@ -59,6 +65,7 @@ class AnalystAgent(BaseAgent):
             if line.startswith("- ") or line.startswith("* "):
                 requirements.append(line[2:])
         
+        logger.debug("Analyst: requirements_count=%s", len(requirements))
         return {
             "messages": [AIMessage(content=content, name="analyst")],
             "requirements": requirements if requirements else [state["task"]],
@@ -71,6 +78,7 @@ class AnalystAgent(BaseAgent):
         """
         Process user's clarification response and continue.
         """
+        logger.info("Analyst: process_clarification start")
         clarification = state.get("clarification_response", "")
         
         # Re-analyze with clarification
@@ -102,6 +110,7 @@ class AnalystAgent(BaseAgent):
             if line.startswith("- ") or line.startswith("* "):
                 requirements.append(line[2:])
         
+        logger.debug("Analyst: clarified requirements_count=%s", len(requirements))
         return {
             "messages": [AIMessage(content=content, name="analyst")],
             "requirements": requirements if requirements else [state["task"]],
@@ -132,7 +141,9 @@ def analyst_agent(state: DevTeamState) -> dict:
     
     # If we have a clarification response, process it
     if state.get("clarification_response"):
+        logger.debug("Analyst: routing to process_clarification")
         return agent.process_clarification(state)
     
     # Otherwise, gather requirements
+    logger.debug("Analyst: routing to gather_requirements")
     return agent.gather_requirements(state)

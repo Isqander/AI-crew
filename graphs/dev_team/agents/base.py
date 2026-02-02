@@ -4,6 +4,7 @@ Base Agent Configuration
 Provides base utilities and LLM configuration for all agents.
 """
 
+import logging
 import os
 import yaml
 from pathlib import Path
@@ -12,6 +13,8 @@ from typing import Optional, Dict
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI  # Used for OpenAI-compatible API
+
+logger = logging.getLogger(__name__)
 
 
 # ===========================================
@@ -67,6 +70,12 @@ def get_llm_endpoint(endpoint_name: str = "default") -> Dict[str, str]:
         url = os.getenv(f"{env_prefix}_URL", DEFAULT_LLM_API_URL)
         api_key = os.getenv(f"{env_prefix}_KEY", "")
     
+    logger.debug(
+        "LLM endpoint resolved: name=%s url=%s api_key_set=%s",
+        endpoint_name,
+        url,
+        bool(api_key),
+    )
     return {"url": url, "api_key": api_key}
 
 
@@ -88,14 +97,18 @@ def get_model_for_role(role: str) -> str:
     env_model = os.getenv(env_var)
     
     if env_model:
+        logger.debug("Model selected from env: role=%s model=%s", role, env_model)
         return env_model
     
     # Check default model override
     default_override = os.getenv("LLM_DEFAULT_MODEL")
     if default_override and role not in DEFAULT_MODELS:
+        logger.debug("Model selected from default override: role=%s model=%s", role, default_override)
         return default_override
-    
-    return DEFAULT_MODELS.get(role, DEFAULT_MODELS["default"])
+
+    selected = DEFAULT_MODELS.get(role, DEFAULT_MODELS["default"])
+    logger.debug("Model selected from defaults: role=%s model=%s", role, selected)
+    return selected
 
 
 def get_llm(
@@ -140,6 +153,13 @@ def get_llm(
     else:
         selected_model = os.getenv("LLM_DEFAULT_MODEL", DEFAULT_MODELS["default"])
     
+    logger.info(
+        "Initializing LLM: role=%s model=%s temp=%.2f endpoint=%s",
+        role or "none",
+        selected_model,
+        temperature,
+        endpoint,
+    )
     return ChatOpenAI(
         model=selected_model,
         temperature=temperature,
@@ -165,7 +185,9 @@ def load_prompts(agent_name: str) -> dict:
         raise FileNotFoundError(f"Prompts file not found: {prompt_file}")
     
     with open(prompt_file, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        prompts = yaml.safe_load(f)
+    logger.debug("Prompts loaded: agent=%s keys=%s", agent_name, list(prompts.keys()))
+    return prompts
 
 
 def create_prompt_template(
@@ -201,6 +223,7 @@ class BaseAgent:
         self.llm = llm
         self.prompts = prompts
         self.system_prompt = prompts.get("system", "")
+        logger.info("Agent initialized: name=%s", self.name)
     
     def invoke(self, state: dict) -> dict:
         """

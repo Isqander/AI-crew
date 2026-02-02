@@ -44,6 +44,10 @@ services:
     environment:
       # Database
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
+      POSTGRES_USER: ${POSTGRES_USER:-aicrew}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aicrew_secret_password}
+      POSTGRES_DB: ${POSTGRES_DB:-aicrew}
+      POSTGRES_PORT: 5432
       POSTGRES_HOST: postgres
       
       # Aegra Config
@@ -60,7 +64,8 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       
       # Langfuse
-      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-true}
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
+      LANGFUSE_LOGGING: "false"
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_HOST: http://langfuse:3000
@@ -69,11 +74,8 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       
       # Logging
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       ENV_MODE: ${ENV_MODE:-LOCAL}
-    volumes:
-      - ./graphs:/app/graphs:ro
-      - ./aegra.json:/app/aegra.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +103,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    profiles:
+      - langfuse
 
   # ===========================================
   # Frontend (React) - Development
@@ -115,9 +119,6 @@ services:
       - "5173:5173"
     environment:
       VITE_API_URL: http://localhost:8000
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
     depends_on:
       - aegra
     profiles:

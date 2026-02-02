@@ -114,6 +114,7 @@ cd frontend && npm install && npm run dev
 
 ### Для пользователей:
 - **[Быстрый старт](docs/GETTING_STARTED.md)** ⭐ - Установка и запуск за 10 минут
+- **[Развёртывание](docs/deployment.md)** - Запуск на VPS и в докплое
 - **[Архитектура](docs/architecture.md)** - Детальное описание системы
 - **[История изменений](docs/CHANGELOG.md)** - Что нового в проекте
 
