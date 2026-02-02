@@ -5,6 +5,9 @@ log() {
   printf '%s | entrypoint | %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$*"
 }
 
+: "${AEGRA_CONFIG:=/app/aegra.prod.json}"
+: "${LANGFUSE_ENABLED:=false}"
+: "${LANGFUSE_LOGGING:=false}"
 : "${POSTGRES_HOST:=127.0.0.1}"
 : "${POSTGRES_PORT:=5432}"
 : "${POSTGRES_DB:=aicrew}"
@@ -12,6 +15,10 @@ log() {
 : "${POSTGRES_PASSWORD:=aicrew_secret_password}"
 : "${PGDATA:=/var/lib/postgresql/data}"
 : "${POSTGRES_LISTEN_ADDRESSES:=127.0.0.1}"
+
+export AEGRA_CONFIG LANGFUSE_ENABLED LANGFUSE_LOGGING
+export POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD
+export PGDATA POSTGRES_LISTEN_ADDRESSES
 
 case "${POSTGRES_HOST}" in
   127.0.0.1|localhost|::1)

@@ -95,3 +95,14 @@ LLM_API_URL=https://your-llm-proxy/v1
 - Пример: `aicrew_pgdata:/var/lib/postgresql/data`
 
 Если используете внешний Postgres, volume не нужен.
+
+## 6) Источник установки Aegra (если GitHub недоступен)
+
+По умолчанию образ ставит `aegra==0.1.0` из PyPI.
+Если нужен другой источник, задайте build-arg:
+
+```bash
+AEGRA_PIP_SOURCE=git+https://github.com/ibbybuilds/aegra.git
+```
+
+Можно указать URL на wheel/архив из приватного репозитория.

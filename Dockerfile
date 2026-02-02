@@ -11,14 +11,7 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     AEGRA_CONFIG=/app/aegra.prod.json \
     LANGFUSE_ENABLED=false \
-    LANGFUSE_LOGGING=false \
-    POSTGRES_HOST=127.0.0.1 \
-    POSTGRES_PORT=5432 \
-    POSTGRES_DB=aicrew \
-    POSTGRES_USER=aicrew \
-    POSTGRES_PASSWORD=aicrew_secret_password \
-    POSTGRES_LISTEN_ADDRESSES=127.0.0.1 \
-    PGDATA=/var/lib/postgresql/data
+    LANGFUSE_LOGGING=false
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -36,8 +29,9 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Aegra from GitHub
-RUN pip install --no-cache-dir git+https://github.com/ibbybuilds/aegra.git
+# Install Aegra (default: PyPI)
+ARG AEGRA_PIP_SOURCE="aegra==0.1.0"
+RUN pip install --no-cache-dir "${AEGRA_PIP_SOURCE}"
 
 # Copy application code
 COPY graphs/ ./graphs/
