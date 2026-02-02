@@ -98,8 +98,13 @@ LLM_API_URL=https://your-llm-proxy/v1
 
 ## 6) Источник установки Aegra (если GitHub недоступен)
 
-По умолчанию образ ставит `aegra==0.1.0` из PyPI.
-Если нужен другой источник, задайте build-arg:
+В PyPI пакета `aegra` нет. Есть два рабочих варианта:
+
+1) Положить исходники в репозиторий:
+   - путь: `vendor/aegra`
+   - можно оформить как git submodule или просто скопировать код
+
+2) Передать альтернативный источник через build-arg:
 
 ```bash
 AEGRA_PIP_SOURCE=git+https://github.com/ibbybuilds/aegra.git

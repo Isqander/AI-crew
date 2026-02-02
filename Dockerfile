@@ -29,9 +29,17 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Aegra (default: PyPI)
-ARG AEGRA_PIP_SOURCE="aegra==0.1.0"
-RUN pip install --no-cache-dir "${AEGRA_PIP_SOURCE}"
+# Install Aegra (from build-arg or local vendor)
+ARG AEGRA_PIP_SOURCE=""
+COPY vendor/ /app/vendor/
+RUN if [ -n "${AEGRA_PIP_SOURCE}" ]; then \
+      pip install --no-cache-dir "${AEGRA_PIP_SOURCE}"; \
+    elif [ -d /app/vendor/aegra ]; then \
+      pip install --no-cache-dir /app/vendor/aegra; \
+    else \
+      echo "Aegra source not found. Provide vendor/aegra or set AEGRA_PIP_SOURCE." >&2; \
+      exit 1; \
+    fi
 
 # Copy application code
 COPY graphs/ ./graphs/
