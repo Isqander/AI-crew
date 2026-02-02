@@ -38,6 +38,8 @@ case "${POSTGRES_HOST}" in
       log "Initializing Postgres data directory"
       PWFILE="$(mktemp)"
       printf '%s' "${POSTGRES_PASSWORD}" > "${PWFILE}"
+      chown postgres:postgres "${PWFILE}"
+      chmod 600 "${PWFILE}"
       gosu postgres "${PG_BIN}/initdb" \
         -D "${PGDATA}" \
         --username="${POSTGRES_USER}" \
