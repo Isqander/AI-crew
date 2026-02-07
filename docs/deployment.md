@@ -67,14 +67,19 @@ docker run -d \
 | `ENV_MODE` | `LOCAL` | `LOCAL` / `PROD` |
 | `AEGRA_CONFIG` | `/app/aegra.prod.json` | Путь к конфигу Aegra |
 
-### Langfuse (опционально)
+### Langfuse v2 (опционально)
+
+> **Важно**: В контейнере используется **Langfuse v2**, которая работает только
+> с PostgreSQL. Langfuse v3+ требует ClickHouse, Redis и S3 — слишком тяжело
+> для single-container деплоя. Python SDK v3.x обратно совместим с сервером v2.
 
 Для включения встроенного Langfuse-сервера:
 
 ```bash
 LANGFUSE_ENABLED=true
-LANGFUSE_NEXTAUTH_SECRET=your-strong-secret
-LANGFUSE_SALT=your-strong-salt
+LANGFUSE_NEXTAUTH_SECRET=your-strong-secret          # openssl rand -base64 32
+LANGFUSE_SALT=your-strong-salt                        # openssl rand -base64 32
+LANGFUSE_ENCRYPTION_KEY=<64-hex-chars>                # openssl rand -hex 32
 LANGFUSE_NEXTAUTH_URL=https://ai-crew-langfuse.example.com
 ```
 
@@ -173,10 +178,11 @@ POSTGRES_DB=aicrew
 POSTGRES_USER=aicrew
 POSTGRES_PASSWORD=strong-password
 
-# --- Langfuse (сервер) ---
+# --- Langfuse v2 (сервер) ---
 LANGFUSE_ENABLED=true
 LANGFUSE_NEXTAUTH_SECRET=random-secret-32chars
 LANGFUSE_SALT=random-salt-32chars
+LANGFUSE_ENCRYPTION_KEY=<openssl rand -hex 32>
 LANGFUSE_NEXTAUTH_URL=https://ai-crew-langfuse.example.com
 
 # --- Langfuse (клиент/трассировка) ---

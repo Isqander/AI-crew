@@ -24,12 +24,15 @@ log() {
 : "${PGDATA:=/var/lib/postgresql/data}"
 : "${POSTGRES_LISTEN_ADDRESSES:=127.0.0.1}"
 
-# Langfuse self-hosted defaults
+# Langfuse v2 self-hosted defaults
 : "${LANGFUSE_DB:=langfuse}"
 : "${LANGFUSE_DATABASE_URL:=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${LANGFUSE_DB}}"
 : "${LANGFUSE_NEXTAUTH_SECRET:=changeme-nextauth-secret}"
 : "${LANGFUSE_SALT:=changeme-salt}"
 : "${LANGFUSE_NEXTAUTH_URL:=http://localhost:3000}"
+# ENCRYPTION_KEY is required by Langfuse v2 (256-bit hex, 64 chars)
+# Generate with: openssl rand -hex 32
+: "${LANGFUSE_ENCRYPTION_KEY:=0000000000000000000000000000000000000000000000000000000000000000}"
 
 export AEGRA_CONFIG LANGFUSE_ENABLED LANGFUSE_LOGGING
 export POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD
@@ -121,44 +124,62 @@ stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 CONF_AEGRA
 
-# --- Langfuse (conditional) ---
-if [ "${LANGFUSE_ENABLED}" = "true" ] && [ -f /opt/langfuse/web/server.js ]; then
-  log "Langfuse ENABLED — adding to supervisor"
+# --- Langfuse v2 (conditional) ---
+if [ "${LANGFUSE_ENABLED}" = "true" ]; then
+  # Detect server.js location (differs between Langfuse v2 and v3 images)
+  LANGFUSE_SERVER=""
+  for _f in /opt/langfuse/web/server.js \
+            /opt/langfuse/server.js \
+            /opt/langfuse/.next/standalone/server.js; do
+    if [ -f "$_f" ]; then
+      LANGFUSE_SERVER="$_f"
+      break
+    fi
+  done
 
-  # Resolve the correct Prisma engine library for the current platform
-  PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-debian*" 2>/dev/null | head -1)
-  if [ -z "${PRISMA_ENGINE}" ]; then
-    PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-linux*" 2>/dev/null | head -1)
-  fi
-  if [ -z "${PRISMA_ENGINE}" ]; then
-    PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-*" 2>/dev/null | head -1)
-  fi
-  log "Prisma engine: ${PRISMA_ENGINE:-not found}"
+  if [ -n "${LANGFUSE_SERVER}" ]; then
+    log "Langfuse ENABLED — server at ${LANGFUSE_SERVER}"
 
-  # Escape percent signs for supervisord (% → %%)
-  SAFE_DB_URL=$(printf '%s' "${LANGFUSE_DATABASE_URL}" | sed 's/%/%%/g')
-  SAFE_NEXTAUTH_SECRET=$(printf '%s' "${LANGFUSE_NEXTAUTH_SECRET}" | sed 's/%/%%/g')
-  SAFE_SALT=$(printf '%s' "${LANGFUSE_SALT}" | sed 's/%/%%/g')
-  SAFE_NEXTAUTH_URL=$(printf '%s' "${LANGFUSE_NEXTAUTH_URL}" | sed 's/%/%%/g')
+    # Determine working directory and relative command
+    LANGFUSE_DIR=$(dirname "${LANGFUSE_SERVER}")
+    LANGFUSE_CMD="node $(basename "${LANGFUSE_SERVER}")"
 
-  cat >> /etc/supervisor/conf.d/aicrew.conf <<CONF_LANGFUSE
+    # Resolve the correct Prisma engine library for the current platform
+    PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-debian*" 2>/dev/null | head -1)
+    if [ -z "${PRISMA_ENGINE}" ]; then
+      PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-linux*" 2>/dev/null | head -1)
+    fi
+    if [ -z "${PRISMA_ENGINE}" ]; then
+      PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-*" 2>/dev/null | head -1)
+    fi
+    log "Prisma engine: ${PRISMA_ENGINE:-not found}"
+
+    # Escape percent signs for supervisord (% → %%)
+    SAFE_DB_URL=$(printf '%s' "${LANGFUSE_DATABASE_URL}" | sed 's/%/%%/g')
+    SAFE_NEXTAUTH_SECRET=$(printf '%s' "${LANGFUSE_NEXTAUTH_SECRET}" | sed 's/%/%%/g')
+    SAFE_SALT=$(printf '%s' "${LANGFUSE_SALT}" | sed 's/%/%%/g')
+    SAFE_NEXTAUTH_URL=$(printf '%s' "${LANGFUSE_NEXTAUTH_URL}" | sed 's/%/%%/g')
+    SAFE_ENCRYPTION_KEY=$(printf '%s' "${LANGFUSE_ENCRYPTION_KEY}" | sed 's/%/%%/g')
+
+    cat >> /etc/supervisor/conf.d/aicrew.conf <<CONF_LANGFUSE
 
 [program:langfuse]
-command=node web/server.js
-directory=/opt/langfuse
+command=${LANGFUSE_CMD}
+directory=${LANGFUSE_DIR}
 autostart=true
 autorestart=true
 startretries=5
 startsecs=5
-environment=DATABASE_URL="${SAFE_DB_URL}",DIRECT_URL="${SAFE_DB_URL}",NEXTAUTH_SECRET="${SAFE_NEXTAUTH_SECRET}",SALT="${SAFE_SALT}",NEXTAUTH_URL="${SAFE_NEXTAUTH_URL}",HOSTNAME="0.0.0.0",PORT="3000",TELEMETRY_ENABLED="false",PRISMA_QUERY_ENGINE_LIBRARY="${PRISMA_ENGINE:-}"
+environment=DATABASE_URL="${SAFE_DB_URL}",DIRECT_URL="${SAFE_DB_URL}",NEXTAUTH_SECRET="${SAFE_NEXTAUTH_SECRET}",SALT="${SAFE_SALT}",NEXTAUTH_URL="${SAFE_NEXTAUTH_URL}",ENCRYPTION_KEY="${SAFE_ENCRYPTION_KEY}",HOSTNAME="0.0.0.0",PORT="3000",TELEMETRY_ENABLED="false",PRISMA_QUERY_ENGINE_LIBRARY="${PRISMA_ENGINE:-}"
 stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
 CONF_LANGFUSE
 
-elif [ "${LANGFUSE_ENABLED}" = "true" ]; then
-  log "WARNING: LANGFUSE_ENABLED=true but /opt/langfuse/web/server.js not found"
+  else
+    log "WARNING: LANGFUSE_ENABLED=true but no server.js found in /opt/langfuse"
+  fi
 else
   log "Langfuse disabled — skipping"
 fi

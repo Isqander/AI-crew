@@ -30,10 +30,14 @@ RUN VITE_API_URL=${VITE_API_URL} npx vite build
 # ============================================================
 # Stage 2: Prepare Langfuse for Debian
 # ============================================================
-# The official langfuse image is Alpine-based (musl).
-# We need to regenerate the Prisma query engine for Debian (glibc).
+# Using Langfuse v2 — requires only PostgreSQL (no ClickHouse/Redis/S3).
+# Langfuse v3+ requires ClickHouse, Redis, and S3 which is too heavy
+# for a single-container deployment.
+#
+# The official image is Alpine-based (musl).
+# We regenerate the Prisma query engine for Debian (glibc) below.
 
-FROM langfuse/langfuse:latest AS langfuse-alpine
+FROM langfuse/langfuse:2 AS langfuse-alpine
 
 FROM node:20-slim AS langfuse-builder
 

@@ -12,13 +12,17 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.memory import MemorySaver
 
-from .state import DevTeamState
+# NOTE: Aegra loads this file via importlib with module name "graphs.{graph_id}",
+# which sets __package__ = "graphs" instead of "graphs.dev_team".
+# Relative imports (from .state, from .agents) would resolve against "graphs.*"
+# and fail. Use absolute imports based on sys.path (/app/graphs → "dev_team.*").
+from dev_team.state import DevTeamState
 
-from .agents.pm import pm_agent
-from .agents.analyst import analyst_agent
-from .agents.architect import architect_agent
-from .agents.developer import developer_agent
-from .agents.qa import qa_agent
+from dev_team.agents.pm import pm_agent
+from dev_team.agents.analyst import analyst_agent
+from dev_team.agents.architect import architect_agent
+from dev_team.agents.developer import developer_agent
+from dev_team.agents.qa import qa_agent
 
 
 def configure_logging() -> None:
