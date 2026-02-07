@@ -1,7 +1,13 @@
 """
 Developer Agent
+===============
 
-Responsible for code implementation based on architecture specs.
+Responsible for:
+  - Implementing code based on the Architect's specification
+  - Fixing issues reported by QA
+  - Parsing code blocks from LLM output into ``CodeFile`` structures
+
+LangGraph node function: ``developer_agent(state) -> dict``
 """
 
 import logging

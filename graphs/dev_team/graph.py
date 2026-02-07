@@ -1,7 +1,32 @@
 """
 Development Team Graph
+======================
 
 Main LangGraph definition for the AI development team.
+
+Graph flow::
+
+    START ─► PM ─► Analyst ─► Architect ─► Developer ─► QA
+                     │            │                       │
+                clarification  clarification         ┌────┴────┐
+                     │            │                  │         │
+                     └─── user ───┘          issues_found?  approved?
+                                                │         │
+                                            Developer  git_commit ─► END
+                                                │
+                                          (after N iters)
+                                        architect_escalation
+                                                │
+                                          (still stuck)
+                                        human_escalation ─► Developer
+
+Nodes:
+  pm, analyst, architect, developer, qa — agent nodes
+  clarification — HITL interrupt for user input
+  architect_escalation — architect reviews repeated QA failures
+  human_escalation — HITL interrupt when both Dev↔QA and Architect fail
+  git_commit — pushes code to GitHub and creates a PR
+  pm_final — PM's closing summary
 """
 
 import logging

@@ -1,4 +1,11 @@
-# Agent definitions
+"""
+Agent definitions for the dev-team graph.
+
+Each agent module exposes:
+  - A class (e.g. ``ProjectManagerAgent``)
+  - A singleton getter (e.g. ``get_pm_agent()``)
+  - A LangGraph node function (e.g. ``pm_agent(state) -> dict``)
+"""
 from .base import BaseAgent, get_llm, load_prompts
 from .pm import pm_agent, ProjectManagerAgent
 from .analyst import analyst_agent, AnalystAgent
@@ -11,13 +18,13 @@ __all__ = [
     "BaseAgent",
     "get_llm",
     "load_prompts",
-    # Agents
+    # Node functions (used by graph.py)
     "pm_agent",
     "analyst_agent",
     "architect_agent",
     "developer_agent",
     "qa_agent",
-    # Classes
+    # Classes (for direct instantiation / testing)
     "ProjectManagerAgent",
     "AnalystAgent",
     "ArchitectAgent",

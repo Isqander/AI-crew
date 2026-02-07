@@ -1,18 +1,33 @@
 """
 Base Agent Configuration
+========================
 
-Provides base utilities and LLM configuration for all agents.
+Shared infrastructure for all dev-team agents:
+
+- **LLM factory** (``get_llm``) — creates ChatOpenAI instances routed
+  through an OpenAI-compatible proxy, with per-role model selection and
+  support for multiple API endpoints.
+- **Prompt loader** (``load_prompts``) — reads YAML prompt files from
+  ``graphs/dev_team/prompts/``.
+- **BaseAgent** — abstract base class every agent inherits from.
+
+Environment variables consumed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- ``LLM_API_URL`` / ``LLM_API_KEY`` — default endpoint
+- ``LLM_<NAME>_URL`` / ``LLM_<NAME>_KEY`` — named endpoints
+- ``LLM_MODEL_<ROLE>`` — per-agent model override
+- ``LLM_DEFAULT_MODEL`` — global model fallback
 """
 
 import logging
 import os
 import yaml
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI  # Used for OpenAI-compatible API
+from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +62,7 @@ AVAILABLE_MODELS = [
 ]
 
 
-def get_llm_endpoint(endpoint_name: str = "default") -> Dict[str, str]:
+def get_llm_endpoint(endpoint_name: str = "default") -> dict[str, str]:
     """
     Get LLM endpoint configuration by name.
     

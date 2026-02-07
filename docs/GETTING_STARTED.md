@@ -1,4 +1,4 @@
-# 🚀 Быстрый старт
+# Быстрый старт
 
 Руководство по запуску AI-crew за 10 минут.
 
@@ -217,9 +217,10 @@ docker-compose down -v
 
 ## Следующие шаги
 
-- 📖 [Тестирование](TESTING.md) - как запускать тесты
-- 🛠 [Разработка](DEVELOPMENT.md) - как кастомизировать агентов
-- 💡 [Идеи](IDEAS.md) - что можно улучшить
+- [Архитектура](architecture.md) — как устроена система
+- [Разработка](DEVELOPMENT.md) — как добавить агента, изменить промпты
+- [Тестирование](TESTING.md) — как запускать и писать тесты
+- [Развёртывание](deployment.md) — Docker Compose и Production
 
 ---
 
@@ -261,6 +262,5 @@ VITE_API_URL=http://localhost:8000
 
 ## Получить помощь
 
-- 📚 [Документация](architecture.md)
-- 🐛 [GitHub Issues](https://github.com/your-repo/issues)
-- 💬 [Discussions](https://github.com/your-repo/discussions)
+- [Полная документация](architecture.md)
+- [Руководство разработчика](DEVELOPMENT.md)

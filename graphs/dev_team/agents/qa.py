@@ -1,7 +1,14 @@
 """
 QA Engineer Agent
+=================
 
-Responsible for code review and quality assurance.
+Responsible for:
+  - Reviewing code against task requirements
+  - Identifying critical and major issues
+  - Verifying that previous issues have been resolved
+  - Giving final approval before the code is committed
+
+LangGraph node function: ``qa_agent(state) -> dict``
 """
 
 import logging

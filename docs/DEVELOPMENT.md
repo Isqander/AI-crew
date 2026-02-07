@@ -1,4 +1,4 @@
-# 🛠 Руководство разработчика
+# Руководство разработчика
 
 Как кастомизировать и расширять AI-crew.
 
@@ -76,7 +76,7 @@ class SecurityAgent(BaseAgent):
     
     def __init__(self):
         prompts = load_prompts("security")
-        llm = get_llm(provider="openai", model="gpt-4o", temperature=0.3)
+        llm = get_llm(role="security", temperature=0.3)
         super().__init__(name="security", llm=llm, prompts=prompts)
     
     def analyze_security(self, state: DevTeamState) -> dict:
@@ -429,7 +429,7 @@ from ..tools.test_runner import test_tools
 class QAAgent(BaseAgent):
     def __init__(self):
         prompts = load_prompts("qa")
-        llm = get_llm(provider="openai", model="gpt-4o", temperature=0.3)
+        llm = get_llm(role="qa", temperature=0.3)
         
         # Привязать инструменты к LLM
         llm_with_tools = llm.bind_tools(test_tools)
@@ -441,58 +441,45 @@ class QAAgent(BaseAgent):
 
 ## Настройка LLM моделей
 
-### Вариант 1: Изменить в коде агента
+### Вариант 1: Через переменные окружения (рекомендуется)
+
+```bash
+# .env — переопределить модель для конкретного агента
+LLM_MODEL_DEVELOPER=gemini-3-pro-high
+LLM_MODEL_ARCHITECT=claude-opus-4-5-thinking
+
+# Или глобальный fallback
+LLM_DEFAULT_MODEL=claude-sonnet-4-5-thinking
+```
+
+### Вариант 2: В коде агента
 
 ```python
 # graphs/dev_team/agents/developer.py
 def __init__(self):
     prompts = load_prompts("developer")
     llm = get_llm(
-        provider="anthropic",  # Изменить провайдера
-        model="claude-3-5-sonnet-20241022",  # Изменить модель
-        temperature=0.1,  # Изменить температуру
+        model="gemini-3-pro-high",  # Явная модель
+        temperature=0.1,
     )
     super().__init__(name="developer", llm=llm, prompts=prompts)
 ```
 
-### Вариант 2: Вынести в конфигурацию
+### Несколько API endpoints
 
-Создайте `config/agents.yaml`:
+```bash
+# Основной endpoint
+LLM_API_URL=https://main-proxy.example.com/v1
+LLM_API_KEY=main-key
 
-```yaml
-agents:
-  pm:
-    provider: openai
-    model: gpt-4o
-    temperature: 0.7
-    
-  analyst:
-    provider: anthropic
-    model: claude-3-5-sonnet-20241022
-    temperature: 0.7
-    
-  developer:
-    provider: openai
-    model: gpt-4o
-    temperature: 0.2
-    max_tokens: 4000
+# Именованный endpoint "BACKUP"
+LLM_BACKUP_URL=https://backup-proxy.example.com/v1
+LLM_BACKUP_KEY=backup-key
 ```
 
-Загружайте конфигурацию:
-
 ```python
-import yaml
-
-def load_agent_config(agent_name: str) -> dict:
-    with open("config/agents.yaml") as f:
-        config = yaml.safe_load(f)
-    return config["agents"][agent_name]
-
-class DeveloperAgent(BaseAgent):
-    def __init__(self):
-        config = load_agent_config("developer")
-        llm = get_llm(**config)
-        # ...
+# В коде агента — использовать backup endpoint
+llm = get_llm(role="developer", endpoint="backup")
 ```
 
 ---
@@ -621,8 +608,6 @@ mypy graphs/
 
 ## Следующие шаги
 
-- 📖 [Тестирование](TESTING.md) - как писать тесты
-- 💡 [Идеи](IDEAS.md) - что можно улучшить
-- 📚 [Архитектура](architecture.md) - детальная документация
-
-Удачи в разработке! 🚀
+- [Тестирование](TESTING.md) — как писать и запускать тесты
+- [Архитектура](architecture.md) — детальное описание системы
+- [Развёртывание](deployment.md) — Docker, production

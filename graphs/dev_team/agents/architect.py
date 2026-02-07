@@ -1,7 +1,14 @@
 """
 Software Architect Agent
+=========================
 
-Responsible for system design and technology decisions.
+Responsible for:
+  - Designing system architecture based on requirements
+  - Choosing a technology stack
+  - Creating implementation specs for the Developer
+  - Reviewing QA escalations (after repeated Dev↔QA failures)
+
+LangGraph node function: ``architect_agent(state) -> dict``
 """
 
 import logging

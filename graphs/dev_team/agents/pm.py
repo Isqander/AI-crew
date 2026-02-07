@@ -1,7 +1,13 @@
 """
-Project Manager Agent
+Project Manager (PM) Agent
+===========================
 
-Responsible for task decomposition, coordination, and progress tracking.
+Responsible for:
+  - Decomposing incoming tasks into subtasks
+  - Tracking overall progress across the pipeline
+  - Conducting the final review before completion
+
+LangGraph node function: ``pm_agent(state) -> dict``
 """
 
 import logging

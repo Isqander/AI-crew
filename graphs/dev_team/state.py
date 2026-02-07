@@ -1,7 +1,15 @@
 """
 DevTeam State Definition
+========================
 
-Defines the shared state structure for the development team graph.
+Defines ``DevTeamState`` — the shared TypedDict passed between all
+LangGraph nodes in the dev-team workflow.
+
+Key sections:
+  - **Input** — task, repository, context (provided by the user)
+  - **Agent outputs** — requirements, architecture, code_files, etc.
+  - **Conversation** — LangGraph message history (auto-accumulated)
+  - **Control flow** — current_agent, needs_clarification, qa counters
 """
 
 from typing import TypedDict, Annotated, Literal

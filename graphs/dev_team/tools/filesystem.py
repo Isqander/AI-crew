@@ -1,7 +1,12 @@
 """
 File System Tools
+=================
 
-Provides tools for working with local files (for code generation output).
+LangChain tools for local workspace file operations:
+  - write_file / read_file / delete_file
+  - list_files / create_directory
+
+All paths are relative to ``WORKSPACE_DIR`` (env var, default ``/tmp/aicrew_workspace``).
 """
 
 import os

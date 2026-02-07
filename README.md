@@ -1,350 +1,109 @@
-# 🤖 AI-crew
+# AI-crew
 
 **Мультиагентная платформа разработки на базе LangGraph**
 
-AI-crew — это self-hosted система, где команда ИИ-агентов (Менеджер, Аналитик, Архитектор, Разработчик, QA) совместно создают приложения от требований до готового кода с pull request.
+Команда из 5 ИИ-агентов (PM, Analyst, Architect, Developer, QA) совместно
+выполняет задачи по разработке — от сбора требований до создания Pull Request.
 
----
+## Возможности
 
-## ✨ Возможности
+- **5 специализированных агентов** с разными LLM-моделями
+- **Human-in-the-Loop** — агенты задают уточняющие вопросы через Web UI
+- **Полный цикл разработки** — от идеи до PR в GitHub
+- **Escalation ladder** — автоматическая эскалация при зацикливании Dev↔QA
+- **Web UI** — React-интерфейс для управления задачами
+- **Observability** — трейсинг через Langfuse
+- **Docker ready** — dev (docker-compose) и prod (all-in-one image)
 
-- 🧠 **5 специализированных агентов** работают как настоящая команда
-- 🔄 **Human-in-the-Loop** - агенты задают уточняющие вопросы
-- 📝 **От идеи до кода** - полный цикл разработки
-- 🔗 **GitHub интеграция** - автоматическое создание PR
-- 🎨 **Modern Web UI** - React интерфейс для управления задачами
-- 📊 **Observability** - трейсинг через Langfuse
-- 🐳 **Docker ready** - простое развёртывание
-- 🧪 **Полное покрытие тестами** - 49 автоматических тестов
-
----
-
-## 🏗 Архитектура
+## Архитектура
 
 ```
-┌─────────────┐
-│   Browser   │ ← Web UI для создания задач
-└──────┬──────┘
-       │
-┌──────▼──────┐
-│  React UI   │
-└──────┬──────┘
-       │ REST API
-┌──────▼──────┐
-│ Aegra Server│ ← LangGraph Platform
-└──────┬──────┘
-       │
-┌──────▼──────────────────────────┐
-│   LangGraph Agent Workflow      │
-│                                  │
-│  ┌────┐  ┌────────┐  ┌────────┐│
-│  │ PM │─→│Analyst │─→│Architect││
-│  └────┘  └────────┘  └────────┘│
-│                ↓                 │
-│  ┌─────────┐  ┌────┐  ┌────┐  │
-│  │Developer│→│ QA │→│Git │  │
-│  └─────────┘  └────┘  └────┘  │
-└─────────────────────────────────┘
-       │
-┌──────▼──────┐   ┌─────────┐
-│ PostgreSQL  │   │Langfuse │
-│ (States)    │   │(Monitor)│
-└─────────────┘   └─────────┘
+  Web UI (:5173)  ──►  Aegra API (:8000)  ──►  LangGraph
+                                                    │
+    PM ─► Analyst ─► Architect ─► Developer ─► QA ──┤
+              │           │                    │    │
+         clarify?     clarify?            Dev↔QA   git_commit
+                                         cycle     ─► PR
+                            │
+        PostgreSQL (:5432)  │  Langfuse (:3000)
 ```
 
-### Агенты:
-
-| Агент | Роль | LLM |
-|-------|------|-----|
-| 👔 **PM** | Декомпозиция задач, координация | GPT-4o |
-| 📊 **Analyst** | Сбор требований, user stories | Claude 3.5 Sonnet |
-| 🏛 **Architect** | Проектирование архитектуры | Claude 3.5 Sonnet |
-| 💻 **Developer** | Написание кода | GPT-4o |
-| 🧪 **QA** | Code review, тестирование | GPT-4o-mini |
-
----
-
-## 🚀 Быстрый старт
-
-### Требования
-
-- Docker & Docker Compose
-- Node.js 18+ (для frontend)
-- API ключи: OpenAI, Anthropic (опционально)
-
-### Установка
+## Быстрый старт
 
 ```bash
-# 1. Клонировать репозиторий
-cd AI-crew
-
-# 2. Создать .env из примера
+# 1. Настроить окружение
 cp env.example .env
+# Заполнить LLM_API_KEY в .env
 
-# 3. Добавить API ключи в .env
-# OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
-
-# 4. Запустить все сервисы
+# 2. Запустить все сервисы
 docker-compose up -d
 
-# 5. Запустить frontend
+# 3. Запустить frontend
 cd frontend && npm install && npm run dev
 ```
 
-### Проверка
+Откройте http://localhost:5173, введите задачу и наблюдайте за работой агентов.
 
-- **Aegra API**: http://localhost:8000/docs
-- **Langfuse**: http://localhost:3000
-- **Frontend**: http://localhost:5173
+**Подробнее:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
 
-### Первая задача
+## Документация
 
-1. Откройте http://localhost:5173
-2. Введите задачу:
-   ```
-   Create a REST API for managing TODO items with CRUD endpoints
-   ```
-3. Нажмите "Запустить"
-4. Наблюдайте за работой агентов в реальном времени!
+| Документ | Описание |
+|----------|----------|
+| [Быстрый старт](docs/GETTING_STARTED.md) | Установка и запуск за 10 минут |
+| [Архитектура](docs/architecture.md) | Детальное описание системы, граф агентов, state-модель |
+| [Разработка](docs/DEVELOPMENT.md) | Как добавить агента, изменить промпты, настроить LLM |
+| [Тестирование](docs/TESTING.md) | Запуск тестов, фикстуры, CI/CD |
+| [Развёртывание](docs/deployment.md) | Docker Compose (dev) и Dockerfile (prod) |
+| [Roadmap](docs/IDEAS.md) | Идеи для развития проекта |
 
----
-
-## 📚 Документация
-
-### Для пользователей:
-- **[Быстрый старт](docs/GETTING_STARTED.md)** ⭐ - Установка и запуск за 10 минут
-- **[Развёртывание](docs/deployment.md)** - Запуск на VPS и в докплое
-- **[Архитектура](docs/architecture.md)** - Детальное описание системы
-- **[История изменений](docs/CHANGELOG.md)** - Что нового в проекте
-
-### Для разработчиков:
-- **[Руководство разработчика](docs/DEVELOPMENT.md)** ⭐ - Как кастомизировать агентов
-- **[Тестирование](docs/TESTING.md)** - Как запускать и писать тесты
-- **[Идеи для развития](docs/IDEAS.md)** - Roadmap и возможности
-
----
-
-## 🛠 Стек технологий
+## Стек
 
 | Компонент | Технология |
 |-----------|-----------|
-| Оркестрация агентов | **LangGraph** |
-| Backend/API | **Aegra** (FastAPI) |
-| База данных | **PostgreSQL** |
-| Observability | **Langfuse** |
-| Web UI | **React** + TypeScript |
-| LLM | OpenAI, Anthropic, Google |
-| Деплой | **Docker Compose** |
+| Оркестрация | LangGraph |
+| API | Aegra (FastAPI) |
+| БД | PostgreSQL + pgvector |
+| Observability | Langfuse |
+| Web UI | React + Vite + Tailwind |
+| LLM | OpenAI-совместимый прокси (Claude, Gemini, GLM, etc.) |
+| Деплой | Docker Compose / Dockerfile |
 
----
+## Структура проекта
 
-## 🧪 Тестирование
+```
+AI-crew/
+├── graphs/dev_team/          # LangGraph граф команды
+│   ├── graph.py              #   Узлы, рёбра, роутеры
+│   ├── state.py              #   DevTeamState
+│   ├── agents/               #   PM, Analyst, Architect, Developer, QA
+│   ├── prompts/              #   YAML-промпты
+│   └── tools/                #   GitHub, Filesystem
+├── frontend/                 # React Web UI
+├── tests/                    # Тесты (pytest)
+├── vendor/aegra/             # Aegra server (vendored)
+├── scripts/                  # Docker entrypoint, setup, nginx
+├── docs/                     # Документация
+├── docker-compose.yml        # Development
+├── Dockerfile                # Production (all-in-one)
+├── aegra.json                # Конфиг Aegra
+└── env.example               # Шаблон .env
+```
 
-Проект имеет полное покрытие тестами:
+## Тестирование
 
 ```bash
-# Установить зависимости
 pip install -r requirements.txt
-
-# Запустить все тесты
 pytest tests/ -v
-
-# С отчётом о покрытии
-pytest tests/ --cov=graphs --cov-report=html
-
-# Открыть HTML отчёт
-open htmlcov/index.html
 ```
 
-**Статистика тестов:**
-- ✅ 7 тестов структуры состояния
-- ✅ 6 smoke тестов агентов
-- ✅ 13 тестов графа и роутинга
-- ✅ 12 тестов инструментов
-- ✅ 8 интеграционных тестов (включая E2E workflow)
+## Кастомизация
 
-**Всего: 46 тестов** | **Pass rate: 100%** ✨
+- **Промпты** — `graphs/dev_team/prompts/*.yaml`
+- **Модели** — env `LLM_MODEL_PM`, `LLM_MODEL_DEVELOPER`, etc.
+- **Новый агент** — см. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- **Граф** — `graphs/dev_team/graph.py`
 
----
+## Лицензия
 
-## 📖 Примеры использования
-
-### Создать REST API
-
-```
-Task: Create a FastAPI REST API for managing blog posts with:
-- GET /posts - list all posts
-- POST /posts - create new post
-- GET /posts/{id} - get post by ID
-- PUT /posts/{id} - update post
-- DELETE /posts/{id} - delete post
-
-Use PostgreSQL for storage and add proper validation.
-```
-
-### Создать React компонент
-
-```
-Task: Create a reusable React component for a modal dialog with:
-- Customizable title and content
-- Close button and overlay
-- Animations
-- TypeScript types
-- Full accessibility support
-```
-
-### Рефакторинг кода
-
-```
-Task: Refactor the authentication module to use JWT tokens instead of sessions.
-Repository: owner/my-app
-
-Context: Current implementation uses session-based auth.
-Need to migrate to JWT for stateless authentication.
-```
-
----
-
-## 🎯 Human-in-the-Loop
-
-Агенты могут задавать уточняющие вопросы:
-
-```
-Аналитик: "Какую базу данных использовать: PostgreSQL или MongoDB?"
-Архитектор: "Нужна ли аутентификация пользователей?"
-```
-
-Вы отвечаете через UI, и агенты продолжают работу с учётом ваших ответов.
-
----
-
-## 🔧 Кастомизация
-
-### Изменить промпты агентов
-
-Промпты находятся в `graphs/dev_team/prompts/`:
-
-```yaml
-# graphs/dev_team/prompts/developer.yaml
-system: |
-  You are a Software Developer AI agent.
-  
-  Code Style:
-  - Use TypeScript
-  - Follow functional programming
-  - Write comprehensive tests
-```
-
-### Изменить флоу агентов
-
-Граф определяется в `graphs/dev_team/graph.py`:
-
-```python
-# Добавить нового агента
-builder.add_node("security", security_agent)
-builder.add_edge("qa", "security")
-builder.add_edge("security", "git_commit")
-```
-
-### Создать нового агента
-
-```python
-# graphs/dev_team/agents/security.py
-class SecurityAgent(BaseAgent):
-    def __init__(self):
-        prompts = load_prompts("security")
-        llm = get_llm(provider="openai", model="gpt-4o")
-        super().__init__(name="security", llm=llm, prompts=prompts)
-```
-
-Подробнее: [Руководство разработчика](docs/DEVELOPMENT.md)
-
----
-
-## 💡 Roadmap
-
-### ✅ Реализовано (v0.2.0)
-- Мультиагентная система с 5 агентами
-- Human-in-the-Loop
-- GitHub интеграция
-- Web UI
-- PostgreSQL checkpointing
-- Langfuse observability
-- Полное покрытие тестами
-
-### 🔜 В планах
-
-**Короткосрочно (1-2 недели):**
-- Retry логика для LLM вызовов
-- Валидация входных данных
-- Структурированное логирование
-
-**Среднесрочно (1-2 месяца):**
-- Code Execution Sandbox
-- Vector Database для long-term memory
-- Security Agent
-- Template Library
-
-**Долгосрочно (3-6 месяцев):**
-- Интеграция с Jira/Linear
-- Multi-repository support
-- Visual Graph Editor
-- Fine-tuned модели
-
-Подробнее: [Идеи для развития](docs/IDEAS.md)
-
----
-
-## 🤝 Участие в разработке
-
-Мы приветствуем ваш вклад!
-
-1. Fork репозиторий
-2. Создайте feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit изменения (`git commit -m 'Add amazing feature'`)
-4. Push в branch (`git push origin feature/amazing-feature`)
-5. Создайте Pull Request
-
-### Как помочь:
-
-- 🐛 Сообщить о баге
-- 💡 Предложить идею
-- 📖 Улучшить документацию
-- ✨ Реализовать новую функцию
-- 🧪 Добавить тесты
-
----
-
-## 📝 Лицензия
-
-MIT License - свободно используйте в своих проектах.
-
----
-
-## 🙏 Благодарности
-
-Проект построен на плечах гигантов:
-
-- [LangGraph](https://github.com/langchain-ai/langgraph) - оркестрация агентов
-- [Aegra](https://github.com/ibbybuilds/aegra) - self-hosted LangGraph Platform
-- [Langfuse](https://github.com/langfuse/langfuse) - observability
-- [OpenAI](https://openai.com) & [Anthropic](https://anthropic.com) - LLM модели
-
----
-
-## 📬 Контакты
-
-- 📚 [Документация](docs/)
-- 🐛 [Issues](https://github.com/your-repo/issues)
-- 💬 [Discussions](https://github.com/your-repo/discussions)
-
----
-
-<p align="center">
-  Сделано с ❤️ и 🤖 AI
-</p>
-
-<p align="center">
-  <strong>AI-crew v0.2.0</strong>
-</p>
+MIT

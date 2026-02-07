@@ -1,7 +1,13 @@
 """
 Business Analyst Agent
+======================
 
-Responsible for requirements gathering and user story creation.
+Responsible for:
+  - Analysing the task description and extracting requirements
+  - Creating user stories with acceptance criteria
+  - Requesting clarification from the user when the task is ambiguous
+
+LangGraph node function: ``analyst_agent(state) -> dict``
 """
 
 import logging

@@ -1,29 +1,48 @@
 """
 GitHub Integration Tools
 
-Provides tools for interacting with GitHub repositories.
+Provides LangChain tools for interacting with GitHub repositories:
+  - create_pull_request: Create a PR
+  - create_branch: Create a branch
+  - commit_file: Commit/update a single file
+  - get_file_content: Read a file from a repo
+  - list_repository_files: List directory contents
+
+All tools require GITHUB_TOKEN environment variable and PyGithub package.
 """
 
+import logging
 import os
-from typing import Optional
+
 from langchain_core.tools import tool
 
+logger = logging.getLogger(__name__)
 
-# GitHub client will be initialized when needed
+# ---------------------------------------------------------------------------
+# GitHub client (lazy singleton)
+# ---------------------------------------------------------------------------
 _github_client = None
 
 
 def get_github_client():
-    """Get or create GitHub client."""
+    """Get or create a PyGithub client using GITHUB_TOKEN env var.
+
+    Returns:
+        ``Github`` instance or ``None`` when the token is missing or
+        PyGithub is not installed.
+    """
     global _github_client
     if _github_client is None:
         try:
-            from github import Github
+            from github import Github  # noqa: WPS433
             token = os.getenv("GITHUB_TOKEN")
             if token:
                 _github_client = Github(token)
+                logger.debug("GitHub client initialized")
+            else:
+                logger.debug("GITHUB_TOKEN not set — GitHub client unavailable")
         except ImportError:
-            pass
+            logger.warning("PyGithub not installed — GitHub tools disabled")
     return _github_client
 
 
@@ -137,7 +156,7 @@ def commit_file(
                 sha=existing_file.sha,
                 branch=branch,
             )
-        except:
+        except Exception:  # file does not exist yet
             # Create new file
             result = repo.create_file(
                 path=file_path,

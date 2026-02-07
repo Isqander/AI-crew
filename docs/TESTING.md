@@ -1,4 +1,4 @@
-# Руководство по тестированию AI-crew
+# Тестирование
 
 ## Установка зависимостей для тестирования
 
@@ -339,8 +339,5 @@ touch graphs/dev_team/tools/__init__.py
 
 - [Pytest Documentation](https://docs.pytest.org/)
 - [unittest.mock Guide](https://docs.python.org/3/library/unittest.mock.html)
-- [LangGraph Testing Best Practices](https://langchain-ai.github.io/langgraph/tutorials/testing/)
-
----
-
-**Вопросы?** Создайте issue в репозитории или обратитесь к документации.
+- [Руководство разработчика](DEVELOPMENT.md)
+- [Архитектура](architecture.md)
