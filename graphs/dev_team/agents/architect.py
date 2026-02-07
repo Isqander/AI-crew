@@ -82,6 +82,87 @@ class ArchitectAgent(BaseAgent):
             "needs_clarification": False,
         }
     
+    def review_qa_escalation(self, state: DevTeamState) -> dict:
+        """
+        Review QA issues after repeated Dev↔QA cycles.
+        Decide which issues are truly critical vs cosmetic/acceptable.
+        """
+        logger.info(
+            "Architect: review_qa_escalation (qa_iter=%s)",
+            state.get("qa_iteration_count", 0),
+        )
+        prompt = create_prompt_template(
+            self.system_prompt,
+            self.prompts["qa_escalation"]
+        )
+
+        chain = prompt | self.llm
+
+        code_files = state.get("code_files", [])
+        code_files_str = "\n\n".join(
+            f"### {f['path']}\n```{f['language']}\n{f['content']}\n```"
+            for f in code_files
+        ) if code_files else "No code files"
+
+        response = chain.invoke({
+            "task": state["task"],
+            "iteration_count": state.get("qa_iteration_count", 0),
+            "issues": "\n".join(
+                f"- {i}" for i in state.get("issues_found", [])
+            ) or "None",
+            "review_comments": "\n".join(
+                f"- {c}" for c in state.get("review_comments", [])
+            ) or "None",
+            "code_files": code_files_str,
+        })
+
+        content = response.content
+
+        # Parse verdict
+        approved = "approve_with_notes" in content.lower()
+
+        if approved:
+            logger.info("Architect: escalation verdict=APPROVE_WITH_NOTES → proceeding to commit")
+            return {
+                "messages": [AIMessage(content=content, name="architect")],
+                "issues_found": [],  # Clear issues — architect waived them
+                "test_results": {
+                    **state.get("test_results", {}),
+                    "approved": True,
+                    "architect_waived": True,
+                },
+                "current_agent": "architect",
+                "next_agent": "git_commit",
+                # Reset counter for any future cycles
+                "qa_iteration_count": 0,
+                "architect_escalated": True,
+            }
+        else:
+            logger.info("Architect: escalation verdict=FIX_REQUIRED → back to developer")
+            # Parse only the truly critical issues from architect's response
+            critical_issues = []
+            in_critical = False
+            for line in content.split("\n"):
+                if "critical issues" in line.lower() and "must fix" in line.lower():
+                    in_critical = True
+                    continue
+                if in_critical and line.strip().startswith("- "):
+                    issue = line.strip()[2:].strip()
+                    if issue.lower() != "none":
+                        critical_issues.append(issue)
+                if in_critical and line.strip().startswith("##"):
+                    in_critical = False
+
+            return {
+                "messages": [AIMessage(content=content, name="architect")],
+                "issues_found": critical_issues if critical_issues else state.get("issues_found", []),
+                "current_agent": "architect",
+                "next_agent": "developer",
+                # Reset counter for the new round of 3
+                "qa_iteration_count": 0,
+                "architect_escalated": True,
+            }
+
     def create_implementation_spec(self, state: DevTeamState) -> dict:
         """
         Create detailed implementation specification for developers.

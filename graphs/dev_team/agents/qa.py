@@ -75,11 +75,17 @@ class QAAgent(BaseAgent):
         else:
             next_agent = "pm"  # Final review
         
+        # Increment Dev↔QA iteration counter when issues are found
+        qa_iter = state.get("qa_iteration_count", 0)
+        if issues_found:
+            qa_iter += 1
+
         logger.debug(
-            "QA: review_code result approved=%s issues=%s next_agent=%s",
+            "QA: review_code result approved=%s issues=%s next_agent=%s qa_iter=%s",
             approved,
             len(issues_found),
             next_agent,
+            qa_iter,
         )
         return {
             "messages": [AIMessage(content=content, name="qa")],
@@ -92,6 +98,7 @@ class QAAgent(BaseAgent):
             },
             "current_agent": "qa",
             "next_agent": next_agent,
+            "qa_iteration_count": qa_iter,
         }
     
     def verify_fixes(self, state: DevTeamState) -> dict:

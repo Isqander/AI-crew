@@ -76,6 +76,45 @@ approval_request: |
   
   Do you approve this architecture? Any changes needed?
 
+qa_escalation: |
+  The Developer and QA have been going back and forth for {iteration_count} iterations
+  without resolving the following issues:
+
+  Task: {task}
+
+  Current QA Issues:
+  {issues}
+
+  QA Review Comments:
+  {review_comments}
+
+  Current Code Files:
+  {code_files}
+
+  As the Architect, please:
+  1. Analyze which issues are truly CRITICAL (must fix) vs COSMETIC (can accept).
+  2. For cosmetic/non-critical issues (e.g. minor style preferences, non-functional
+     suggestions that were treated as hard requirements), explicitly mark them as
+     ACCEPTED / WAIVED — they should NOT block further development.
+  3. For critical issues, provide SPECIFIC, actionable guidance to the Developer
+     on how to fix them.
+  4. Provide a clear VERDICT:
+     - "APPROVE_WITH_NOTES" — waive non-critical issues, let the code proceed
+     - "FIX_REQUIRED" — only truly critical issues remain; list them explicitly
+
+  Format your response as:
+
+  ## Verdict: [APPROVE_WITH_NOTES or FIX_REQUIRED]
+
+  ## Critical Issues (must fix)
+  - [issue or "None"]
+
+  ## Waived Issues (acceptable as-is)
+  - [issue] — Reason: [why it's acceptable]
+
+  ## Guidance for Developer
+  [Specific instructions if FIX_REQUIRED, or "No further changes needed"]
+
 implementation_spec: |
   Here is the implementation specification for the Developer:
   

@@ -86,6 +86,10 @@ class DevTeamState(TypedDict):
     clarification_context: NotRequired[str]      # Context for the question
     clarification_response: NotRequired[str]     # User's response
     
+    # === Iteration control ===
+    qa_iteration_count: int                      # Dev↔QA loop counter (reset after architect escalation)
+    architect_escalated: bool                    # True after first architect escalation in Dev↔QA loop
+
     # === Error Handling ===
     error: NotRequired[str]                      # Error message if any
     retry_count: int                             # Number of retries
@@ -134,6 +138,10 @@ def create_initial_state(
         # HITL
         "needs_clarification": False,
         
+        # Iteration control
+        "qa_iteration_count": 0,
+        "architect_escalated": False,
+
         # Error handling
         "retry_count": 0,
     }

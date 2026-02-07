@@ -84,21 +84,54 @@ def route_after_architect(state: DevTeamState) -> Literal["clarification", "deve
     return "developer"
 
 
-def route_after_qa(state: DevTeamState) -> Literal["developer", "git_commit", "pm_final"]:
+# Maximum Dev↔QA iterations before escalation
+MAX_QA_ITERATIONS_BEFORE_ARCHITECT = 3
+MAX_QA_ITERATIONS_BEFORE_HUMAN = 3  # After architect already escalated once
+
+
+def route_after_qa(
+    state: DevTeamState,
+) -> Literal["developer", "architect_escalation", "human_escalation", "git_commit", "pm_final"]:
     """
     Router: After QA, determine next step.
+
+    Escalation ladder:
+      1) ≤ 3 Dev↔QA iterations → send back to developer
+      2) After 3 iterations (architect not yet involved) → architect_escalation
+      3) After architect intervened and another 3 iterations → human_escalation
+      4) If no issues / approved → git_commit or pm_final
     """
-    # If there are issues, send back to developer
+    # If there are issues, apply escalation logic
     if state.get("issues_found"):
-        logger.debug("Router after_qa: issues_found=%s -> developer", len(state.get("issues_found", [])))
+        qa_iter = state.get("qa_iteration_count", 0)
+        architect_escalated = state.get("architect_escalated", False)
+
+        if not architect_escalated and qa_iter >= MAX_QA_ITERATIONS_BEFORE_ARCHITECT:
+            logger.info(
+                "Router after_qa: qa_iter=%s ≥ %s, architect not yet escalated → architect_escalation",
+                qa_iter, MAX_QA_ITERATIONS_BEFORE_ARCHITECT,
+            )
+            return "architect_escalation"
+
+        if architect_escalated and qa_iter >= MAX_QA_ITERATIONS_BEFORE_HUMAN:
+            logger.info(
+                "Router after_qa: qa_iter=%s ≥ %s AND architect already escalated → human_escalation",
+                qa_iter, MAX_QA_ITERATIONS_BEFORE_HUMAN,
+            )
+            return "human_escalation"
+
+        logger.debug(
+            "Router after_qa: issues_found=%s, qa_iter=%s → developer",
+            len(state.get("issues_found", [])), qa_iter,
+        )
         return "developer"
-    
+
     # If approved, proceed to commit
     test_results = state.get("test_results", {})
     if test_results.get("approved", False):
         logger.debug("Router after_qa: approved=True -> git_commit")
         return "git_commit"
-    
+
     # Otherwise, final PM review
     logger.debug("Router after_qa: approved=False -> pm_final")
     return "pm_final"
@@ -130,6 +163,62 @@ def process_clarification(state: DevTeamState) -> dict:
     }
 
 
+def architect_escalation_node(state: DevTeamState) -> dict:
+    """
+    Architect reviews repeated Dev↔QA failures and decides
+    which issues are truly critical vs cosmetic/waivable.
+    """
+    from dev_team.agents.architect import get_architect_agent
+    agent = get_architect_agent()
+    return agent.review_qa_escalation(state)
+
+
+def route_after_architect_escalation(
+    state: DevTeamState,
+) -> Literal["developer", "git_commit"]:
+    """
+    After architect escalation: if approved → git_commit, else → developer.
+    """
+    test_results = state.get("test_results", {})
+    if test_results.get("approved", False):
+        return "git_commit"
+    return "developer"
+
+
+def human_escalation_node(state: DevTeamState) -> dict:
+    """
+    After both Dev↔QA and Architect escalation failed to converge,
+    ask the human for guidance via the HITL interrupt mechanism.
+
+    The node sets needs_clarification=True and pauses the graph.
+    """
+    issues = state.get("issues_found", [])
+    qa_iter = state.get("qa_iteration_count", 0)
+    issues_text = "\n".join(f"  - {i}" for i in issues) if issues else "  (see review comments)"
+
+    logger.info(
+        "Human escalation: qa_iter=%s, issues=%s — requesting human guidance",
+        qa_iter, len(issues),
+    )
+
+    question = (
+        f"Dev and QA could not resolve the following issues after "
+        f"multiple iterations (including Architect review):\n\n"
+        f"{issues_text}\n\n"
+        f"Please advise:\n"
+        f"1. Which issues can be waived / accepted as-is?\n"
+        f"2. How should the remaining issues be fixed?\n"
+        f"3. Or should we proceed with the current code?"
+    )
+
+    return {
+        "needs_clarification": True,
+        "clarification_question": question,
+        "clarification_context": "qa_human_escalation",
+        "current_agent": "qa",
+    }
+
+
 def git_commit_node(state: DevTeamState) -> dict:
     """
     Commit generated code to GitHub:
@@ -142,7 +231,7 @@ def git_commit_node(state: DevTeamState) -> dict:
     in the summary so it is still visible in the chat.
     """
     code_files = state.get("code_files", [])
-    repository = state.get("repository")
+    repository = state.get("repository") or os.getenv("GITHUB_DEFAULT_REPO", "")
     task = state.get("task", "AI-generated task")
     logger.info(
         "Git commit node: repository=%s files=%s",
@@ -321,17 +410,19 @@ def create_graph() -> StateGraph:
     builder.add_node("developer", developer_agent)
     builder.add_node("qa", qa_agent)
     builder.add_node("clarification", clarification_node)
+    builder.add_node("architect_escalation", architect_escalation_node)
+    builder.add_node("human_escalation", human_escalation_node)
     builder.add_node("git_commit", git_commit_node)
     builder.add_node("pm_final", pm_agent)  # Final PM review
-    
+
     # Define edges
-    
+
     # Start -> PM
     builder.add_edge(START, "pm")
-    
+
     # PM -> Analyst
     builder.add_edge("pm", "analyst")
-    
+
     # Analyst -> (clarification or architect)
     builder.add_conditional_edges(
         "analyst",
@@ -341,7 +432,7 @@ def create_graph() -> StateGraph:
             "architect": "architect",
         }
     )
-    
+
     # Architect -> (clarification or developer)
     builder.add_conditional_edges(
         "architect",
@@ -351,29 +442,44 @@ def create_graph() -> StateGraph:
             "developer": "developer",
         }
     )
-    
+
     # Developer -> QA
     builder.add_edge("developer", "qa")
-    
-    # QA -> (developer or git_commit or pm_final)
+
+    # QA -> (developer | architect_escalation | human_escalation | git_commit | pm_final)
     builder.add_conditional_edges(
         "qa",
         route_after_qa,
         {
             "developer": "developer",
+            "architect_escalation": "architect_escalation",
+            "human_escalation": "human_escalation",
             "git_commit": "git_commit",
             "pm_final": "pm_final",
         }
     )
-    
-    # Clarification -> back to the agent that needed it
-    # For simplicity, we route back to analyst
-    # In production, this would track which agent requested clarification
+
+    # Architect escalation → (developer or git_commit)
+    builder.add_conditional_edges(
+        "architect_escalation",
+        route_after_architect_escalation,
+        {
+            "developer": "developer",
+            "git_commit": "git_commit",
+        }
+    )
+
+    # Human escalation is an interrupt point — after user responds,
+    # route to developer to apply the human's guidance.
+    builder.add_edge("human_escalation", "developer")
+
+    # Clarification → back to analyst
+    # (clarification_context could be used for smarter routing later)
     builder.add_edge("clarification", "analyst")
-    
+
     # Git commit -> END
     builder.add_edge("git_commit", END)
-    
+
     # PM final -> END
     builder.add_edge("pm_final", END)
     
@@ -395,7 +501,7 @@ checkpointer = MemorySaver()
 
 graph = create_graph().compile(
     checkpointer=checkpointer,
-    interrupt_before=["clarification"],  # Pause for human input
+    interrupt_before=["clarification", "human_escalation"],  # Pause for human input
 )
 logger.info("Graph compiled (Aegra will inject PostgreSQL checkpointer at runtime)")
 
