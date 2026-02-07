@@ -80,6 +80,7 @@ services:
 
       # GitHub
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_DEFAULT_REPO: ${GITHUB_DEFAULT_REPO:-}
 
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}

@@ -85,22 +85,23 @@ export function useTask(threadId?: string): UseTaskReturn {
   const clarificationMutation = useMutation({
     mutationFn: async (response: string) => {
       const tid = threadId || activeThread?.thread_id
-      const rid = activeRunId
-      
-      if (!tid || !rid) {
-        throw new Error('No active thread or run')
+
+      if (!tid) {
+        throw new Error('No active thread')
       }
-      
-      // Update state with clarification response
+
+      // 1. Update the checkpointed state with the user's clarification
       await aegraClient.updateThreadState(tid, {
         clarification_response: response,
         needs_clarification: false,
       })
-      
-      // Resume run
-      return aegraClient.resumeRun(tid, rid, {
-        clarification_response: response,
-      })
+
+      // 2. Continue the graph from the interrupt point.
+      //    Creating a run with input=null tells LangGraph to resume
+      //    from the last checkpoint rather than starting over.
+      const run = await aegraClient.continueThread(tid)
+      setActiveRunId(run.run_id)
+      return run
     },
     onSuccess: () => {
       refetchState()

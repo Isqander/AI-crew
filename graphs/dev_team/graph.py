@@ -6,6 +6,7 @@ Main LangGraph definition for the AI development team.
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Literal
 
 from langgraph.graph import StateGraph, START, END
@@ -23,6 +24,7 @@ from dev_team.agents.analyst import analyst_agent
 from dev_team.agents.architect import architect_agent
 from dev_team.agents.developer import developer_agent
 from dev_team.agents.qa import qa_agent
+from dev_team.tools.github import get_github_client
 
 
 def configure_logging() -> None:
@@ -131,36 +133,168 @@ def process_clarification(state: DevTeamState) -> dict:
 
 def git_commit_node(state: DevTeamState) -> dict:
     """
-    Node for committing code to GitHub.
-    
-    In production, this would use the GitHub tools to:
-    1. Create a branch
-    2. Commit all code files
-    3. Create a pull request
+    Commit generated code to GitHub:
+      1. Create a feature branch
+      2. Commit every code file
+      3. Open a pull request
+
+    When no repository or GITHUB_TOKEN is configured the node
+    gracefully skips the commit and returns the generated code
+    in the summary so it is still visible in the chat.
     """
     code_files = state.get("code_files", [])
     repository = state.get("repository")
-    logger.info("Git commit node: repository=%s files=%s", repository or "none", len(code_files))
-    
+    task = state.get("task", "AI-generated task")
+    logger.info(
+        "Git commit node: repository=%s files=%s",
+        repository or "none",
+        len(code_files),
+    )
+
+    # ------------------------------------------------------------------
+    # Guard: no repository → return code in summary
+    # ------------------------------------------------------------------
     if not repository:
         logger.warning("No repository specified, skipping git commit.")
+        summary = _build_code_summary(code_files, task)
         return {
-            "summary": f"Code generation complete. {len(code_files)} file(s) generated. No repository specified for commit.",
+            "summary": summary,
             "current_agent": "complete",
         }
-    
-    # In a real implementation, we would:
-    # 1. Create a branch
-    # 2. Commit each file
-    # 3. Create a PR
-    
-    # For now, simulate success
+
+    # ------------------------------------------------------------------
+    # Guard: no GitHub client (token missing / PyGithub not installed)
+    # ------------------------------------------------------------------
+    client = get_github_client()
+    if client is None:
+        logger.error("GitHub client unavailable (GITHUB_TOKEN not set or PyGithub missing).")
+        summary = _build_code_summary(code_files, task)
+        return {
+            "summary": (
+                "⚠️ GitHub integration is not configured (GITHUB_TOKEN missing). "
+                "Code was generated but NOT committed.\n\n" + summary
+            ),
+            "current_agent": "complete",
+        }
+
+    # ------------------------------------------------------------------
+    # 1. Create a feature branch
+    # ------------------------------------------------------------------
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    branch_name = f"ai/task-{ts}"
+
+    try:
+        repo = client.get_repo(repository)
+        default_branch = repo.default_branch
+        base_ref = repo.get_git_ref(f"heads/{default_branch}")
+        repo.create_git_ref(
+            ref=f"refs/heads/{branch_name}",
+            sha=base_ref.object.sha,
+        )
+        logger.info("Created branch %s from %s", branch_name, default_branch)
+    except Exception as exc:
+        logger.error("Failed to create branch: %s", exc)
+        summary = _build_code_summary(code_files, task)
+        return {
+            "summary": f"⚠️ Failed to create branch on {repository}: {exc}\n\n{summary}",
+            "current_agent": "complete",
+            "error": str(exc),
+        }
+
+    # ------------------------------------------------------------------
+    # 2. Commit every code file
+    # ------------------------------------------------------------------
+    last_sha = None
+    committed = 0
+    for cf in code_files:
+        file_path = cf.get("path", "")
+        content = cf.get("content", "")
+        if not file_path or not content:
+            continue
+
+        commit_msg = f"feat: add {file_path} (AI-generated)"
+        try:
+            # Check if file exists on the branch
+            try:
+                existing = repo.get_contents(file_path, ref=branch_name)
+                result = repo.update_file(
+                    path=file_path,
+                    message=commit_msg,
+                    content=content,
+                    sha=existing.sha,
+                    branch=branch_name,
+                )
+            except Exception:
+                result = repo.create_file(
+                    path=file_path,
+                    message=commit_msg,
+                    content=content,
+                    branch=branch_name,
+                )
+            last_sha = result["commit"].sha
+            committed += 1
+            logger.debug("Committed %s (%s)", file_path, last_sha[:8])
+        except Exception as exc:
+            logger.error("Failed to commit %s: %s", file_path, exc)
+
+    if committed == 0:
+        logger.warning("No files committed — skipping PR creation.")
+        summary = _build_code_summary(code_files, task)
+        return {
+            "summary": f"⚠️ No files were committed to {repository}.\n\n{summary}",
+            "current_agent": "complete",
+        }
+
+    # ------------------------------------------------------------------
+    # 3. Create a pull request
+    # ------------------------------------------------------------------
+    pr_title = f"[AI-crew] {task[:80]}"
+    pr_body = (
+        f"## AI-Generated Code\n\n"
+        f"**Task:** {task}\n\n"
+        f"**Files ({committed}):**\n"
+        + "\n".join(f"- `{cf['path']}`" for cf in code_files if cf.get("path"))
+        + "\n\n---\n*Created automatically by AI-crew dev team.*"
+    )
+
+    try:
+        pr = repo.create_pull(
+            title=pr_title,
+            body=pr_body,
+            head=branch_name,
+            base=default_branch,
+        )
+        pr_url = pr.html_url
+        logger.info("PR created: %s", pr_url)
+    except Exception as exc:
+        logger.error("Failed to create PR: %s", exc)
+        pr_url = None
+
     return {
-        "pr_url": f"https://github.com/{repository}/pull/1",
-        "commit_sha": "abc123",
-        "summary": f"Created PR with {len(code_files)} file(s)",
+        "pr_url": pr_url or f"https://github.com/{repository}/tree/{branch_name}",
+        "commit_sha": last_sha or "",
+        "summary": (
+            f"✅ Created PR with {committed} file(s) on {repository}\n"
+            f"Branch: {branch_name}\n"
+            f"PR: {pr_url or 'failed to create'}"
+        ),
         "current_agent": "complete",
     }
+
+
+def _build_code_summary(code_files: list, task: str) -> str:
+    """Format generated code files into a readable summary for the chat."""
+    if not code_files:
+        return f"Task completed: {task}\nNo code files were generated."
+
+    parts = [f"Task completed: {task}", f"{len(code_files)} file(s) generated:\n"]
+    for cf in code_files:
+        path = cf.get("path", "unknown")
+        lang = cf.get("language", "")
+        content = cf.get("content", "")
+        parts.append(f"### {path}")
+        parts.append(f"```{lang}\n{content}\n```\n")
+    return "\n".join(parts)
 
 
 def create_graph() -> StateGraph:

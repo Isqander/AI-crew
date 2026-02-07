@@ -139,6 +139,29 @@ class AegraClient {
   }
 
   /**
+   * Continue a thread after an interrupt (e.g., after clarification).
+   *
+   * Creates a new run with `input: null`, which tells LangGraph to
+   * resume from the last checkpoint instead of starting over.
+   */
+  async continueThread(threadId: string): Promise<Run> {
+    return this.fetch<Run>(`/threads/${threadId}/runs`, {
+      method: 'POST',
+      body: JSON.stringify({
+        assistant_id: this.assistantId,
+        input: null,
+      }),
+    })
+  }
+
+  /**
+   * List runs for a thread (most recent first)
+   */
+  async listRuns(threadId: string, limit: number = 10): Promise<Run[]> {
+    return this.fetch<Run[]>(`/threads/${threadId}/runs?limit=${limit}`)
+  }
+
+  /**
    * Cancel a run
    */
   async cancelRun(threadId: string, runId: string): Promise<void> {
