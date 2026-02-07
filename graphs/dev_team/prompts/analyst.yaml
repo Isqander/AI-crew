@@ -38,12 +38,12 @@ requirements_gathering: |
   
   Use the following format for user stories:
   
-  **US-{number}: {title}**
-  As a {user_type}, I want {feature}, so that {benefit}.
+  **US-{{number}}: {{title}}**
+  As a {{user_type}}, I want {{feature}}, so that {{benefit}}.
   
   Acceptance Criteria:
-  - [ ] {criterion_1}
-  - [ ] {criterion_2}
+  - [ ] {{criterion_1}}
+  - [ ] {{criterion_2}}
 
 clarification_needed: |
   Based on the task analysis, I need clarification on the following:

@@ -145,14 +145,20 @@ if [ "${LANGFUSE_ENABLED}" = "true" ]; then
     LANGFUSE_CMD="node $(basename "${LANGFUSE_SERVER}")"
 
     # Resolve the correct Prisma engine library for the current platform
-    PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-debian*" 2>/dev/null | head -1)
+    # Prefer debian engine (glibc), fall back to any available engine
+    PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-debian*" -type f 2>/dev/null | head -1)
     if [ -z "${PRISMA_ENGINE}" ]; then
-      PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-linux*" 2>/dev/null | head -1)
+      PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-linux*" -not -name "*musl*" -type f 2>/dev/null | head -1)
     fi
     if [ -z "${PRISMA_ENGINE}" ]; then
-      PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-*" 2>/dev/null | head -1)
+      PRISMA_ENGINE=$(find /opt/langfuse -name "libquery_engine-*" -type f 2>/dev/null | head -1)
     fi
-    log "Prisma engine: ${PRISMA_ENGINE:-not found}"
+    if [ -n "${PRISMA_ENGINE}" ]; then
+      log "Prisma engine: ${PRISMA_ENGINE}"
+    else
+      log "WARNING: No Prisma engine found — Langfuse will likely fail to start"
+      log "  Rebuild the Docker image or check that prisma generate succeeded during build"
+    fi
 
     # Escape percent signs for supervisord (% → %%)
     SAFE_DB_URL=$(printf '%s' "${LANGFUSE_DATABASE_URL}" | sed 's/%/%%/g')

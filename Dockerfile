@@ -48,22 +48,52 @@ RUN apt-get update \
 WORKDIR /langfuse
 COPY --from=langfuse-alpine /app .
 
-# Regenerate Prisma client for Debian/glibc (best-effort: build continues on failure)
-RUN if [ -f packages/shared/prisma/schema.prisma ]; then \
-      PRISMA_VER=$(node -e " \
-        try { \
-          const p = require('./node_modules/@prisma/client/package.json'); \
-          console.log(p.version); \
-        } catch(e) { console.log('latest'); }" \
-      ) \
-      && echo "Installing prisma CLI v${PRISMA_VER} for Debian engine..." \
-      && npm install -g "prisma@${PRISMA_VER}" 2>/dev/null \
-      && prisma generate --schema=packages/shared/prisma/schema.prisma \
-      && echo "OK: Prisma client regenerated for Debian/glibc" \
-      || echo "WARN: Prisma generate failed — Langfuse may not start on this platform"; \
+# Regenerate Prisma client for Debian/glibc
+# The official Langfuse image ships Alpine/musl Prisma engines which won't
+# work on the Debian-based final image. We:
+#   1. Find the schema dynamically (pnpm monorepo layout varies)
+#   2. Regenerate the Prisma client (produces a Debian engine)
+#   3. Copy the Debian engine to every .prisma/client dir (pnpm store compat)
+#   4. Remove musl engines so the runtime never picks them up
+RUN set -e; \
+    echo "=== Prisma Debian engine setup ==="; \
+    # 1. Find schema
+    SCHEMA=$(find /langfuse -name "schema.prisma" -path "*/prisma/*" 2>/dev/null | head -1); \
+    echo "Schema: ${SCHEMA:-NOT FOUND}"; \
+    # 2. Detect Prisma version from installed @prisma/client
+    PRISMA_PKG=$(find /langfuse -path "*/@prisma/client/package.json" 2>/dev/null | head -1); \
+    if [ -n "${PRISMA_PKG}" ]; then \
+      PRISMA_VER=$(node -e "console.log(require('${PRISMA_PKG}').version)"); \
     else \
-      echo "WARN: Prisma schema not found — Langfuse may require manual setup"; \
-    fi
+      PRISMA_VER="5.22.0"; \
+    fi; \
+    echo "Prisma version: ${PRISMA_VER}"; \
+    # 3. Generate Prisma client for Debian
+    if [ -n "${SCHEMA}" ]; then \
+      npm install -g "prisma@${PRISMA_VER}" 2>/dev/null \
+      && prisma generate --schema="${SCHEMA}" \
+      && echo "OK: Prisma client regenerated for Debian/glibc"; \
+    else \
+      echo "WARN: No schema found — skipping prisma generate"; \
+    fi; \
+    # 4. Distribute Debian engine to ALL .prisma/client dirs (pnpm virtual store)
+    DEBIAN_ENGINE=$(find /langfuse -name "libquery_engine-debian*" -type f 2>/dev/null | head -1); \
+    if [ -n "${DEBIAN_ENGINE}" ]; then \
+      echo "Debian engine: ${DEBIAN_ENGINE}"; \
+      find /langfuse -path "*/.prisma/client" -type d | while read dir; do \
+        cp -f "${DEBIAN_ENGINE}" "${dir}/" 2>/dev/null || true; \
+        echo "  -> copied to ${dir}"; \
+      done; \
+    else \
+      echo "WARN: No Debian Prisma engine found after generate"; \
+    fi; \
+    # 5. Remove musl engines to prevent loading incompatible binary
+    MUSL_COUNT=$(find /langfuse -name "libquery_engine-linux-musl*" -type f 2>/dev/null | wc -l); \
+    if [ "${MUSL_COUNT}" -gt 0 ]; then \
+      find /langfuse -name "libquery_engine-linux-musl*" -type f -delete 2>/dev/null || true; \
+      echo "Removed ${MUSL_COUNT} musl engine(s)"; \
+    fi; \
+    echo "=== Prisma setup complete ==="
 
 # ============================================================
 # Stage 3: Final Image

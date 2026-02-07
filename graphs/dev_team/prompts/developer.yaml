@@ -42,7 +42,7 @@ implementation: |
   
   Format each file as:
   
-  ```{language}:{filepath}
+  ```{{language}}:{{filepath}}
   // Code here
   ```
 
