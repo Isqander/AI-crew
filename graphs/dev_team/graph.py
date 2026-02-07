@@ -247,19 +247,57 @@ def create_graph() -> StateGraph:
     return builder
 
 
-# Create the compiled graph
+# ===========================================
+# Checkpointer (state persistence)
+# ===========================================
+
+def _get_postgres_url() -> str:
+    """
+    Build a plain ``postgresql://`` connection string for LangGraph's
+    PostgresSaver.
+
+    Resolution order:
+      1. DATABASE_URL env var (strip +asyncpg / +psycopg2 driver prefix)
+      2. Construct from individual POSTGRES_* env vars
+      3. Return "" → fallback to MemorySaver
+    """
+    raw = os.getenv("DATABASE_URL", "")
+    if raw:
+        # Strip SQLAlchemy async driver prefix:
+        #   postgresql+asyncpg://…  →  postgresql://…
+        #   postgresql+psycopg2://… →  postgresql://…
+        if "+" in raw.split("://")[0]:
+            raw = raw.split("+")[0] + raw[raw.index("://"):]
+        return raw
+
+    # Construct from POSTGRES_* variables (set by entrypoint.sh)
+    host = os.getenv("POSTGRES_HOST", "")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    db = os.getenv("POSTGRES_DB", "aicrew")
+    user = os.getenv("POSTGRES_USER", "aicrew")
+    password = os.getenv("POSTGRES_PASSWORD", "")
+    if host and password:
+        return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+
+    return ""
+
+
 # Use PostgreSQL in production, Memory in development
-database_url = os.getenv("DATABASE_URL")
+database_url = _get_postgres_url()
 
 if database_url:
-    # Production: persistent storage with PostgreSQL
-    db_host = database_url.split('@')[1] if '@' in database_url else 'configured'
-    logger.info(f"Using PostgreSQL checkpointer: {db_host}")
-    checkpointer = PostgresSaver.from_conn_string(database_url)
+    db_host = database_url.split("@")[1].split("/")[0] if "@" in database_url else "configured"
+    logger.info("Using PostgreSQL checkpointer: %s", db_host)
+    try:
+        checkpointer = PostgresSaver.from_conn_string(database_url)
+    except Exception as exc:
+        logger.error("Failed to create PostgresSaver: %s — falling back to MemorySaver", exc)
+        checkpointer = MemorySaver()
 else:
-    # Development: in-memory storage (states will be lost on restart)
-    logger.warning("Using MemorySaver - all states will be lost on restart!")
-    logger.warning("Set DATABASE_URL environment variable to use persistent storage.")
+    logger.warning("Using MemorySaver — all states will be lost on restart!")
+    logger.warning(
+        "Set DATABASE_URL or POSTGRES_HOST + POSTGRES_PASSWORD to use persistent storage."
+    )
     checkpointer = MemorySaver()
 
 graph = create_graph().compile(
