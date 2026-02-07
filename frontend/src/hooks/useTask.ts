@@ -90,16 +90,13 @@ export function useTask(threadId?: string): UseTaskReturn {
         throw new Error('No active thread')
       }
 
-      // 1. Update the checkpointed state with the user's clarification
-      await aegraClient.updateThreadState(tid, {
+      // Update state and resume the graph in a single API call.
+      // command: { update: {...} } patches the checkpointed state and
+      // tells LangGraph to continue from the interrupt point.
+      const run = await aegraClient.continueThread(tid, {
         clarification_response: response,
         needs_clarification: false,
       })
-
-      // 2. Continue the graph from the interrupt point.
-      //    Creating a run with input=null tells LangGraph to resume
-      //    from the last checkpoint rather than starting over.
-      const run = await aegraClient.continueThread(tid)
       setActiveRunId(run.run_id)
       return run
     },

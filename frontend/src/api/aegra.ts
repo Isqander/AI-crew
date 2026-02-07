@@ -141,16 +141,33 @@ class AegraClient {
   /**
    * Continue a thread after an interrupt (e.g., after clarification).
    *
-   * Creates a new run with `input: null`, which tells LangGraph to
-   * resume from the last checkpoint instead of starting over.
+   * If a `stateUpdate` is provided, the run is created with
+   * `command: { update: stateUpdate }` which applies the update to
+   * the checkpointed state **and** resumes graph execution in a
+   * single API call.
+   *
+   * If no stateUpdate is given, an empty input `{}` is sent which
+   * tells LangGraph to resume from the last checkpoint as-is.
    */
-  async continueThread(threadId: string): Promise<Run> {
+  async continueThread(
+    threadId: string,
+    stateUpdate?: Record<string, unknown>,
+  ): Promise<Run> {
+    const body: Record<string, unknown> = {
+      assistant_id: this.assistantId,
+    }
+
+    if (stateUpdate && Object.keys(stateUpdate).length > 0) {
+      // Use command.update to patch state and resume in one call
+      body.command = { update: stateUpdate }
+    } else {
+      // Empty input → continue from the last checkpoint unchanged
+      body.input = {}
+    }
+
     return this.fetch<Run>(`/threads/${threadId}/runs`, {
       method: 'POST',
-      body: JSON.stringify({
-        assistant_id: this.assistantId,
-        input: null,
-      }),
+      body: JSON.stringify(body),
     })
   }
 
