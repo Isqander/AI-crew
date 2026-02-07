@@ -66,7 +66,18 @@ RUN set -e; \
     fi; \
     echo "Schema found: ${SCHEMA}"; \
     \
-    # --- 2. Patch schema: add debian-openssl-3.0.x to binaryTargets ---
+    # --- 2. Patch schema ---
+    # 2a. Remove non-client generators (e.g. prisma-erd-generator) that
+    #     are not installed in the builder and would cause prisma generate
+    #     to fail with "generator not found".
+    node -e " \
+      const fs = require('fs'); \
+      let s = fs.readFileSync('${SCHEMA}', 'utf8'); \
+      s = s.replace(/generator\s+(?!client[\s{])\w+\s*\{[^}]*\}/g, ''); \
+      fs.writeFileSync('${SCHEMA}', s); \
+      console.log('Removed non-client generators'); \
+    "; \
+    # 2b. Add debian-openssl-3.0.x to binaryTargets
     if grep -q 'binaryTargets' "${SCHEMA}"; then \
       echo "binaryTargets already present — replacing..."; \
       sed -i 's/binaryTargets\s*=\s*\[.*\]/binaryTargets = ["native", "debian-openssl-3.0.x"]/' "${SCHEMA}"; \
