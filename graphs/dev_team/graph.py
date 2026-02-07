@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.checkpoint.memory import MemorySaver
 
 # NOTE: Aegra loads this file via importlib with module name "graphs.{graph_id}",
@@ -384,61 +383,21 @@ def create_graph() -> StateGraph:
 # ===========================================
 # Checkpointer (state persistence)
 # ===========================================
-
-def _get_postgres_url() -> str:
-    """
-    Build a plain ``postgresql://`` connection string for LangGraph's
-    PostgresSaver.
-
-    Resolution order:
-      1. DATABASE_URL env var (strip +asyncpg / +psycopg2 driver prefix)
-      2. Construct from individual POSTGRES_* env vars
-      3. Return "" → fallback to MemorySaver
-    """
-    raw = os.getenv("DATABASE_URL", "")
-    if raw:
-        # Strip SQLAlchemy async driver prefix:
-        #   postgresql+asyncpg://…  →  postgresql://…
-        #   postgresql+psycopg2://… →  postgresql://…
-        if "+" in raw.split("://")[0]:
-            raw = raw.split("+")[0] + raw[raw.index("://"):]
-        return raw
-
-    # Construct from POSTGRES_* variables (set by entrypoint.sh)
-    host = os.getenv("POSTGRES_HOST", "")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    db = os.getenv("POSTGRES_DB", "aicrew")
-    user = os.getenv("POSTGRES_USER", "aicrew")
-    password = os.getenv("POSTGRES_PASSWORD", "")
-    if host and password:
-        return f"postgresql://{user}:{password}@{host}:{port}/{db}"
-
-    return ""
-
-
-# Use PostgreSQL in production, Memory in development
-database_url = _get_postgres_url()
-
-if database_url:
-    db_host = database_url.split("@")[1].split("/")[0] if "@" in database_url else "configured"
-    logger.info("Using PostgreSQL checkpointer: %s", db_host)
-    try:
-        checkpointer = PostgresSaver.from_conn_string(database_url)
-    except Exception as exc:
-        logger.error("Failed to create PostgresSaver: %s — falling back to MemorySaver", exc)
-        checkpointer = MemorySaver()
-else:
-    logger.warning("Using MemorySaver — all states will be lost on restart!")
-    logger.warning(
-        "Set DATABASE_URL or POSTGRES_HOST + POSTGRES_PASSWORD to use persistent storage."
-    )
-    checkpointer = MemorySaver()
+# Aegra's DatabaseManager provides an AsyncPostgresSaver with a
+# properly-managed connection pool.  It injects the checkpointer
+# into the graph via  graph.copy(update={"checkpointer": ...})
+# at execution time (see langgraph_service.py → get_graph()).
+#
+# We compile with MemorySaver as a harmless default so that:
+#   1) The module loads without requiring a live PostgreSQL connection
+#   2) Standalone / test execution still works (in-memory state)
+checkpointer = MemorySaver()
 
 graph = create_graph().compile(
     checkpointer=checkpointer,
     interrupt_before=["clarification"],  # Pause for human input
 )
-logger.info("Graph compiled with checkpointer=%s", type(checkpointer).__name__)
+logger.info("Graph compiled (Aegra will inject PostgreSQL checkpointer at runtime)")
 
 
 # Export for Aegra

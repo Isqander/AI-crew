@@ -108,18 +108,31 @@ RUN set -e; \
     npx prisma generate --schema=schema.prisma; \
     echo "OK: prisma generate succeeded"; \
     \
-    # --- 5. Find Debian engine and distribute to Langfuse dirs ---
-    DEBIAN_ENGINE=$(find /tmp/pgen -name "libquery_engine-debian*" -type f 2>/dev/null | head -1); \
+    # --- 5. Distribute FULL generated Prisma Client to Langfuse ---
+    # We must copy the ENTIRE .prisma/client/ directory, not just the
+    # engine binary.  The generated index.js contains binaryTargets
+    # configuration that tells Prisma which engine to load at runtime.
+    GEN_CLIENT=$(find /tmp/pgen -path "*/.prisma/client" -type d 2>/dev/null | head -1); \
+    if [ -z "${GEN_CLIENT}" ]; then \
+      echo "ERROR: No generated .prisma/client directory" && exit 1; \
+    fi; \
+    echo "Generated client dir: ${GEN_CLIENT}"; \
+    DEBIAN_ENGINE=$(find "${GEN_CLIENT}" -name "libquery_engine-debian*" -type f 2>/dev/null | head -1); \
     if [ -z "${DEBIAN_ENGINE}" ]; then \
-      echo "ERROR: No Debian engine after generate" && exit 1; \
+      echo "ERROR: No Debian engine in generated client" && exit 1; \
     fi; \
     echo "Engine: ${DEBIAN_ENGINE}"; \
     cd /langfuse; \
-    # Copy to every location Prisma Client searches at runtime
-    for pattern in "*/.prisma/client" "*/@prisma/client" "*/packages/shared/prisma"; do \
+    # 5a. Replace all .prisma/client directories with the regenerated one
+    find /langfuse -path "*/.prisma/client" -type d 2>/dev/null | while read dir; do \
+      cp -af "${GEN_CLIENT}"/* "${dir}/" 2>/dev/null || true; \
+      echo "  -> replaced ${dir}"; \
+    done; \
+    # 5b. Copy engine binary to @prisma/client and packages/shared/prisma
+    for pattern in "*/@prisma/client" "*/packages/shared/prisma"; do \
       find /langfuse -path "${pattern}" -type d 2>/dev/null | while read dir; do \
         cp -f "${DEBIAN_ENGINE}" "${dir}/" 2>/dev/null || true; \
-        echo "  -> ${dir}"; \
+        echo "  -> engine to ${dir}"; \
       done; \
     done; \
     \
@@ -173,6 +186,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# ---- Prisma CLI (for Langfuse database migrations at startup) ----
+RUN npm install -g prisma@5.22.0 2>/dev/null
 
 # ---- Python dependencies ----
 COPY requirements.txt .

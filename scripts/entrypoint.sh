@@ -96,6 +96,37 @@ EOSQL
 esac
 
 # -----------------------------------------------------------
+# 1.5) Langfuse database migrations
+# -----------------------------------------------------------
+if [ "${LANGFUSE_ENABLED}" = "true" ]; then
+  LANGFUSE_SCHEMA=$(find /opt/langfuse -name "schema.prisma" -path "*/prisma/*" 2>/dev/null | head -1)
+  if [ -n "${LANGFUSE_SCHEMA}" ]; then
+    log "Running Langfuse database migrations (schema: ${LANGFUSE_SCHEMA})..."
+    MIGRATION_DIR="$(dirname "${LANGFUSE_SCHEMA}")/migrations"
+
+    if [ -d "${MIGRATION_DIR}" ]; then
+      DATABASE_URL="${LANGFUSE_DATABASE_URL}" DIRECT_URL="${LANGFUSE_DATABASE_URL}" \
+        prisma migrate deploy --schema="${LANGFUSE_SCHEMA}" 2>&1 && \
+        log "Langfuse migrations applied successfully" || {
+          log "WARNING: prisma migrate deploy failed — trying prisma db push"
+          DATABASE_URL="${LANGFUSE_DATABASE_URL}" DIRECT_URL="${LANGFUSE_DATABASE_URL}" \
+            prisma db push --schema="${LANGFUSE_SCHEMA}" --skip-generate --accept-data-loss 2>&1 || \
+            log "WARNING: Langfuse database setup failed — check Prisma logs above"
+        }
+    else
+      log "No migrations directory found — using prisma db push"
+      DATABASE_URL="${LANGFUSE_DATABASE_URL}" DIRECT_URL="${LANGFUSE_DATABASE_URL}" \
+        prisma db push --schema="${LANGFUSE_SCHEMA}" --skip-generate --accept-data-loss 2>&1 || \
+        log "WARNING: Langfuse database setup failed — check Prisma logs above"
+    fi
+  else
+    log "WARNING: No schema.prisma found in /opt/langfuse — skipping Langfuse migrations"
+  fi
+else
+  log "Langfuse disabled — skipping migrations"
+fi
+
+# -----------------------------------------------------------
 # 2) Generate supervisord config
 # -----------------------------------------------------------
 log "Generating supervisord configuration"
