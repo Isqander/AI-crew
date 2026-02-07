@@ -29,18 +29,18 @@ DEFAULT_LLM_API_URL = "https://clipapi4me.31.59.58.143.nip.io/v1"
 
 # Default models for each agent role
 DEFAULT_MODELS = {
-    "default": "claude-sonnet-4-5-thinking",
-    "pm": "claude-sonnet-4-5-thinking",
-    "analyst": "claude-sonnet-4-5-thinking", 
-    "architect": "claude-opus-4-5-thinking",
-    "developer": "gemini-3-pro-high",
-    "qa": "gemini-3-flash-preview",
+    "default": "gemini-claude-sonnet-4-5-thinking",
+    "pm": "gemini-claude-sonnet-4-5-thinking",
+    "analyst": "gemini-claude-sonnet-4-5-thinking", 
+    "architect": "gemini-claude-opus-4-5-thinking",
+    "developer": "glm-4.7",
+    "qa": "glm-4.7",
 }
 
 # Available models (for reference)
 AVAILABLE_MODELS = [
-    "claude-opus-4-5-thinking",
-    "claude-sonnet-4-5-thinking",
+    "gemini-claude-opus-4-5-thinking",
+    "gemini-claude-sonnet-4-5-thinking",
     "gemini-3-pro-high",
     "gemini-3-flash-preview",
     "glm-4.7",
