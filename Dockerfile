@@ -48,48 +48,29 @@ RUN apt-get update \
 WORKDIR /langfuse
 COPY --from=langfuse-alpine /app .
 
-# Regenerate Prisma client for Debian/glibc
+# Produce Debian/glibc Prisma query engine
 #
-# The official Langfuse image is Alpine-based (musl). The Prisma Client
-# is generated with binaryTargets=["native"] which resolves to musl on
-# Alpine. On our Debian final image this fails at runtime.
+# The official Langfuse image is Alpine (musl).  Its Next.js standalone
+# output does NOT include @prisma/client's generator-build tooling, so
+# `prisma generate` cannot run directly against the copied tree.
 #
-# Fix: patch schema.prisma to explicitly include "debian-openssl-3.0.x",
-# regenerate the client, and distribute the engine to all pnpm store dirs.
+# Strategy:
+#   1. Read schema.prisma from the Langfuse tree
+#   2. Patch it (remove extra generators, add debian binaryTargets)
+#   3. Run `prisma generate` inside a **fresh temporary npm project**
+#      where @prisma/client is properly installed with all build files
+#   4. Copy the resulting Debian engine binary into every location
+#      where the Langfuse runtime searches for it
+#   5. Remove musl engines so the runtime never loads them
 RUN set -e; \
     echo "=== Prisma Debian engine setup ==="; \
     \
-    # --- 1. Find schema.prisma ---
+    # --- 1. Find schema ---
     SCHEMA=$(find /langfuse -name "schema.prisma" -path "*/prisma/*" 2>/dev/null | head -1); \
-    if [ -z "${SCHEMA}" ]; then \
-      echo "ERROR: No schema.prisma found in /langfuse" && exit 1; \
-    fi; \
-    echo "Schema found: ${SCHEMA}"; \
+    if [ -z "${SCHEMA}" ]; then echo "ERROR: No schema.prisma found" && exit 1; fi; \
+    echo "Schema: ${SCHEMA}"; \
     \
-    # --- 2. Patch schema ---
-    # 2a. Remove non-client generators (e.g. prisma-erd-generator) that
-    #     are not installed in the builder and would cause prisma generate
-    #     to fail with "generator not found".
-    node -e " \
-      const fs = require('fs'); \
-      let s = fs.readFileSync('${SCHEMA}', 'utf8'); \
-      s = s.replace(/generator\s+(?!client[\s{])\w+\s*\{[^}]*\}/g, ''); \
-      fs.writeFileSync('${SCHEMA}', s); \
-      console.log('Removed non-client generators'); \
-    "; \
-    # 2b. Add debian-openssl-3.0.x to binaryTargets
-    if grep -q 'binaryTargets' "${SCHEMA}"; then \
-      echo "binaryTargets already present — replacing..."; \
-      sed -i 's/binaryTargets\s*=\s*\[.*\]/binaryTargets = ["native", "debian-openssl-3.0.x"]/' "${SCHEMA}"; \
-    else \
-      echo "Adding binaryTargets to generator client block..."; \
-      sed -i '/provider\s*=.*prisma-client-js/a\  binaryTargets = ["native", "debian-openssl-3.0.x"]' "${SCHEMA}"; \
-    fi; \
-    echo "--- Patched generator block ---"; \
-    grep -A6 'generator client' "${SCHEMA}" | head -8; \
-    echo "---"; \
-    \
-    # --- 3. Detect Prisma version ---
+    # --- 2. Detect Prisma version ---
     PRISMA_PKG=$(find /langfuse -path "*/@prisma/client/package.json" 2>/dev/null | head -1); \
     if [ -n "${PRISMA_PKG}" ]; then \
       PRISMA_VER=$(node -e "console.log(require('${PRISMA_PKG}').version)"); \
@@ -98,41 +79,62 @@ RUN set -e; \
     fi; \
     echo "Prisma version: ${PRISMA_VER}"; \
     \
-    # --- 4. Install CLI and regenerate ---
-    npm install -g "prisma@${PRISMA_VER}" 2>/dev/null; \
-    prisma generate --schema="${SCHEMA}"; \
-    echo "OK: Prisma client regenerated with debian target"; \
+    # --- 3. Prepare a clean temp project with patched schema ---
+    mkdir -p /tmp/pgen; \
+    cp "${SCHEMA}" /tmp/pgen/schema.prisma; \
+    cd /tmp/pgen; \
     \
-    # --- 5. Distribute Debian engine to ALL .prisma/client dirs ---
-    # prisma generate outputs to the default location, but pnpm virtual
-    # store has its own copy. Copy the engine everywhere Prisma searches.
-    DEBIAN_ENGINE=$(find /langfuse -name "libquery_engine-debian*" -type f 2>/dev/null | head -1); \
-    if [ -n "${DEBIAN_ENGINE}" ]; then \
-      echo "Debian engine: ${DEBIAN_ENGINE}"; \
-      find /langfuse -path "*/.prisma/client" -type d | while read dir; do \
-        cp -f "${DEBIAN_ENGINE}" "${dir}/" 2>/dev/null || true; \
-        echo "  -> copied to ${dir}"; \
-      done; \
-      # Also copy to @prisma/client dirs and packages/shared/prisma
-      find /langfuse -path "*/@prisma/client" -type d | while read dir; do \
-        cp -f "${DEBIAN_ENGINE}" "${dir}/" 2>/dev/null || true; \
-      done; \
-      find /langfuse -path "*/packages/shared/prisma" -type d | while read dir; do \
-        cp -f "${DEBIAN_ENGINE}" "${dir}/" 2>/dev/null || true; \
-      done; \
+    # 3a. Remove non-client generators (prisma-erd-generator etc.)
+    node -e " \
+      const fs = require('fs'); \
+      let s = fs.readFileSync('schema.prisma', 'utf8'); \
+      s = s.replace(/generator\s+(?!client[\s{])\w+\s*\{[^}]*\}/g, ''); \
+      fs.writeFileSync('schema.prisma', s); \
+      console.log('Removed non-client generators'); \
+    "; \
+    # 3b. Add binaryTargets for debian
+    if grep -q 'binaryTargets' schema.prisma; then \
+      sed -i 's/binaryTargets\s*=\s*\[.*\]/binaryTargets = ["native", "debian-openssl-3.0.x"]/' schema.prisma; \
     else \
-      echo "ERROR: No Debian Prisma engine found after generate" && exit 1; \
+      sed -i '/provider\s*=.*prisma-client-js/a\  binaryTargets = ["native", "debian-openssl-3.0.x"]' schema.prisma; \
     fi; \
+    echo "--- Patched generator ---"; \
+    grep -A5 'generator client' schema.prisma | head -6; \
+    echo "---"; \
+    \
+    # --- 4. Generate in temp project (has full @prisma/client) ---
+    npm init -y > /dev/null 2>&1; \
+    npm install "prisma@${PRISMA_VER}" "@prisma/client@${PRISMA_VER}" --save-exact > /dev/null 2>&1; \
+    npx prisma generate --schema=schema.prisma; \
+    echo "OK: prisma generate succeeded"; \
+    \
+    # --- 5. Find Debian engine and distribute to Langfuse dirs ---
+    DEBIAN_ENGINE=$(find /tmp/pgen -name "libquery_engine-debian*" -type f 2>/dev/null | head -1); \
+    if [ -z "${DEBIAN_ENGINE}" ]; then \
+      echo "ERROR: No Debian engine after generate" && exit 1; \
+    fi; \
+    echo "Engine: ${DEBIAN_ENGINE}"; \
+    cd /langfuse; \
+    # Copy to every location Prisma Client searches at runtime
+    for pattern in "*/.prisma/client" "*/@prisma/client" "*/packages/shared/prisma"; do \
+      find /langfuse -path "${pattern}" -type d 2>/dev/null | while read dir; do \
+        cp -f "${DEBIAN_ENGINE}" "${dir}/" 2>/dev/null || true; \
+        echo "  -> ${dir}"; \
+      done; \
+    done; \
     \
     # --- 6. Remove musl engines ---
     find /langfuse -name "libquery_engine-linux-musl*" -type f -delete 2>/dev/null || true; \
     echo "Removed musl engine(s)"; \
     \
     # --- 7. Verify ---
-    echo "Debian engines present:"; \
-    find /langfuse -name "libquery_engine-debian*" -type f 2>/dev/null; \
+    echo "Debian engines in /langfuse:"; \
+    find /langfuse -name "libquery_engine-debian*" -type f; \
     echo "Musl engines remaining:"; \
     find /langfuse -name "libquery_engine-linux-musl*" -type f 2>/dev/null || echo "  (none)"; \
+    \
+    # --- Cleanup ---
+    rm -rf /tmp/pgen; \
     echo "=== Prisma setup complete ==="
 
 # ============================================================
