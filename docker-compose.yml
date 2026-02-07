@@ -1,10 +1,16 @@
 # ===========================================
-# AI-crew Docker Compose Configuration
+# AI-crew Docker Compose — Development
 # ===========================================
+# Starts ALL services: Postgres, Aegra API, Frontend (Vite dev), Langfuse.
+#
 # Usage:
-#   docker-compose up -d          # Start all services
-#   docker-compose logs -f aegra  # View Aegra logs
-#   docker-compose down           # Stop all services
+#   docker-compose up -d              # Start all services
+#   docker-compose up -d aegra        # Only backend + DB
+#   docker-compose logs -f aegra      # View Aegra logs
+#   docker-compose down               # Stop all services
+#
+# NOTE: For production (single-container) deployment use the Dockerfile
+#       directly — it bundles Aegra + Frontend + Langfuse in one image.
 
 version: "3.8"
 
@@ -49,30 +55,32 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-aicrew}
       POSTGRES_PORT: 5432
       POSTGRES_HOST: postgres
-      
+
       # Aegra Config
       AEGRA_CONFIG: /app/aegra.json
       HOST: 0.0.0.0
       PORT: 8000
       DEBUG: ${DEBUG:-true}
-      
-      # LLM Providers
+
+      # LLM
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_URL: ${LLM_API_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
-      
-      # Langfuse
-      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
-      LANGFUSE_LOGGING: "false"
+
+      # Langfuse (client — talks to the langfuse container)
+      LANGFUSE_ENABLED: "false"
+      LANGFUSE_LOGGING: ${LANGFUSE_LOGGING:-false}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_HOST: http://langfuse:3000
-      
+
       # GitHub
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
-      
+
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       ENV_MODE: ${ENV_MODE:-LOCAL}
@@ -98,16 +106,15 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mysecretkey}
       SALT: ${LANGFUSE_SALT:-mysalt}
-      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
       TELEMETRY_ENABLED: "false"
+      HOSTNAME: "0.0.0.0"
     depends_on:
       postgres:
         condition: service_healthy
-    profiles:
-      - langfuse
 
   # ===========================================
-  # Frontend (React) - Development
+  # Frontend (React + Vite dev server)
   # ===========================================
   frontend:
     build:
@@ -118,11 +125,9 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
     depends_on:
       - aegra
-    profiles:
-      - frontend
 
 volumes:
   postgres_data:

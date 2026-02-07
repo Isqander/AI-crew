@@ -1,113 +1,218 @@
-# 🚀 Развёртывание на VPS (Dockerfile / Dockploy)
+# Развёртывание AI-crew
 
-Ниже — минимальная инструкция для деплоя backend через `Dockerfile` в Dockploy
-и запуск frontend отдельным сервисом.
+Два режима развёртывания:
+
+| Режим | Что запускается | Когда использовать |
+|-------|----------------|--------------------|
+| **Dockerfile** (production) | Один контейнер: Aegra API (8000) + Frontend/nginx (5173) + Langfuse (3000) + PostgreSQL | VPS / Dokploy / одноконтейнерный хостинг |
+| **docker-compose** (development) | Отдельные контейнеры: postgres, aegra, frontend (Vite dev), langfuse | Локальная разработка |
 
 ---
 
-## 1) Backend (Aegra API)
+## 1. Production — единый контейнер (Dockerfile)
 
-**Dockerfile:** `./Dockerfile`
+### Архитектура
+
+```
+┌─────────────────────────────────────────────┐
+│  Container                                  │
+│                                             │
+│  supervisord                                │
+│  ├── aegra    (python)       → :8000        │
+│  ├── nginx    (frontend)     → :5173        │
+│  └── langfuse (node, опц.)   → :3000        │
+│                                             │
+│  postgresql (embedded)       → :5432 (lo)   │
+└─────────────────────────────────────────────┘
+```
+
+### Сборка
+
+```bash
+docker build -t aicrew .
+```
+
+Build-аргументы (опционально):
+
+| Аргумент | По умолчанию | Описание |
+|----------|-------------|----------|
+| `VITE_API_URL` | `/api` | API base для фронтенда. `/api` → nginx проксирует на Aegra |
+| `AEGRA_PIP_SOURCE` | *(пусто)* | Альтернативный pip source для Aegra |
+
+### Запуск
+
+```bash
+docker run -d \
+  -p 8000:8000 \
+  -p 5173:5173 \
+  -p 3000:3000 \
+  -v aicrew_pgdata:/var/lib/postgresql/data \
+  --env-file .env \
+  aicrew
+```
 
 ### Обязательные переменные окружения
 
-- `LLM_API_KEY` — ключ LLM (обязателен).
-
-Остальные переменные имеют дефолты в образе и опциональны.
+| Переменная | Описание |
+|-----------|----------|
+| `LLM_API_KEY` | Ключ LLM API (обязателен для Aegra) |
 
 ### Рекомендуемые переменные
 
-- `SERVER_URL` — публичный URL API (например `https://api.example.com`)
-- `LOG_LEVEL` — `INFO`/`DEBUG` и т.д.
-- `ENV_MODE` — `LOCAL`/`PROD`
-- `LLM_API_URL` — endpoint LLM (по умолчанию берётся из кода)
-- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` — опционально
-- `AEGRA_CONFIG` — путь к конфигу внутри контейнера  
-  По умолчанию: `/app/aegra.prod.json`.
-- `LANGFUSE_ENABLED`, `LANGFUSE_LOGGING` — если используете Langfuse
+| Переменная | По умолчанию | Описание |
+|-----------|-------------|----------|
+| `SERVER_URL` | `http://localhost:8000` | Публичный URL API |
+| `LLM_API_URL` | *(из кода)* | Endpoint LLM |
+| `LOG_LEVEL` | `INFO` | Уровень логирования |
+| `ENV_MODE` | `LOCAL` | `LOCAL` / `PROD` |
+| `AEGRA_CONFIG` | `/app/aegra.prod.json` | Путь к конфигу Aegra |
 
-### CORS для фронтенда
+### Langfuse (опционально)
 
-По умолчанию `aegra.json` разрешает только localhost.  
-Для VPS используйте `aegra.prod.json` (уже в репозитории) или
-замените `allow_origins` на ваш домен:
+Для включения встроенного Langfuse-сервера:
 
-```json
-"allow_origins": ["https://app.example.com"]
+```bash
+LANGFUSE_ENABLED=true
+LANGFUSE_NEXTAUTH_SECRET=your-strong-secret
+LANGFUSE_SALT=your-strong-salt
+LANGFUSE_NEXTAUTH_URL=https://ai-crew-langfuse.example.com
 ```
 
-Если используете `allow_origins: ["*"]`, то `allow_credentials` должен быть `false`.
+Если `LANGFUSE_ENABLED=false` (по умолчанию), процесс Langfuse не запускается,
+порт 3000 свободен.
+
+Для *клиента* Langfuse (трассировка из Aegra):
+
+```bash
+LANGFUSE_LOGGING=true
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_HOST=http://localhost:3000   # или внешний URL
+```
 
 ### База данных
 
-При старте контейнер:
+По умолчанию PostgreSQL запускается **внутри контейнера**
+(`POSTGRES_HOST=127.0.0.1`). Для сохранения данных подключите volume
+на `/var/lib/postgresql/data`.
 
-- создаёт `uuid-ossp` (нужно право на `CREATE EXTENSION`)
-- создаёт таблицы через ORM (идемпотентно)
-
-Если у пользователя БД нет прав на extension — добавьте его вручную.
-
-По умолчанию Postgres запускается внутри контейнера
-(`POSTGRES_HOST=127.0.0.1`). Если хотите внешний Postgres —
-переопределите `POSTGRES_HOST` и `POSTGRES_PORT`.
-
----
-
-## 2) Frontend
-
-**Вариант 1 (быстрый):** `frontend/Dockerfile.dev`  
-Подходит для тестового деплоя.  
-Переменная окружения: `VITE_API_URL=https://api.example.com`
-
-**Вариант 2 (production):** собрать `vite build` и отдавать статику через nginx.
-
----
-
-## 3) Проверка
-
-- API health: `GET /health`
-- API docs: `GET /docs`
-- Web UI: `http(s)://<your-domain>`
-
----
-
-## 4) Пример переменных для Dockploy (backend)
+Для внешнего Postgres — установите `POSTGRES_HOST` и `POSTGRES_PORT`:
 
 ```bash
-AEGRA_CONFIG=/app/aegra.prod.json
-LLM_API_KEY=your-key
 POSTGRES_HOST=your-db-host
+POSTGRES_PORT=5432
+```
+
+### CORS
+
+`aegra.prod.json` разрешает `allow_origins: ["*"]` с `allow_credentials: false`.
+Для ограничения замените на конкретные домены.
+
+### Health Check
+
+Контейнер проверяет:
+- `GET http://localhost:8000/health` (Aegra API)
+- `GET http://localhost:5173/` (Frontend/nginx)
+
+---
+
+## 2. Development — docker-compose
+
+```bash
+# Все сервисы
+docker-compose up -d
+
+# Только backend + DB
+docker-compose up -d aegra
+
+# Логи
+docker-compose logs -f aegra
+docker-compose logs -f langfuse
+
+# Остановка
+docker-compose down
+```
+
+Сервисы:
+
+| Сервис | Порт | Описание |
+|--------|------|----------|
+| `postgres` | 5432 | PostgreSQL 16 + pgvector |
+| `aegra` | 8000 | Aegra API |
+| `frontend` | 5173 | Vite dev server (hot reload) |
+| `langfuse` | 3000 | Langfuse (official image) |
+
+### Переменные окружения
+
+Создайте `.env` из `env.example`:
+
+```bash
+cp env.example .env
+# Заполните LLM_API_KEY и остальные значения
+```
+
+---
+
+## 3. Пример переменных для Dokploy (production)
+
+```bash
+# --- Обязательные ---
+LLM_API_KEY=your-key
+LLM_API_URL=https://your-llm-proxy/v1
+
+# --- Aegra ---
+AEGRA_CONFIG=/app/aegra.prod.json
+SERVER_URL=https://ai-crew-aegra.example.com
+LOG_LEVEL=INFO
+ENV_MODE=PROD
+
+# --- Database ---
+POSTGRES_HOST=127.0.0.1
 POSTGRES_PORT=5432
 POSTGRES_DB=aicrew
 POSTGRES_USER=aicrew
 POSTGRES_PASSWORD=strong-password
-LANGFUSE_LOGGING=false
-SERVER_URL=https://api.example.com
-LOG_LEVEL=INFO
-LLM_API_URL=https://your-llm-proxy/v1
+
+# --- Langfuse (сервер) ---
+LANGFUSE_ENABLED=true
+LANGFUSE_NEXTAUTH_SECRET=random-secret-32chars
+LANGFUSE_SALT=random-salt-32chars
+LANGFUSE_NEXTAUTH_URL=https://ai-crew-langfuse.example.com
+
+# --- Langfuse (клиент/трассировка) ---
+LANGFUSE_LOGGING=true
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_HOST=http://127.0.0.1:3000
 ```
 
-## 5) Volumes для Dockploy (если Postgres внутри контейнера)
+### Volumes (если Postgres внутри контейнера)
 
-Чтобы сохранять данные, добавьте volume на `PGDATA`:
+| Путь в контейнере | Volume |
+|-------------------|--------|
+| `/var/lib/postgresql/data` | `aicrew_pgdata` |
 
-- Путь в контейнере: `/var/lib/postgresql/data`
-- Пример: `aicrew_pgdata:/var/lib/postgresql/data`
+---
 
-Если используете внешний Postgres, volume не нужен.
+## 4. Traefik / Dokploy маршрутизация
 
-## 6) Источник установки Aegra (если GitHub недоступен)
+| Домен | Порт контейнера | Сервис |
+|-------|----------------|--------|
+| `ai-crew-aegra.*.nip.io` | 8000 | Aegra API |
+| `ai-crew-front.*.nip.io` | 5173 | Frontend (nginx) |
+| `ai-crew-langfuse.*.nip.io` | 3000 | Langfuse |
 
-В PyPI пакета `aegra` нет. Есть два рабочих варианта:
+Все три порта обслуживаются **одним контейнером** через supervisord.
 
-1) Положить исходники в репозиторий:
-   - путь: `vendor/aegra`
-   - можно оформить как git submodule или просто скопировать код
+---
 
-2) Передать альтернативный источник через build-arg:
+## 5. Источник установки Aegra
+
+В PyPI пакета `aegra` нет. Два рабочих варианта:
+
+1. **vendor/aegra** — исходники в репозитории (текущий вариант)
+2. **Build-arg** — альтернативный pip source:
 
 ```bash
-AEGRA_PIP_SOURCE=git+https://github.com/ibbybuilds/aegra.git
+docker build --build-arg AEGRA_PIP_SOURCE=git+https://github.com/ibbybuilds/aegra.git -t aicrew .
 ```
-
-Можно указать URL на wheel/архив из приватного репозитория.
