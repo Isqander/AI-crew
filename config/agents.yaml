@@ -1,0 +1,65 @@
+# ===========================================
+# AI-crew: LLM Configuration for all agents
+# ===========================================
+#
+# Priority chain (highest to lowest):
+#   1. LLM_MODEL_<ROLE> env var
+#   2. agents.<role>.model (this file)
+#   3. LLM_DEFAULT_MODEL env var
+#   4. Hardcoded DEFAULT_MODELS in base.py
+#
+# Environment variables in values are substituted
+# at load time via Template.safe_substitute().
+# Use ${VAR_NAME} syntax.
+
+defaults:
+  endpoint: default
+  temperature: 0.7
+  max_tokens: 4096
+  timeout: 120                    # Seconds per LLM call
+
+endpoints:
+  default:
+    url: ${LLM_API_URL}
+    api_key: ${LLM_API_KEY}
+  backup:
+    url: ${LLM_BACKUP_URL}
+    api_key: ${LLM_BACKUP_KEY}
+
+agents:
+  pm:
+    model: "gemini-claude-sonnet-4-5-thinking"
+    temperature: 0.7
+
+  analyst:
+    model: "gemini-claude-sonnet-4-5-thinking"
+    temperature: 0.7
+
+  architect:
+    model: "gemini-claude-opus-4-5-thinking"
+    temperature: 0.7
+    fallback_model: "gemini-claude-sonnet-4-5-thinking"
+
+  developer:
+    model: "glm-4.7"
+    temperature: 0.2
+    fallback_model: "gemini-claude-sonnet-4-5-thinking"
+
+  qa:
+    model: "glm-4.7"
+    temperature: 0.3
+    fallback_model: "gemini-claude-sonnet-4-5-thinking"
+
+  # --- Wave 1: Switch-Agent router ---
+  router:
+    model: "gemini-claude-sonnet-4-5-thinking"
+    temperature: 0.1
+
+  # --- Wave 2 (placeholders) ---
+  # security:
+  #   model: "gemini-claude-sonnet-4-5-thinking"
+  #   temperature: 0.3
+  #
+  # devops:
+  #   model: "gemini-claude-sonnet-4-5-thinking"
+  #   temperature: 0.5

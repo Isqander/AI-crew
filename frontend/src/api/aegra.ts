@@ -1,9 +1,10 @@
 /**
  * Aegra API Client
  * 
- * Provides methods for interacting with the Aegra/LangGraph backend.
+ * Provides methods for interacting with the Aegra/LangGraph backend via Gateway.
  */
 
+import { useAuthStore } from '../store/authStore'
 import type { 
   Thread, 
   Run, 
@@ -12,7 +13,7 @@ import type {
   Message,
 } from '../types'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
 class AegraClient {
   private baseUrl: string
@@ -20,6 +21,14 @@ class AegraClient {
 
   constructor(baseUrl: string = API_BASE) {
     this.baseUrl = baseUrl
+  }
+
+  private getAuthHeaders(): Record<string, string> {
+    const token = useAuthStore.getState().accessToken
+    if (token) {
+      return { Authorization: `Bearer ${token}` }
+    }
+    return {}
   }
 
   private async fetch<T>(
@@ -32,6 +41,7 @@ class AegraClient {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...this.getAuthHeaders(),
         ...options.headers,
       },
     })
@@ -205,6 +215,7 @@ class AegraClient {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
+        ...this.getAuthHeaders(),
       },
       body: JSON.stringify({
         assistant_id: this.assistantId,

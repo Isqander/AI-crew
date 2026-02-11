@@ -8,17 +8,16 @@ Responsible for:
   - Creating implementation specs for the Developer
   - Reviewing QA escalations (after repeated Dev↔QA failures)
 
-LangGraph node function: ``architect_agent(state) -> dict``
+LangGraph node function: ``architect_agent(state, config=None) -> dict``
 """
 
-import logging
-
+import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
 from ..state import DevTeamState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class ArchitectAgent(BaseAgent):
@@ -33,7 +32,7 @@ class ArchitectAgent(BaseAgent):
         """
         Design the system architecture based on requirements.
         """
-        logger.info("Architect: design_architecture start")
+        logger.info("architect.design_architecture")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["architecture_design"]
@@ -57,7 +56,7 @@ class ArchitectAgent(BaseAgent):
         needs_approval = False  # Set to True to enable HITL for architecture
         
         if needs_approval:
-            logger.info("Architect: clarification requested for approval")
+            logger.info("architect.clarification_requested")
             return {
                 "messages": [AIMessage(content=content, name="architect")],
                 "current_agent": "architect",
@@ -79,7 +78,7 @@ class ArchitectAgent(BaseAgent):
         if "postgresql" in content.lower() or "postgres" in content.lower():
             tech_stack.append("PostgreSQL")
         
-        logger.debug("Architect: tech_stack=%s", tech_stack or ["Python"])
+        logger.debug("architect.design_done", tech_stack=tech_stack or ["Python"])
         return {
             "messages": [AIMessage(content=content, name="architect")],
             "architecture": {"design": content},
@@ -89,15 +88,12 @@ class ArchitectAgent(BaseAgent):
             "needs_clarification": False,
         }
     
-    def review_qa_escalation(self, state: DevTeamState) -> dict:
+    def review_qa_escalation(self, state: DevTeamState, config=None) -> dict:
         """
         Review QA issues after repeated Dev↔QA cycles.
         Decide which issues are truly critical vs cosmetic/acceptable.
         """
-        logger.info(
-            "Architect: review_qa_escalation (qa_iter=%s)",
-            state.get("qa_iteration_count", 0),
-        )
+        logger.info("architect.review_qa_escalation", qa_iter=state.get("qa_iteration_count", 0))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["qa_escalation"]
@@ -111,7 +107,7 @@ class ArchitectAgent(BaseAgent):
             for f in code_files
         ) if code_files else "No code files"
 
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "iteration_count": state.get("qa_iteration_count", 0),
             "issues": "\n".join(
@@ -121,7 +117,7 @@ class ArchitectAgent(BaseAgent):
                 f"- {c}" for c in state.get("review_comments", [])
             ) or "None",
             "code_files": code_files_str,
-        })
+        }, config=config)
 
         content = response.content
 
@@ -129,7 +125,7 @@ class ArchitectAgent(BaseAgent):
         approved = "approve_with_notes" in content.lower()
 
         if approved:
-            logger.info("Architect: escalation verdict=APPROVE_WITH_NOTES → proceeding to commit")
+            logger.info("architect.escalation_verdict", verdict="approve_with_notes")
             return {
                 "messages": [AIMessage(content=content, name="architect")],
                 "issues_found": [],  # Clear issues — architect waived them
@@ -145,7 +141,7 @@ class ArchitectAgent(BaseAgent):
                 "architect_escalated": True,
             }
         else:
-            logger.info("Architect: escalation verdict=FIX_REQUIRED → back to developer")
+            logger.info("architect.escalation_verdict", verdict="fix_required")
             # Parse only the truly critical issues from architect's response
             critical_issues = []
             in_critical = False
@@ -174,7 +170,7 @@ class ArchitectAgent(BaseAgent):
         """
         Create detailed implementation specification for developers.
         """
-        logger.info("Architect: create_implementation_spec start")
+        logger.info("architect.create_implementation_spec")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["implementation_spec"]
@@ -192,7 +188,7 @@ class ArchitectAgent(BaseAgent):
             "important_notes": "Ensure code is well-documented and tested",
         })
         
-        logger.debug("Architect: create_implementation_spec completed")
+        logger.debug("architect.create_implementation_spec.done")
         return {
             "messages": [AIMessage(content=response.content, name="architect")],
             "architecture": {
@@ -223,9 +219,9 @@ def architect_agent(state: DevTeamState) -> dict:
     # If clarification response received, continue with design
     if state.get("clarification_response"):
         # Process approval and continue
-        logger.debug("Architect: routing to design_architecture (clarification)")
+        logger.debug("architect.route", action="design_architecture", reason="clarification")
         return agent.design_architecture(state)
     
     # Design architecture
-    logger.debug("Architect: routing to design_architecture")
+    logger.debug("architect.route", action="design_architecture")
     return agent.design_architecture(state)

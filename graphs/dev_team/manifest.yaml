@@ -1,0 +1,47 @@
+# ===========================================
+# dev_team Graph Manifest
+# ===========================================
+# Metadata for UI display and Switch-Agent routing.
+# See ARCHITECTURE_V2.md §7.2 for schema definition.
+
+name: "dev_team"
+display_name: "Development Team"
+description: >-
+  Full software development: from requirements to Pull Request.
+  5 agents work together: PM, Analyst, Architect, Developer, QA.
+version: "1.0.0"
+
+task_types:
+  - new_project
+  - feature
+  - bugfix
+  - refactor
+
+agents:
+  - id: pm
+    display_name: "Project Manager"
+    role: pm
+  - id: analyst
+    display_name: "Business Analyst"
+    role: analyst
+  - id: architect
+    display_name: "Software Architect"
+    role: architect
+  - id: developer
+    display_name: "Developer"
+    role: developer
+  - id: qa
+    display_name: "QA Engineer"
+    role: qa
+
+features:
+  - hitl_clarification
+  - hitl_escalation
+  - qa_loop
+  - git_commit
+
+parameters:
+  max_qa_iterations: 3
+  use_security_agent: false
+  deploy_after_commit: false
+  hitl_mode: "optional"       # "required" | "optional" | "none"

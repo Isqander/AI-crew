@@ -58,6 +58,10 @@ class DevTeamState(TypedDict):
     repository: NotRequired[str]                 # Target GitHub repository URL
     context: NotRequired[str]                    # Additional context/requirements
     
+    # === Task Classification (Wave 1) ===
+    task_type: NotRequired[str]                  # "new_project", "bugfix", "feature", "refactor"
+    task_complexity: NotRequired[int]            # 1-10 (from Switch-Agent / router)
+    
     # === Analyst Output ===
     requirements: list[str]                      # Extracted requirements
     user_stories: list[UserStory]                # User stories

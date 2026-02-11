@@ -8,17 +8,16 @@ Responsible for:
   - Verifying that previous issues have been resolved
   - Giving final approval before the code is committed
 
-LangGraph node function: ``qa_agent(state) -> dict``
+LangGraph node function: ``qa_agent(state, config=None) -> dict``
 """
 
-import logging
-
+import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
 from ..state import DevTeamState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class QAAgent(BaseAgent):
@@ -29,11 +28,11 @@ class QAAgent(BaseAgent):
         llm = get_llm(role="qa", temperature=0.3)
         super().__init__(name="qa", llm=llm, prompts=prompts)
     
-    def review_code(self, state: DevTeamState) -> dict:
+    def review_code(self, state: DevTeamState, config=None) -> dict:
         """
         Review the implemented code.
         """
-        logger.info("QA: review_code start (code_files=%s)", len(state.get("code_files", [])))
+        logger.info("qa.review_code", code_files=len(state.get("code_files", [])))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["code_review"]
@@ -50,11 +49,11 @@ class QAAgent(BaseAgent):
             for f in code_files
         ])
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "requirements": "\n".join(f"- {r}" for r in requirements),
             "code_files": code_files_str if code_files_str else "No code files provided",
-        })
+        }, config=config)
         
         content = response.content
         
@@ -88,11 +87,11 @@ class QAAgent(BaseAgent):
             qa_iter += 1
 
         logger.debug(
-            "QA: review_code result approved=%s issues=%s next_agent=%s qa_iter=%s",
-            approved,
-            len(issues_found),
-            next_agent,
-            qa_iter,
+            "qa.review_code.done",
+            approved=approved,
+            issues=len(issues_found),
+            next_agent=next_agent,
+            qa_iter=qa_iter,
         )
         return {
             "messages": [AIMessage(content=content, name="qa")],
@@ -108,11 +107,11 @@ class QAAgent(BaseAgent):
             "qa_iteration_count": qa_iter,
         }
     
-    def verify_fixes(self, state: DevTeamState) -> dict:
+    def verify_fixes(self, state: DevTeamState, config=None) -> dict:
         """
         Verify that previous issues have been fixed.
         """
-        logger.info("QA: verify_fixes start")
+        logger.info("qa.verify_fixes")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["verify_fixes"]
@@ -131,17 +130,17 @@ class QAAgent(BaseAgent):
         # Previous issues (stored before clearing)
         previous_issues = state.get("_previous_issues", [])
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "original_issues": "\n".join(f"- {i}" for i in previous_issues),
             "updated_code": code_files_str,
-        })
+        }, config=config)
         
         content = response.content
         
         # Check if all issues are fixed
         all_fixed = "fixed" in content.lower() and "not fixed" not in content.lower()
         
-        logger.debug("QA: verify_fixes all_fixed=%s", all_fixed)
+        logger.debug("qa.verify_fixes.done", all_fixed=all_fixed)
         return {
             "messages": [AIMessage(content=content, name="qa")],
             "issues_found": [] if all_fixed else state.get("issues_found", []),
@@ -149,11 +148,11 @@ class QAAgent(BaseAgent):
             "next_agent": "git_commit" if all_fixed else "developer",
         }
     
-    def final_approval(self, state: DevTeamState) -> dict:
+    def final_approval(self, state: DevTeamState, config=None) -> dict:
         """
         Give final approval for deployment.
         """
-        logger.info("QA: final_approval start")
+        logger.info("qa.final_approval")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["final_approval"]
@@ -161,13 +160,13 @@ class QAAgent(BaseAgent):
         
         chain = prompt | self.llm
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "requirements_status": "Met" if state.get("requirements") else "Unknown",
             "code_quality": "Reviewed" if state.get("review_comments") else "Not reviewed",
             "test_results": str(state.get("test_results", {})),
             "notes": state.get("implementation_notes", ""),
-        })
+        }, config=config)
         
         return {
             "messages": [AIMessage(content=response.content, name="qa")],
@@ -190,12 +189,12 @@ def get_qa_agent() -> QAAgent:
     return _qa_agent
 
 
-def qa_agent(state: DevTeamState) -> dict:
+def qa_agent(state: DevTeamState, config=None) -> dict:
     """
     QA agent node function for LangGraph.
     """
     agent = get_qa_agent()
     
     # Review the code
-    logger.debug("QA: routing to review_code")
-    return agent.review_code(state)
+    logger.debug("qa.route", action="review_code")
+    return agent.review_code(state, config=config)

@@ -1,12 +1,15 @@
 import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Bot, Home, Activity, Settings } from 'lucide-react'
+import { Bot, Home, Activity, Settings, LogOut } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
 
 interface LayoutProps {
   children: ReactNode
 }
 
 export function Layout({ children }: LayoutProps) {
+  const { isAuthenticated, user, logout } = useAuthStore()
+
   return (
     <div className="min-h-screen bg-gradient-dark">
       {/* Header */}
@@ -26,17 +29,32 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </Link>
           
-          <nav className="flex items-center gap-6">
-            <NavLink to="/" icon={<Home className="w-4 h-4" />}>
-              Главная
-            </NavLink>
-            <NavLink to="/tasks" icon={<Activity className="w-4 h-4" />}>
-              Задачи
-            </NavLink>
-            <NavLink to="/settings" icon={<Settings className="w-4 h-4" />}>
-              Настройки
-            </NavLink>
-          </nav>
+          {isAuthenticated && (
+            <nav className="flex items-center gap-6">
+              <NavLink to="/" icon={<Home className="w-4 h-4" />}>
+                Главная
+              </NavLink>
+              <NavLink to="/tasks" icon={<Activity className="w-4 h-4" />}>
+                Задачи
+              </NavLink>
+              <NavLink to="/settings" icon={<Settings className="w-4 h-4" />}>
+                Настройки
+              </NavLink>
+              <div className="flex items-center gap-4 pl-4 border-l border-midnight-700">
+                <span className="text-midnight-300 font-mono text-sm">
+                  {user?.display_name || user?.email}
+                </span>
+                <button
+                  onClick={logout}
+                  className="flex items-center gap-2 text-midnight-400 hover:text-red-400 transition-colors font-mono text-sm"
+                  title="Выйти"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Выйти
+                </button>
+              </div>
+            </nav>
+          )}
         </div>
       </header>
 

@@ -38,6 +38,7 @@ services:
 
   # ===========================================
   # Aegra Server (LangGraph Backend)
+  # Internal only — accessed via Gateway
   # ===========================================
   aegra:
     build:
@@ -45,8 +46,8 @@ services:
       dockerfile: Dockerfile
     container_name: aicrew-aegra
     restart: unless-stopped
-    ports:
-      - "${PORT:-8000}:8000"
+    expose:
+      - "8000"                          # Internal only — not published to host
     environment:
       # Database
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
@@ -95,6 +96,33 @@ services:
       retries: 3
 
   # ===========================================
+  # Gateway (FastAPI — auth, proxy, endpoints)
+  # ===========================================
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: aicrew-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      AEGRA_URL: http://aegra:8000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-1800}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
+      LLM_API_URL: ${LLM_API_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENV_MODE: ${ENV_MODE:-LOCAL}
+    depends_on:
+      aegra:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+  # ===========================================
   # Langfuse (Observability)
   # ===========================================
   langfuse:
@@ -126,9 +154,29 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
     depends_on:
-      - aegra
+      - gateway
+
+  # ===========================================
+  # Telegram Bot (Wave 1)
+  # ===========================================
+  telegram:
+    build:
+      context: ./telegram
+      dockerfile: Dockerfile
+    container_name: aicrew-telegram
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      GATEWAY_URL: http://gateway:8080
+      TELEGRAM_BOT_EMAIL: ${TELEGRAM_BOT_EMAIL:-bot@ai-crew.local}
+      TELEGRAM_BOT_PASSWORD: ${TELEGRAM_BOT_PASSWORD:-botpassword123}
+      TELEGRAM_ADMIN_CHAT_ID: ${TELEGRAM_ADMIN_CHAT_ID:-}
+    depends_on:
+      gateway:
+        condition: service_started
+    # No ports — polling mode
 
 volumes:
   postgres_data:

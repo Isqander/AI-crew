@@ -10,14 +10,15 @@ Responsible for:
 LangGraph node function: ``developer_agent(state) -> dict``
 """
 
-import logging
 import re
+
+import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template, CODE_TEMPERATURE
 from ..state import DevTeamState, CodeFile
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class DeveloperAgent(BaseAgent):
@@ -29,11 +30,11 @@ class DeveloperAgent(BaseAgent):
         llm = get_llm(role="developer", temperature=CODE_TEMPERATURE)
         super().__init__(name="developer", llm=llm, prompts=prompts)
     
-    def implement(self, state: DevTeamState) -> dict:
+    def implement(self, state: DevTeamState, config=None) -> dict:
         """
         Implement code based on architecture specification.
         """
-        logger.info("Developer: implement start")
+        logger.info("developer.implement")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["implementation"]
@@ -43,17 +44,17 @@ class DeveloperAgent(BaseAgent):
         
         architecture = state.get("architecture", {})
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "architecture": architecture.get("design", "Not specified"),
             "implementation_spec": architecture.get("implementation_spec", "Follow best practices"),
-        })
+        }, config=config)
         
         content = response.content
         
         # Parse code files from response
         code_files = self._parse_code_files(content)
-        logger.debug("Developer: parsed code_files=%s", len(code_files))
+        logger.debug("developer.implement.done", code_files=len(code_files))
         
         return {
             "messages": [AIMessage(content=content, name="developer")],
@@ -63,11 +64,11 @@ class DeveloperAgent(BaseAgent):
             "next_agent": "qa",
         }
     
-    def fix_issues(self, state: DevTeamState) -> dict:
+    def fix_issues(self, state: DevTeamState, config=None) -> dict:
         """
         Fix issues found by QA.
         """
-        logger.info("Developer: fix_issues start (issues=%s)", len(state.get("issues_found", [])))
+        logger.info("developer.fix_issues", issues=len(state.get("issues_found", [])))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["fix_issues"]
@@ -78,16 +79,16 @@ class DeveloperAgent(BaseAgent):
         issues = state.get("issues_found", [])
         review_comments = state.get("review_comments", [])
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "issues": "\n".join(f"- {i}" for i in issues),
             "review_comments": "\n".join(f"- {c}" for c in review_comments),
-        })
+        }, config=config)
         
         content = response.content
         
         # Parse updated code files
         code_files = self._parse_code_files(content)
-        logger.debug("Developer: parsed updated code_files=%s", len(code_files))
+        logger.debug("developer.fix_issues.done", code_files=len(code_files))
         
         # Merge with existing files (update or add)
         existing_files = {f["path"]: f for f in state.get("code_files", [])}
@@ -168,7 +169,7 @@ def get_developer_agent() -> DeveloperAgent:
     return _developer_agent
 
 
-def developer_agent(state: DevTeamState) -> dict:
+def developer_agent(state: DevTeamState, config=None) -> dict:
     """
     Developer agent node function for LangGraph.
     """
@@ -176,9 +177,9 @@ def developer_agent(state: DevTeamState) -> dict:
     
     # If there are issues to fix
     if state.get("issues_found"):
-        logger.debug("Developer: routing to fix_issues")
-        return agent.fix_issues(state)
+        logger.debug("developer.route", action="fix_issues")
+        return agent.fix_issues(state, config=config)
     
     # Otherwise, implement
-    logger.debug("Developer: routing to implement")
-    return agent.implement(state)
+    logger.debug("developer.route", action="implement")
+    return agent.implement(state, config=config)

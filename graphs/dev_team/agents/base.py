@@ -19,17 +19,18 @@ Environment variables consumed
 - ``LLM_DEFAULT_MODEL`` — global model fallback
 """
 
-import logging
 import os
 import yaml
 from pathlib import Path
+from string import Template
 from typing import Optional
 
+import structlog
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 # ===========================================
@@ -42,11 +43,11 @@ CODE_TEMPERATURE = 0.2  # Lower temperature for code generation
 # Default API endpoint
 DEFAULT_LLM_API_URL = "https://clipapi4me.31.59.58.143.nip.io/v1"
 
-# Default models for each agent role
+# Default models for each agent role (lowest-priority fallback)
 DEFAULT_MODELS = {
     "default": "gemini-claude-sonnet-4-5-thinking",
     "pm": "gemini-claude-sonnet-4-5-thinking",
-    "analyst": "gemini-claude-sonnet-4-5-thinking", 
+    "analyst": "gemini-claude-sonnet-4-5-thinking",
     "architect": "gemini-claude-opus-4-5-thinking",
     "developer": "glm-4.7",
     "qa": "glm-4.7",
@@ -62,67 +63,121 @@ AVAILABLE_MODELS = [
 ]
 
 
-def get_llm_endpoint(endpoint_name: str = "default") -> dict[str, str]:
+# ===========================================
+# agents.yaml loader (cached)
+# ===========================================
+
+_agent_config_cache: dict | None = None
+
+
+def load_agent_config() -> dict:
+    """Load ``config/agents.yaml`` with env-var substitution.
+
+    The result is cached for the lifetime of the process.
+    Returns a minimal empty structure when the file is missing so that
+    call-sites never have to handle ``None``.
     """
-    Get LLM endpoint configuration by name.
-    
-    Supports multiple endpoints via environment variables:
-    - LLM_API_URL, LLM_API_KEY - default endpoint
-    - LLM_<NAME>_URL, LLM_<NAME>_KEY - named endpoints
-    
+    global _agent_config_cache
+    if _agent_config_cache is not None:
+        return _agent_config_cache
+
+    config_path = Path(__file__).parent.parent.parent.parent / "config" / "agents.yaml"
+    if not config_path.exists():
+        logger.warning("config.not_found", path=str(config_path))
+        _agent_config_cache = {"defaults": {}, "endpoints": {}, "agents": {}}
+        return _agent_config_cache
+
+    raw = config_path.read_text(encoding="utf-8")
+    # Substitute ${ENV_VAR} from the environment
+    substituted = Template(raw).safe_substitute(os.environ)
+    config = yaml.safe_load(substituted) or {}
+    _agent_config_cache = config
+    logger.debug("config.loaded", path=str(config_path), agents=list(config.get("agents", {}).keys()))
+    return _agent_config_cache
+
+
+def _reset_agent_config_cache() -> None:
+    """Reset the cached config (useful in tests)."""
+    global _agent_config_cache
+    _agent_config_cache = None
+
+
+# ===========================================
+# Endpoint resolution
+# ===========================================
+
+
+def get_llm_endpoint(endpoint_name: str = "default") -> dict[str, str]:
+    """Get LLM endpoint configuration by name.
+
+    Resolution order:
+      1. Environment variables (``LLM_API_URL`` / ``LLM_<NAME>_URL``)
+      2. ``config/agents.yaml`` → ``endpoints.<name>``
+      3. ``DEFAULT_LLM_API_URL`` hardcoded fallback
+
     Args:
         endpoint_name: Name of the endpoint ("default" or custom name)
-        
+
     Returns:
         Dict with "url" and "api_key"
     """
+    config = load_agent_config()
+
     if endpoint_name == "default":
-        url = os.getenv("LLM_API_URL", DEFAULT_LLM_API_URL)
-        api_key = os.getenv("LLM_API_KEY", "")
+        url = os.getenv("LLM_API_URL") or config.get("endpoints", {}).get("default", {}).get("url") or DEFAULT_LLM_API_URL
+        api_key = os.getenv("LLM_API_KEY") or config.get("endpoints", {}).get("default", {}).get("api_key") or ""
     else:
-        # Named endpoint: LLM_BACKUP_URL, LLM_BACKUP_KEY
         env_prefix = f"LLM_{endpoint_name.upper()}"
-        url = os.getenv(f"{env_prefix}_URL", DEFAULT_LLM_API_URL)
-        api_key = os.getenv(f"{env_prefix}_KEY", "")
-    
-    logger.debug(
-        "LLM endpoint resolved: name=%s url=%s api_key_set=%s",
-        endpoint_name,
-        url,
-        bool(api_key),
-    )
+        yaml_ep = config.get("endpoints", {}).get(endpoint_name, {})
+        url = os.getenv(f"{env_prefix}_URL") or yaml_ep.get("url") or DEFAULT_LLM_API_URL
+        api_key = os.getenv(f"{env_prefix}_KEY") or yaml_ep.get("api_key") or ""
+
+    logger.debug("llm.endpoint_resolved", name=endpoint_name, url=url, api_key_set=bool(api_key))
     return {"url": url, "api_key": api_key}
 
 
+# ===========================================
+# Model resolution
+# ===========================================
+
+
 def get_model_for_role(role: str) -> str:
-    """
-    Get the model name for a specific agent role.
-    
-    Checks environment variable first (LLM_MODEL_<ROLE>),
-    falls back to DEFAULT_MODELS.
-    
+    """Get the model name for a specific agent role.
+
+    Priority chain (highest to lowest):
+      1. ``LLM_MODEL_<ROLE>`` env var
+      2. ``agents.<role>.model`` in ``config/agents.yaml``
+      3. ``LLM_DEFAULT_MODEL`` env var
+      4. ``DEFAULT_MODELS`` hardcoded dict
+
     Args:
-        role: Agent role (pm, analyst, architect, developer, qa)
-        
+        role: Agent role (pm, analyst, architect, developer, qa, router, ...)
+
     Returns:
         Model name
     """
-    # Check environment variable first: LLM_MODEL_PM, LLM_MODEL_DEVELOPER, etc.
-    env_var = f"LLM_MODEL_{role.upper()}"
-    env_model = os.getenv(env_var)
-    
+    # 1. Per-role env override
+    env_model = os.getenv(f"LLM_MODEL_{role.upper()}")
     if env_model:
-        logger.debug("Model selected from env: role=%s model=%s", role, env_model)
+        logger.debug("model.selected", role=role, model=env_model, source="env")
         return env_model
-    
-    # Check default model override
-    default_override = os.getenv("LLM_DEFAULT_MODEL")
-    if default_override and role not in DEFAULT_MODELS:
-        logger.debug("Model selected from default override: role=%s model=%s", role, default_override)
-        return default_override
 
+    # 2. agents.yaml
+    config = load_agent_config()
+    yaml_model = config.get("agents", {}).get(role, {}).get("model")
+    if yaml_model:
+        logger.debug("model.selected", role=role, model=yaml_model, source="yaml")
+        return yaml_model
+
+    # 3. Global env default
+    global_default = os.getenv("LLM_DEFAULT_MODEL")
+    if global_default:
+        logger.debug("model.selected", role=role, model=global_default, source="env_default")
+        return global_default
+
+    # 4. Hardcoded defaults
     selected = DEFAULT_MODELS.get(role, DEFAULT_MODELS["default"])
-    logger.debug("Model selected from defaults: role=%s model=%s", role, selected)
+    logger.debug("model.selected", role=role, model=selected, source="hardcoded")
     return selected
 
 
@@ -132,34 +187,23 @@ def get_llm(
     temperature: float = DEFAULT_TEMPERATURE,
     endpoint: str = "default",
 ) -> BaseChatModel:
-    """
-    Get a configured LLM instance via OpenAI-compatible API.
-    
+    """Get a configured LLM instance via OpenAI-compatible API.
+
     All models are accessed through a unified proxy API that supports
     OpenAI-compatible endpoints.
-    
+
     Args:
         role: Agent role for automatic model selection (pm, analyst, etc.)
         model: Explicit model name (overrides role-based selection)
         temperature: Sampling temperature
         endpoint: Endpoint name for multi-endpoint setups
-        
+
     Returns:
         Configured LLM instance
-        
-    Example:
-        # Automatic model selection based on role
-        llm = get_llm(role="architect")
-        
-        # Explicit model
-        llm = get_llm(model="claude-opus-4-5-thinking")
-        
-        # Using alternative endpoint
-        llm = get_llm(role="developer", endpoint="backup")
     """
     # Get endpoint configuration
     endpoint_config = get_llm_endpoint(endpoint)
-    
+
     # Determine model
     if model:
         selected_model = model
@@ -167,20 +211,97 @@ def get_llm(
         selected_model = get_model_for_role(role)
     else:
         selected_model = os.getenv("LLM_DEFAULT_MODEL", DEFAULT_MODELS["default"])
-    
-    logger.info(
-        "Initializing LLM: role=%s model=%s temp=%.2f endpoint=%s",
-        role or "none",
-        selected_model,
-        temperature,
-        endpoint,
-    )
+
+    logger.info("llm.init", role=role or "none", model=selected_model, temperature=temperature, endpoint=endpoint)
     return ChatOpenAI(
         model=selected_model,
         temperature=temperature,
         api_key=endpoint_config["api_key"],
         base_url=endpoint_config["url"],
     )
+
+
+def get_llm_with_fallback(role: str, **kwargs) -> BaseChatModel:
+    """Get an LLM with a fallback chain from ``config/agents.yaml``.
+
+    If ``agents.<role>.fallback_model`` is configured, returns
+    ``primary.with_fallbacks([fallback])``.  Otherwise returns the
+    primary model as-is.
+    """
+    primary = get_llm(role=role, **kwargs)
+
+    config = load_agent_config()
+    fallback_model = config.get("agents", {}).get(role, {}).get("fallback_model")
+    if fallback_model:
+        fallback = get_llm(model=fallback_model, **kwargs)
+        logger.info("llm.fallback_chain", role=role, fallback=fallback_model)
+        return primary.with_fallbacks([fallback])
+
+    return primary
+
+
+# ===========================================
+# Retry helper
+# ===========================================
+
+# Exception types that should trigger a retry (transient network issues)
+RETRYABLE_EXCEPTIONS = (
+    ConnectionError,
+    TimeoutError,
+)
+
+try:
+    import httpx
+    RETRYABLE_EXCEPTIONS = (*RETRYABLE_EXCEPTIONS, httpx.ConnectError, httpx.ReadTimeout)
+except ImportError:
+    pass
+
+
+def invoke_with_retry(
+    chain,
+    inputs: dict,
+    config: dict | None = None,
+    max_attempts: int = 3,
+):
+    """Invoke an LLM chain with exponential-backoff retry.
+
+    Only retries on *transient* errors (network / timeout).
+    All other exceptions are re-raised immediately.
+
+    Args:
+        chain: LangChain Runnable (prompt | llm).
+        inputs: Inputs dict for the chain.
+        config: Optional RunnableConfig with callbacks, etc.
+        max_attempts: Maximum retry attempts (default 3).
+
+    Returns:
+        The chain invocation result.
+    """
+    from tenacity import (
+        retry,
+        stop_after_attempt,
+        wait_exponential,
+        retry_if_exception_type,
+        RetryError,
+    )
+
+    callbacks = (config or {}).get("callbacks", [])
+
+    @retry(
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_exponential(multiplier=2, min=4, max=60),
+        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+        reraise=True,
+    )
+    def _invoke():
+        invoke_config = {"callbacks": callbacks} if callbacks else {}
+        return chain.invoke(inputs, config=invoke_config)
+
+    try:
+        return _invoke()
+    except RetryError:
+        logger.error("llm.retry_exhausted", attempts=max_attempts)
+        raise
 
 
 def load_prompts(agent_name: str) -> dict:
@@ -201,7 +322,7 @@ def load_prompts(agent_name: str) -> dict:
     
     with open(prompt_file, "r", encoding="utf-8") as f:
         prompts = yaml.safe_load(f)
-    logger.debug("Prompts loaded: agent=%s keys=%s", agent_name, list(prompts.keys()))
+    logger.debug("prompts.loaded", agent=agent_name, keys=list(prompts.keys()))
     return prompts
 
 
@@ -227,7 +348,7 @@ def create_prompt_template(
 
 class BaseAgent:
     """Base class for all agents."""
-    
+
     def __init__(
         self,
         name: str,
@@ -238,11 +359,40 @@ class BaseAgent:
         self.llm = llm
         self.prompts = prompts
         self.system_prompt = prompts.get("system", "")
-        logger.info("Agent initialized: name=%s", self.name)
-    
-    def invoke(self, state: dict) -> dict:
+        logger.info("agent.initialized", agent=self.name)
+
+    # ------------------------------------------------------------------
+    # Langfuse / callback helpers  (Wave 1 — module 2.4)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_callbacks(config) -> list:
+        """Extract callbacks from a LangGraph ``RunnableConfig``.
+
+        LangGraph automatically passes the config to node functions when
+        they declare a ``config`` parameter.  Langfuse installs its
+        callback handler there so that every LLM call is traced.
         """
-        Invoke the agent with the current state.
-        Override in subclasses.
+        if config and "callbacks" in config:
+            return config["callbacks"]
+        return []
+
+    def _invoke_chain(self, chain, inputs: dict, config=None):
+        """Invoke *chain* with retry + Langfuse callbacks.
+
+        A thin wrapper that ensures:
+          * ``invoke_with_retry`` provides exponential backoff;
+          * Langfuse callbacks from the LangGraph config are forwarded
+            to the underlying LLM call.
+        """
+        return invoke_with_retry(chain, inputs, config=config)
+
+    # ------------------------------------------------------------------
+
+    def invoke(self, state: dict, config=None) -> dict:
+        """Invoke the agent with the current state.
+
+        Override in subclasses.  The *config* parameter carries the
+        LangGraph ``RunnableConfig`` (including Langfuse callbacks).
         """
         raise NotImplementedError

@@ -29,11 +29,11 @@ Nodes:
   pm_final — PM's closing summary
 """
 
-import logging
 import os
 from datetime import datetime, timezone
 from typing import Literal
 
+import structlog
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -42,6 +42,7 @@ from langgraph.checkpoint.memory import MemorySaver
 # Relative imports (from .state, from .agents) would resolve against "graphs.*"
 # and fail. Use absolute imports based on sys.path (/app/graphs → "dev_team.*").
 from dev_team.state import DevTeamState
+from dev_team.logging_config import configure_logging
 
 from dev_team.agents.pm import pm_agent
 from dev_team.agents.analyst import analyst_agent
@@ -51,39 +52,15 @@ from dev_team.agents.qa import qa_agent
 from dev_team.tools.github import get_github_client
 
 
-def configure_logging() -> None:
-    """
-    Configure application logging based on environment variables.
-    """
-    level_name = os.getenv("LOG_LEVEL")
-    env_mode = os.getenv("ENV_MODE", "LOCAL").upper()
-
-    if not level_name:
-        level_name = "DEBUG" if env_mode == "LOCAL" else "INFO"
-
-    normalized = level_name.upper()
-    level = getattr(logging, normalized, logging.INFO)
-
-    root_logger = logging.getLogger()
-    if root_logger.handlers:
-        root_logger.setLevel(level)
-        return
-
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    )
-
-
 configure_logging()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def should_clarify(state: DevTeamState) -> Literal["clarification", "continue"]:
     """
     Router: Check if clarification is needed from user.
     """
-    logger.debug("Router should_clarify: needs_clarification=%s", state.get("needs_clarification", False))
+    logger.debug("router.should_clarify", needs_clarification=state.get("needs_clarification", False))
     if state.get("needs_clarification", False):
         return "clarification"
     return "continue"
@@ -93,7 +70,7 @@ def route_after_analyst(state: DevTeamState) -> Literal["clarification", "archit
     """
     Router: After analyst, check if clarification needed.
     """
-    logger.debug("Router after_analyst: needs_clarification=%s", state.get("needs_clarification", False))
+    logger.debug("router.after_analyst", needs_clarification=state.get("needs_clarification", False))
     if state.get("needs_clarification", False):
         return "clarification"
     return "architect"
@@ -103,7 +80,7 @@ def route_after_architect(state: DevTeamState) -> Literal["clarification", "deve
     """
     Router: After architect, check if approval needed.
     """
-    logger.debug("Router after_architect: needs_clarification=%s", state.get("needs_clarification", False))
+    logger.debug("router.after_architect", needs_clarification=state.get("needs_clarification", False))
     if state.get("needs_clarification", False):
         return "clarification"
     return "developer"
@@ -132,33 +109,24 @@ def route_after_qa(
         architect_escalated = state.get("architect_escalated", False)
 
         if not architect_escalated and qa_iter >= MAX_QA_ITERATIONS_BEFORE_ARCHITECT:
-            logger.info(
-                "Router after_qa: qa_iter=%s ≥ %s, architect not yet escalated → architect_escalation",
-                qa_iter, MAX_QA_ITERATIONS_BEFORE_ARCHITECT,
-            )
+            logger.info("router.after_qa", decision="architect_escalation", qa_iter=qa_iter)
             return "architect_escalation"
 
         if architect_escalated and qa_iter >= MAX_QA_ITERATIONS_BEFORE_HUMAN:
-            logger.info(
-                "Router after_qa: qa_iter=%s ≥ %s AND architect already escalated → human_escalation",
-                qa_iter, MAX_QA_ITERATIONS_BEFORE_HUMAN,
-            )
+            logger.info("router.after_qa", decision="human_escalation", qa_iter=qa_iter)
             return "human_escalation"
 
-        logger.debug(
-            "Router after_qa: issues_found=%s, qa_iter=%s → developer",
-            len(state.get("issues_found", [])), qa_iter,
-        )
+        logger.debug("router.after_qa", decision="developer", issues=len(state.get("issues_found", [])), qa_iter=qa_iter)
         return "developer"
 
     # If approved, proceed to commit
     test_results = state.get("test_results", {})
     if test_results.get("approved", False):
-        logger.debug("Router after_qa: approved=True -> git_commit")
+        logger.debug("router.after_qa", decision="git_commit", approved=True)
         return "git_commit"
 
     # Otherwise, final PM review
-    logger.debug("Router after_qa: approved=False -> pm_final")
+    logger.debug("router.after_qa", decision="pm_final")
     return "pm_final"
 
 
@@ -169,7 +137,7 @@ def clarification_node(state: DevTeamState) -> dict:
     This node is an interrupt point - execution pauses here
     until user provides clarification_response.
     """
-    logger.info("Clarification requested. Waiting for user input.")
+    logger.info("node.clarification", status="waiting_for_user")
     return {
         "current_agent": "waiting_for_user",
     }
@@ -181,21 +149,21 @@ def process_clarification(state: DevTeamState) -> dict:
     """
     # Clear the clarification flag
     current_agent = state.get("current_agent", "pm")
-    logger.info("Processing clarification response for agent=%s", current_agent)
+    logger.info("node.process_clarification", agent=current_agent)
     
     return {
         "needs_clarification": False,
     }
 
 
-def architect_escalation_node(state: DevTeamState) -> dict:
+def architect_escalation_node(state: DevTeamState, config=None) -> dict:
     """
     Architect reviews repeated Dev↔QA failures and decides
     which issues are truly critical vs cosmetic/waivable.
     """
     from dev_team.agents.architect import get_architect_agent
     agent = get_architect_agent()
-    return agent.review_qa_escalation(state)
+    return agent.review_qa_escalation(state, config=config)
 
 
 def route_after_architect_escalation(
@@ -221,10 +189,7 @@ def human_escalation_node(state: DevTeamState) -> dict:
     qa_iter = state.get("qa_iteration_count", 0)
     issues_text = "\n".join(f"  - {i}" for i in issues) if issues else "  (see review comments)"
 
-    logger.info(
-        "Human escalation: qa_iter=%s, issues=%s — requesting human guidance",
-        qa_iter, len(issues),
-    )
+    logger.info("node.human_escalation", qa_iter=qa_iter, issues=len(issues))
 
     question = (
         f"Dev and QA could not resolve the following issues after "
@@ -258,17 +223,13 @@ def git_commit_node(state: DevTeamState) -> dict:
     code_files = state.get("code_files", [])
     repository = state.get("repository") or os.getenv("GITHUB_DEFAULT_REPO", "")
     task = state.get("task", "AI-generated task")
-    logger.info(
-        "Git commit node: repository=%s files=%s",
-        repository or "none",
-        len(code_files),
-    )
+    logger.info("node.git_commit", repository=repository or "none", files=len(code_files))
 
     # ------------------------------------------------------------------
     # Guard: no repository → return code in summary
     # ------------------------------------------------------------------
     if not repository:
-        logger.warning("No repository specified, skipping git commit.")
+        logger.warning("node.git_commit.skip", reason="no_repository")
         summary = _build_code_summary(code_files, task)
         return {
             "summary": summary,
@@ -280,7 +241,7 @@ def git_commit_node(state: DevTeamState) -> dict:
     # ------------------------------------------------------------------
     client = get_github_client()
     if client is None:
-        logger.error("GitHub client unavailable (GITHUB_TOKEN not set or PyGithub missing).")
+        logger.error("node.git_commit.skip", reason="github_client_unavailable")
         summary = _build_code_summary(code_files, task)
         return {
             "summary": (
@@ -304,9 +265,9 @@ def git_commit_node(state: DevTeamState) -> dict:
             ref=f"refs/heads/{branch_name}",
             sha=base_ref.object.sha,
         )
-        logger.info("Created branch %s from %s", branch_name, default_branch)
+        logger.info("git.branch_created", branch=branch_name, base=default_branch)
     except Exception as exc:
-        logger.error("Failed to create branch: %s", exc)
+        logger.error("git.branch_create_failed", error=str(exc))
         summary = _build_code_summary(code_files, task)
         return {
             "summary": f"⚠️ Failed to create branch on {repository}: {exc}\n\n{summary}",
@@ -346,12 +307,12 @@ def git_commit_node(state: DevTeamState) -> dict:
                 )
             last_sha = result["commit"].sha
             committed += 1
-            logger.debug("Committed %s (%s)", file_path, last_sha[:8])
+            logger.debug("git.file_committed", path=file_path, sha=last_sha[:8])
         except Exception as exc:
-            logger.error("Failed to commit %s: %s", file_path, exc)
+            logger.error("git.file_commit_failed", path=file_path, error=str(exc))
 
     if committed == 0:
-        logger.warning("No files committed — skipping PR creation.")
+        logger.warning("node.git_commit.skip", reason="no_files_committed")
         summary = _build_code_summary(code_files, task)
         return {
             "summary": f"⚠️ No files were committed to {repository}.\n\n{summary}",
@@ -378,9 +339,9 @@ def git_commit_node(state: DevTeamState) -> dict:
             base=default_branch,
         )
         pr_url = pr.html_url
-        logger.info("PR created: %s", pr_url)
+        logger.info("git.pr_created", url=pr_url)
     except Exception as exc:
-        logger.error("Failed to create PR: %s", exc)
+        logger.error("git.pr_create_failed", error=str(exc))
         pr_url = None
 
     return {
@@ -425,7 +386,7 @@ def create_graph() -> StateGraph:
     """
     
     # Create the graph
-    logger.info("Creating development team graph.")
+    logger.info("graph.create")
     builder = StateGraph(DevTeamState)
     
     # Add nodes
@@ -528,7 +489,7 @@ graph = create_graph().compile(
     checkpointer=checkpointer,
     interrupt_before=["clarification", "human_escalation"],  # Pause for human input
 )
-logger.info("Graph compiled (Aegra will inject PostgreSQL checkpointer at runtime)")
+logger.info("graph.compiled", checkpointer="memory", note="Aegra injects PostgreSQL at runtime")
 
 
 # Export for Aegra

@@ -7,17 +7,16 @@ Responsible for:
   - Creating user stories with acceptance criteria
   - Requesting clarification from the user when the task is ambiguous
 
-LangGraph node function: ``analyst_agent(state) -> dict``
+LangGraph node function: ``analyst_agent(state, config=None) -> dict``
 """
 
-import logging
-
+import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
 from ..state import DevTeamState, UserStory
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class AnalystAgent(BaseAgent):
@@ -28,11 +27,11 @@ class AnalystAgent(BaseAgent):
         llm = get_llm(role="analyst", temperature=0.7)
         super().__init__(name="analyst", llm=llm, prompts=prompts)
     
-    def gather_requirements(self, state: DevTeamState) -> dict:
+    def gather_requirements(self, state: DevTeamState, config=None) -> dict:
         """
         Analyze the task and extract requirements.
         """
-        logger.info("Analyst: gather_requirements start (task_len=%s)", len(state.get("task", "")))
+        logger.info("analyst.gather_requirements", task_len=len(state.get("task", "")))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["requirements_gathering"]
@@ -40,10 +39,10 @@ class AnalystAgent(BaseAgent):
         
         chain = prompt | self.llm
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "context": state.get("context", "No additional context provided"),
-        })
+        }, config=config)
         
         # Parse requirements from response
         # In a real implementation, this would be more sophisticated
@@ -53,7 +52,7 @@ class AnalystAgent(BaseAgent):
         needs_clarification = "clarification" in content.lower() and "?" in content
         
         if needs_clarification:
-            logger.info("Analyst: clarification requested")
+            logger.info("analyst.clarification_requested")
             # Extract the question for clarification
             return {
                 "messages": [AIMessage(content=content, name="analyst")],
@@ -71,7 +70,7 @@ class AnalystAgent(BaseAgent):
             if line.startswith("- ") or line.startswith("* "):
                 requirements.append(line[2:])
         
-        logger.debug("Analyst: requirements_count=%s", len(requirements))
+        logger.debug("analyst.requirements_gathered", count=len(requirements))
         return {
             "messages": [AIMessage(content=content, name="analyst")],
             "requirements": requirements if requirements else [state["task"]],
@@ -80,11 +79,11 @@ class AnalystAgent(BaseAgent):
             "needs_clarification": False,
         }
     
-    def process_clarification(self, state: DevTeamState) -> dict:
+    def process_clarification(self, state: DevTeamState, config=None) -> dict:
         """
         Process user's clarification response and continue.
         """
-        logger.info("Analyst: process_clarification start")
+        logger.info("analyst.process_clarification")
         clarification = state.get("clarification_response", "")
         
         # Re-analyze with clarification
@@ -101,10 +100,10 @@ class AnalystAgent(BaseAgent):
         
         chain = prompt | self.llm
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "context": enhanced_context,
-        })
+        }, config=config)
         
         content = response.content
         
@@ -116,7 +115,7 @@ class AnalystAgent(BaseAgent):
             if line.startswith("- ") or line.startswith("* "):
                 requirements.append(line[2:])
         
-        logger.debug("Analyst: clarified requirements_count=%s", len(requirements))
+        logger.debug("analyst.clarified_requirements", count=len(requirements))
         return {
             "messages": [AIMessage(content=content, name="analyst")],
             "requirements": requirements if requirements else [state["task"]],
@@ -139,7 +138,7 @@ def get_analyst_agent() -> AnalystAgent:
     return _analyst_agent
 
 
-def analyst_agent(state: DevTeamState) -> dict:
+def analyst_agent(state: DevTeamState, config=None) -> dict:
     """
     Analyst agent node function for LangGraph.
     """
@@ -147,9 +146,9 @@ def analyst_agent(state: DevTeamState) -> dict:
     
     # If we have a clarification response, process it
     if state.get("clarification_response"):
-        logger.debug("Analyst: routing to process_clarification")
-        return agent.process_clarification(state)
+        logger.debug("analyst.route", action="process_clarification")
+        return agent.process_clarification(state, config=config)
     
     # Otherwise, gather requirements
-    logger.debug("Analyst: routing to gather_requirements")
-    return agent.gather_requirements(state)
+    logger.debug("analyst.route", action="gather_requirements")
+    return agent.gather_requirements(state, config=config)

@@ -41,6 +41,13 @@ langfuse>=2.0.0
 # --- GitHub Integration ---
 PyGithub>=2.1.0
 
+# --- Logging ---
+structlog>=24.0.0
+
+# --- Web Tools ---
+duckduckgo-search>=6.0.0
+trafilatura>=1.8.0
+
 # --- Utilities ---
 python-dotenv>=1.0.0
 pyyaml>=6.0.0

@@ -10,14 +10,13 @@ Responsible for:
 LangGraph node function: ``pm_agent(state) -> dict``
 """
 
-import logging
-
+import structlog
 from langchain_core.messages import AIMessage, HumanMessage
 
 from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
 from ..state import DevTeamState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class ProjectManagerAgent(BaseAgent):
@@ -28,11 +27,11 @@ class ProjectManagerAgent(BaseAgent):
         llm = get_llm(role="pm", temperature=0.7)
         super().__init__(name="pm", llm=llm, prompts=prompts)
     
-    def decompose_task(self, state: DevTeamState) -> dict:
+    def decompose_task(self, state: DevTeamState, config=None) -> dict:
         """
         Decompose the incoming task into subtasks.
         """
-        logger.info("PM: decompose_task start (task_len=%s)", len(state.get("task", "")))
+        logger.info("pm.decompose_task", task_len=len(state.get("task", "")))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["task_decomposition"]
@@ -40,22 +39,22 @@ class ProjectManagerAgent(BaseAgent):
         
         chain = prompt | self.llm
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "context": state.get("context", "No additional context provided"),
-        })
-        logger.debug("PM: decompose_task completed")
+        }, config=config)
+        logger.debug("pm.decompose_task.done")
         return {
             "messages": [AIMessage(content=response.content, name="pm")],
             "current_agent": "pm",
             "next_agent": "analyst",
         }
     
-    def check_progress(self, state: DevTeamState) -> dict:
+    def check_progress(self, state: DevTeamState, config=None) -> dict:
         """
         Check the progress of the current task.
         """
-        logger.info("PM: check_progress start")
+        logger.info("pm.check_progress")
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["progress_check"]
@@ -63,23 +62,23 @@ class ProjectManagerAgent(BaseAgent):
         
         chain = prompt | self.llm
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "requirements_status": "Complete" if state.get("requirements") else "Pending",
             "architecture_status": "Complete" if state.get("architecture") else "Pending",
             "implementation_status": "Complete" if state.get("code_files") else "Pending",
             "qa_status": "Complete" if state.get("review_comments") else "Pending",
-        })
-        logger.debug("PM: check_progress completed")
+        }, config=config)
+        logger.debug("pm.check_progress.done")
         return {
             "messages": [AIMessage(content=response.content, name="pm")],
         }
     
-    def final_review(self, state: DevTeamState) -> dict:
+    def final_review(self, state: DevTeamState, config=None) -> dict:
         """
         Conduct final review before completion.
         """
-        logger.info("PM: final_review start (code_files=%s)", len(state.get("code_files", [])))
+        logger.info("pm.final_review", code_files=len(state.get("code_files", [])))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["final_review"]
@@ -87,13 +86,13 @@ class ProjectManagerAgent(BaseAgent):
         
         chain = prompt | self.llm
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "code_files_count": len(state.get("code_files", [])),
             "tests_status": "Passed" if not state.get("issues_found") else "Issues found",
             "docs_status": "Included" if state.get("implementation_notes") else "Missing",
-        })
-        logger.debug("PM: final_review completed")
+        }, config=config)
+        logger.debug("pm.final_review.done")
         return {
             "messages": [AIMessage(content=response.content, name="pm")],
             "summary": response.content,
@@ -112,24 +111,24 @@ def get_pm_agent() -> ProjectManagerAgent:
     return _pm_agent
 
 
-def pm_agent(state: DevTeamState) -> dict:
-    """
-    PM agent node function for LangGraph.
-    
-    Determines what action to take based on current state.
+def pm_agent(state: DevTeamState, config=None) -> dict:
+    """PM agent node function for LangGraph.
+
+    LangGraph automatically passes ``config`` when the function
+    declares it.  This carries Langfuse callbacks, thread metadata, etc.
     """
     agent = get_pm_agent()
-    
+
     # Initial task - decompose
     if not state.get("requirements"):
-        logger.debug("PM: routing to decompose_task")
-        return agent.decompose_task(state)
-    
+        logger.debug("pm.route", action="decompose_task")
+        return agent.decompose_task(state, config=config)
+
     # All done - final review
     if state.get("code_files") and not state.get("issues_found"):
-        logger.debug("PM: routing to final_review")
-        return agent.final_review(state)
-    
+        logger.debug("pm.route", action="final_review")
+        return agent.final_review(state, config=config)
+
     # Check progress
-    logger.debug("PM: routing to check_progress")
-    return agent.check_progress(state)
+    logger.debug("pm.route", action="check_progress")
+    return agent.check_progress(state, config=config)
