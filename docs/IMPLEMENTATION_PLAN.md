@@ -1,0 +1,1660 @@
+# AI-crew: План реализации
+
+> Помодульная разбивка реализации, тестирование, критерии приёмки.
+> Рабочий документ для автономной реализации каждого модуля.
+>
+> Дата: 11 февраля 2026
+> Связанные документы:
+> - [ARCHITECTURE_V2.md](ARCHITECTURE_V2.md) — целевая архитектура, API-контракты, модели данных
+> - [EVOLUTION_PLAN_V3.md](EVOLUTION_PLAN_V3.md) — решения и обоснования
+
+---
+
+## Содержание
+
+1. [Принципы реализации](#1-принципы)
+2. [Волна 1: Помодульная разбивка](#2-волна-1)
+3. [Волна 2: Помодульная разбивка](#3-волна-2)
+4. [Стратегия тестирования](#4-тестирование)
+5. [CI/CD для AI-crew](#5-cicd)
+6. [Чеклист готовности](#6-чеклист)
+7. [Риски и митигации](#7-риски)
+8. [Глоссарий зависимостей между модулями](#8-зависимости)
+
+---
+
+## 1. Принципы реализации {#1-принципы}
+
+### 1.1 Порядок работы
+
+1. **Каждый модуль — один PR** (или логическая группа, если модули тесно связаны)
+2. **Сначала backend, потом frontend** — для каждой фичи
+3. **Тесты пишутся вместе с кодом** — не откладываем
+4. **Не ломаем существующее** — все изменения обратно совместимы до переключения
+5. **Feature flags** — для постепенного включения (env vars)
+
+### 1.2 Ветвление
+
+```
+main
+  └── feat/wave1-foundation          # structlog, agents.yaml, retry, langfuse
+  └── feat/wave1-gateway             # Gateway + auth
+  └── feat/wave1-frontend-auth       # Login, Register, JWT
+  └── feat/wave1-graph-viz           # React Flow визуализация
+  └── feat/wave1-streaming           # SSE streaming hook
+  └── feat/wave1-web-tools           # DuckDuckGo + fetch
+  └── feat/wave1-telegram            # Telegram bot
+  └── feat/wave1-manifest            # manifest.yaml + graph list
+```
+
+### 1.3 Контракт между модулями
+
+Все межмодульные интерфейсы описаны в [ARCHITECTURE_V2.md §4-5](ARCHITECTURE_V2.md#4-gateway-api).
+При реализации модуля — сначала реализуем интерфейс (endpoint, модели), потом логику.
+
+---
+
+## 2. Волна 1: Помодульная разбивка {#2-волна-1}
+
+---
+
+### 2.1 Модуль: structlog (логирование)
+
+**Цель:** Заменить `logging.getLogger` на `structlog` во всех модулях.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `graphs/dev_team/logging_config.py` | Конфигурация structlog (ConsoleRenderer/JSONRenderer) |
+| Изменить | `graphs/dev_team/graph.py` | Заменить `configure_logging()` на импорт из `logging_config` |
+| Изменить | `graphs/dev_team/agents/base.py` | `import structlog; logger = structlog.get_logger()` |
+| Изменить | `graphs/dev_team/agents/pm.py` | Заменить logger |
+| Изменить | `graphs/dev_team/agents/analyst.py` | Заменить logger |
+| Изменить | `graphs/dev_team/agents/architect.py` | Заменить logger |
+| Изменить | `graphs/dev_team/agents/developer.py` | Заменить logger |
+| Изменить | `graphs/dev_team/agents/qa.py` | Заменить logger |
+| Изменить | `requirements.txt` | Добавить `structlog>=24.0.0` |
+
+**Внешние зависимости:** Нет (самостоятельный модуль)
+
+**Реализация:**
+
+```python
+# graphs/dev_team/logging_config.py
+import logging
+import os
+import structlog
+
+def configure_logging():
+    """Configure structlog for the application."""
+    env_mode = os.getenv("ENV_MODE", "LOCAL").upper()
+    log_level = os.getenv("LOG_LEVEL", "DEBUG" if env_mode == "LOCAL" else "INFO")
+
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        format="%(message)s",
+    )
+
+    # Подавляем шумные библиотеки
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+
+    processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+
+    if env_mode == "LOCAL":
+        processors.append(structlog.dev.ConsoleRenderer(colors=True))
+    else:
+        processors.append(structlog.processors.JSONRenderer())
+
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.make_filtering_bound_logger(
+            getattr(logging, log_level, logging.INFO)
+        ),
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+```
+
+**Паттерн замены в агентах:**
+```python
+# Было:
+import logging
+logger = logging.getLogger(__name__)
+logger.info("Agent initialized: name=%s", self.name)
+
+# Стало:
+import structlog
+logger = structlog.get_logger()
+logger.info("agent.initialized", agent=self.name)
+```
+
+**Тестирование:**
+- Unit: проверить что `configure_logging()` не падает в LOCAL и PRODUCTION режимах
+- Smoke: запустить граф, убедиться что логи выходят в нужном формате
+
+**Критерии приёмки:**
+- [ ] Все модули используют structlog
+- [ ] В LOCAL-режиме — цветной вывод
+- [ ] В PRODUCTION — JSON
+- [ ] Шумные библиотеки подавлены
+- [ ] Существующие тесты проходят
+
+**Сложность: 1/10 | 0.5-1 день**
+
+---
+
+### 2.2 Модуль: LLM Config (agents.yaml)
+
+**Цель:** Вынести конфигурацию моделей из кода в `config/agents.yaml`.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `config/agents.yaml` | Конфигурация моделей (см. ARCHITECTURE_V2 §7.1) |
+| Изменить | `graphs/dev_team/agents/base.py` | `load_agent_config()`, обновить `get_llm()`, `get_model_for_role()` |
+
+**Внешние зависимости:** Нет
+
+**Реализация:**
+
+```python
+# base.py — новые функции
+
+import yaml
+from pathlib import Path
+from string import Template
+
+_agent_config_cache: dict | None = None
+
+def load_agent_config() -> dict:
+    """Load config/agents.yaml with env var substitution. Cached."""
+    global _agent_config_cache
+    if _agent_config_cache is not None:
+        return _agent_config_cache
+
+    config_path = Path(__file__).parent.parent.parent.parent / "config" / "agents.yaml"
+    if not config_path.exists():
+        logger.warning("config.not_found", path=str(config_path))
+        return {"defaults": {}, "endpoints": {}, "agents": {}}
+
+    raw = config_path.read_text(encoding="utf-8")
+    # Подстановка ${ENV_VAR} из окружения
+    substituted = Template(raw).safe_substitute(os.environ)
+    config = yaml.safe_load(substituted)
+    _agent_config_cache = config
+    return config
+
+def get_model_for_role(role: str) -> str:
+    """Get model respecting priority: env > yaml > defaults."""
+    # 1. Env override
+    env_model = os.getenv(f"LLM_MODEL_{role.upper()}")
+    if env_model:
+        return env_model
+
+    # 2. agents.yaml
+    config = load_agent_config()
+    yaml_model = config.get("agents", {}).get(role, {}).get("model")
+    if yaml_model:
+        return yaml_model
+
+    # 3. Global env
+    default_env = os.getenv("LLM_DEFAULT_MODEL")
+    if default_env:
+        return default_env
+
+    # 4. Hardcoded defaults
+    return DEFAULT_MODELS.get(role, DEFAULT_MODELS["default"])
+```
+
+**Тестирование:**
+- Unit: `load_agent_config()` с фикстурным YAML
+- Unit: `get_model_for_role()` — проверить приоритет (env > yaml > defaults)
+- Unit: env var подстановка в YAML работает
+
+**Критерии приёмки:**
+- [ ] `config/agents.yaml` создан с правильными моделями
+- [ ] Приоритет: env > yaml > hardcoded defaults
+- [ ] `load_agent_config()` кэширует результат
+- [ ] Env vars подставляются через `Template.safe_substitute`
+- [ ] Существующие тесты проходят (обратная совместимость)
+
+**Сложность: 2/10 | 0.5-1 день**
+
+---
+
+### 2.3 Модуль: Retry + Fallback
+
+**Цель:** Добавить retry с exponential backoff и fallback chain для LLM-вызовов.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Изменить | `graphs/dev_team/agents/base.py` | `invoke_with_retry()`, `get_llm_with_fallback()` |
+| Изменить | Все агенты (pm, analyst, ...) | Заменить `chain.invoke()` → через retry |
+| Изменить | `requirements.txt` | `tenacity>=8.2.0` (уже есть) |
+
+**Зависимости:** Модуль 2.2 (agents.yaml — для fallback_model)
+
+**Реализация:**
+
+```python
+# base.py
+
+from tenacity import (
+    retry, stop_after_attempt, wait_exponential,
+    retry_if_exception_type, before_sleep_log, RetryError,
+)
+
+RETRYABLE_EXCEPTIONS = (
+    ConnectionError,
+    TimeoutError,
+    # httpx.ConnectError, httpx.ReadTimeout — если используем httpx
+)
+
+def invoke_with_retry(
+    chain,
+    inputs: dict,
+    config: dict | None = None,
+    max_attempts: int = 3,
+    **kwargs,
+):
+    """Invoke LLM chain with exponential backoff retry."""
+    callbacks = (config or {}).get("callbacks", [])
+
+    @retry(
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_exponential(multiplier=2, min=4, max=60),
+        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+        before_sleep=before_sleep_log(logger, "warning"),
+        reraise=True,
+    )
+    def _invoke():
+        invoke_config = {"callbacks": callbacks} if callbacks else {}
+        return chain.invoke(inputs, config=invoke_config)
+
+    try:
+        return _invoke()
+    except RetryError:
+        logger.error("llm.retry_exhausted", attempts=max_attempts)
+        raise
+
+def get_llm_with_fallback(role: str, **kwargs) -> BaseChatModel:
+    """Get LLM with fallback chain from config."""
+    config = load_agent_config()
+    primary = get_llm(role=role, **kwargs)
+
+    fallback_model = config.get("agents", {}).get(role, {}).get("fallback_model")
+    if fallback_model:
+        fallback = get_llm(model=fallback_model, **kwargs)
+        return primary.with_fallbacks([fallback])
+
+    return primary
+```
+
+**Тестирование:**
+- Unit: `invoke_with_retry` — мокаем chain, проверяем retry на ConnectionError
+- Unit: `invoke_with_retry` — проверяем что non-retryable exceptions пробрасываются
+- Unit: `get_llm_with_fallback` — проверяем что возвращает RunnableWithFallbacks
+
+**Критерии приёмки:**
+- [ ] Retry с exponential backoff (3 попытки, 4-60 сек)
+- [ ] Fallback chain из agents.yaml
+- [ ] Логирование каждой retry-попытки
+- [ ] Non-retryable exceptions пробрасываются сразу
+- [ ] Существующие тесты проходят
+
+**Сложность: 1/10 | 0.5 дня**
+
+---
+
+### 2.4 Модуль: Langfuse Fix (callbacks)
+
+**Цель:** Пробросить Langfuse callbacks из LangGraph config в LLM-вызовы агентов.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Изменить | `graphs/dev_team/agents/base.py` | `_get_callbacks()`, `_invoke_chain()` в BaseAgent |
+| Изменить | Все агенты | Добавить `config: RunnableConfig` параметр, использовать `_invoke_chain` |
+| Изменить | `graphs/dev_team/graph.py` | Node functions: добавить `config` параметр |
+| Изменить | `.env` / env.example | `LANGFUSE_ENABLED=true` |
+
+**Зависимости:** Модуль 2.3 (retry — `invoke_with_retry` использует callbacks)
+
+**Реализация:**
+
+```python
+# base.py — дополнение к BaseAgent
+from langchain_core.runnables import RunnableConfig
+
+class BaseAgent:
+    # ... существующий код ...
+
+    def _get_callbacks(self, config: RunnableConfig | None) -> list:
+        """Extract callbacks from LangGraph config for Langfuse tracing."""
+        if config and "callbacks" in config:
+            return config["callbacks"]
+        return []
+
+    def _invoke_chain(self, chain, inputs: dict, config: RunnableConfig | None = None):
+        """Invoke chain with retry + callbacks."""
+        return invoke_with_retry(chain, inputs, config=config)
+```
+
+**Паттерн обновления агентов:**
+
+```python
+# Было (в каждом агенте):
+def pm_agent(state: DevTeamState) -> dict:
+    agent = get_pm_agent()
+    return agent.invoke(state)
+
+# Стало:
+def pm_agent(state: DevTeamState, config: RunnableConfig = None) -> dict:
+    agent = get_pm_agent()
+    return agent.invoke(state, config=config)
+
+# И внутри агента:
+class ProjectManagerAgent(BaseAgent):
+    def invoke(self, state: dict, config: RunnableConfig = None) -> dict:
+        # ... формируем chain ...
+        result = self._invoke_chain(chain, inputs, config=config)
+        # ...
+```
+
+**LangGraph автоматически** передаёт `config` если node function его принимает.
+Callbacks не загружают контекст LLM — это hooks, которые Langfuse перехватывает
+на уровне вызова, сохраняя промпт/ответ/токены в свою БД.
+
+**Тестирование:**
+- Unit: `_get_callbacks` с и без callbacks в config
+- Unit: `_invoke_chain` вызывает `invoke_with_retry` с правильными callbacks
+- Integration: запустить граф с `LANGFUSE_ENABLED=true`, проверить traces в Langfuse UI
+
+**Критерии приёмки:**
+- [ ] Все node functions принимают `config: RunnableConfig = None`
+- [ ] Все агенты используют `_invoke_chain()` вместо прямого `chain.invoke()`
+- [ ] В Langfuse видны Generations (промпт, ответ, модель, токены)
+- [ ] Контекст LLM НЕ загружен лишними данными
+
+**Сложность: 2/10 | 0.5-1 день**
+
+---
+
+### 2.5 Модуль: manifest.yaml
+
+**Цель:** Создать метаданные графа для UI и Switch-Agent.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `graphs/dev_team/manifest.yaml` | Метаданные dev_team графа |
+| Изменить | `aegra.json` | Подготовить к нескольким графам (без изменений пока) |
+
+**Внешние зависимости:** Нет
+
+**Реализация:**
+
+```yaml
+# graphs/dev_team/manifest.yaml
+name: "dev_team"
+display_name: "Development Team"
+description: "Full software development: from requirements to Pull Request. 5 agents work together: PM, Analyst, Architect, Developer, QA."
+version: "1.0.0"
+
+task_types:
+  - new_project
+  - feature
+  - bugfix
+  - refactor
+
+agents:
+  - id: pm
+    display_name: "Project Manager"
+    role: pm
+  - id: analyst
+    display_name: "Business Analyst"
+    role: analyst
+  - id: architect
+    display_name: "Software Architect"
+    role: architect
+  - id: developer
+    display_name: "Developer"
+    role: developer
+  - id: qa
+    display_name: "QA Engineer"
+    role: qa
+
+features:
+  - hitl_clarification
+  - hitl_escalation
+  - qa_loop
+  - git_commit
+
+parameters:
+  max_qa_iterations: 3
+  use_security_agent: false
+  deploy_after_commit: false
+  hitl_mode: "optional"       # "required" | "optional" | "none"
+```
+
+**Тестирование:**
+- Unit: проверить что YAML парсится корректно
+- Unit: проверить обязательные поля (name, display_name, description, task_types)
+
+**Критерии приёмки:**
+- [ ] `manifest.yaml` создан для dev_team
+- [ ] Содержит все поля из схемы (ARCHITECTURE_V2 §7.2)
+- [ ] YAML валиден и парсится
+
+**Сложность: 1/10 | 0.5 дня**
+
+---
+
+### 2.6 Модуль: Gateway (Auth + Proxy + Graph Endpoints)
+
+**Цель:** Создать FastAPI Gateway с JWT auth, прокси к Aegra, и собственными endpoints.
+
+Это **центральный модуль Волны 1** — от него зависят Frontend Auth, Graph Viz, Telegram.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `gateway/` (вся директория) | FastAPI приложение |
+| Создать | `gateway/main.py` | FastAPI app, маршрутизация |
+| Создать | `gateway/config.py` | Pydantic Settings |
+| Создать | `gateway/models.py` | Pydantic модели (User, Auth, Graph) |
+| Создать | `gateway/database.py` | Async PostgreSQL (asyncpg) — users table |
+| Создать | `gateway/auth.py` | JWT: register, login, refresh, get_current_user |
+| Создать | `gateway/proxy.py` | Прокси к Aegra (REST + SSE streaming) |
+| Создать | `gateway/endpoints/graph.py` | /graph/list, /graph/topology |
+| Создать | `gateway/endpoints/run.py` | /api/run (с auto-routing) |
+| Создать | `gateway/router.py` | Switch-Agent classify_task (заготовка) |
+| Создать | `gateway/Dockerfile` | Python 3.11 + pip install |
+| Создать | `gateway/requirements.txt` | fastapi, uvicorn, pyjwt, bcrypt, httpx, asyncpg |
+| Изменить | `docker-compose.yml` | Добавить gateway сервис, убрать порт aegra |
+| Изменить | `aegra.json` | Добавить gateway порт в CORS |
+| Изменить | `env.example` | Добавить JWT_SECRET, GATEWAY_URL |
+
+**Внешние зависимости:** PostgreSQL, Aegra
+
+**Подробная разбивка на этапы:**
+
+**Этап A: Скелет + Config (0.5 дня)**
+```python
+# gateway/config.py
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    aegra_url: str = "http://aegra:8000"
+    database_url: str = "postgresql://aicrew:password@postgres:5432/aicrew"
+    jwt_secret: str = "change-me-in-production"
+    jwt_access_ttl: int = 1800       # 30 мин
+    jwt_refresh_ttl: int = 604800    # 7 дней
+    jwt_algorithm: str = "HS256"
+    log_level: str = "INFO"
+    env_mode: str = "LOCAL"
+    llm_api_url: str = ""
+    llm_api_key: str = ""
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+```
+
+**Этап B: Database + Models (0.5 дня)**
+```python
+# gateway/database.py
+import asyncpg
+from gateway.config import settings
+
+pool: asyncpg.Pool | None = None
+
+async def init_db():
+    """Initialize database pool and create tables."""
+    global pool
+    pool = await asyncpg.create_pool(settings.database_url)
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                display_name VARCHAR(100) NOT NULL,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"
+        )
+
+async def close_db():
+    global pool
+    if pool:
+        await pool.close()
+```
+
+**Этап C: Auth (1 день)**
+```python
+# gateway/auth.py — ключевые функции
+async def register(data: UserCreate) -> AuthResponse
+async def login(data: UserLogin) -> AuthResponse
+async def refresh_token(refresh_token: str) -> TokenPair
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> User
+```
+
+**Этап D: Proxy (0.5 дня)**
+```python
+# gateway/proxy.py — два метода
+async def proxy_to_aegra(request: Request, user: User) -> Response
+async def proxy_stream_to_aegra(request: Request, user: User) -> StreamingResponse
+```
+
+**Этап E: Graph Endpoints (0.5 дня)**
+```python
+# gateway/endpoints/graph.py
+@router.get("/graph/list")
+async def list_graphs() -> GraphListResponse
+# Читает manifest.yaml из всех графов
+
+@router.get("/graph/topology/{graph_id}")
+async def graph_topology(graph_id: str) -> GraphTopologyResponse
+# Собирает: topology (to_json) + agents (agents.yaml) + prompts (yaml)
+```
+
+**Этап F: Docker + интеграция (0.5 дня)**
+- Dockerfile для gateway
+- Добавление в docker-compose.yml
+- Обновление CORS в aegra.json
+- Обновление env.example
+
+**Тестирование:**
+
+```
+tests/test_gateway/
+├── test_auth.py               # register, login, refresh, invalid creds
+├── test_proxy.py              # proxy to aegra (mock Aegra)
+├── test_graph_endpoints.py    # /graph/list, /graph/topology
+└── conftest.py                # fixtures: test client, test db
+```
+
+Подробнее:
+- **test_auth.py:** register → login → получить me → refresh → invalid token → duplicate email
+- **test_proxy.py:** mock Aegra httpx, проверить что headers/body проксируются, auth проверяется
+- **test_graph_endpoints.py:** mock manifest.yaml + agents.yaml, проверить формат ответа
+
+**Критерии приёмки:**
+- [ ] `POST /auth/register` создаёт пользователя, возвращает JWT
+- [ ] `POST /auth/login` возвращает JWT
+- [ ] `GET /auth/me` возвращает текущего пользователя
+- [ ] `POST /auth/refresh` обновляет токены
+- [ ] Все `/threads/*`, `/runs/*`, `/assistants/*` проксируются к Aegra с проверкой JWT
+- [ ] `POST /threads/{id}/runs/stream` проксирует SSE stream
+- [ ] `POST /api/run` создаёт thread+run (с auto-routing заготовкой)
+- [ ] `GET /graph/list` возвращает список графов из manifest.yaml
+- [ ] `GET /graph/topology/{graph_id}` возвращает topology + agents + prompts
+- [ ] `GET /graph/config/{graph_id}` возвращает конфигурацию агентов
+- [ ] `GET /health` работает без auth
+- [ ] Aegra НЕ доступна снаружи (только expose, не ports)
+- [ ] Тесты покрывают auth flow, proxy, graph endpoints, /api/run
+
+**Сложность: 4/10 | 3-4 дня**
+
+---
+
+### 2.7 Модуль: Frontend Auth
+
+**Цель:** Добавить аутентификацию: Login, Register, protected routes, JWT в API-клиенте.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `frontend/src/pages/Login.tsx` | Страница входа |
+| Создать | `frontend/src/pages/Register.tsx` | Страница регистрации |
+| Создать | `frontend/src/store/authStore.ts` | Zustand store для auth state |
+| Создать | `frontend/src/hooks/useAuth.ts` | Hook для auth операций |
+| Изменить | `frontend/src/api/aegra.ts` | JWT в headers, обновить baseURL на gateway |
+| Изменить | `frontend/src/App.tsx` | Protected routes, redirect на /login |
+| Изменить | `frontend/src/components/Layout.tsx` | Navbar: user info, logout button |
+
+**Зависимости:** Модуль 2.6 (Gateway)
+
+**Реализация:**
+
+```typescript
+// store/authStore.ts
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+interface AuthState {
+  user: User | null
+  accessToken: string | null
+  refreshToken: string | null
+  isAuthenticated: boolean
+  setAuth: (user: User, accessToken: string, refreshToken: string) => void
+  logout: () => void
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      accessToken: null,
+      refreshToken: null,
+      isAuthenticated: false,
+      setAuth: (user, accessToken, refreshToken) =>
+        set({ user, accessToken, refreshToken, isAuthenticated: true }),
+      logout: () =>
+        set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
+    }),
+    { name: 'ai-crew-auth' }
+  )
+)
+```
+
+```typescript
+// api/aegra.ts — обновления
+class AegraClient {
+  private getHeaders(): Record<string, string> {
+    const token = useAuthStore.getState().accessToken
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+  }
+
+  // Все методы используют getHeaders()
+  // baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+}
+```
+
+```typescript
+// App.tsx — protected routes
+function App() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
+  return (
+    <BrowserRouter>
+      <Layout>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/" element={isAuthenticated ? <Home /> : <Navigate to="/login" />} />
+          <Route path="/task/:threadId" element={isAuthenticated ? <TaskDetail /> : <Navigate to="/login" />} />
+        </Routes>
+      </Layout>
+    </BrowserRouter>
+  )
+}
+```
+
+**Тестирование:**
+- Manual: register → login → protected route → logout → redirect
+- Проверить что API-запросы несут JWT header
+- Проверить что refresh работает при истечении access token
+
+**Критерии приёмки:**
+- [ ] Login/Register страницы с формами
+- [ ] JWT хранится в zustand + localStorage (persist)
+- [ ] Все API-запросы несут `Authorization: Bearer <token>`
+- [ ] Protected routes: без токена → redirect на /login
+- [ ] Logout: очистка state + redirect
+- [ ] Navbar показывает имя пользователя и кнопку Logout
+- [ ] `VITE_API_URL` указывает на Gateway (не на Aegra напрямую)
+
+**Сложность: 3/10 | 1-2 дня**
+
+---
+
+### 2.8 Модуль: Frontend Graph Visualization
+
+**Цель:** Визуализация графа через React Flow: узлы, связи, модели, промпты, статус.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `frontend/src/components/GraphVisualization.tsx` | React Flow компонент |
+| Изменить | `frontend/src/pages/TaskDetail.tsx` | Вкладка/панель с графом |
+| Изменить | `frontend/package.json` | `@xyflow/react`, `dagre` |
+
+**Зависимости:** Модуль 2.6 (Gateway — `/graph/topology` endpoint)
+
+**npm зависимости:**
+```bash
+npm install @xyflow/react dagre @types/dagre
+```
+
+**Реализация:**
+
+```typescript
+// components/GraphVisualization.tsx — структура
+import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react'
+import dagre from 'dagre'
+
+interface Props {
+  graphId: string
+  currentAgent?: string   // Для подсветки активного узла
+}
+
+export function GraphVisualization({ graphId, currentAgent }: Props) {
+  // 1. Fetch topology: GET /graph/topology/{graphId}
+  // 2. Convert topology → React Flow nodes + edges
+  // 3. Auto-layout via dagre
+  // 4. Custom nodes: AgentNode (показывает model, status badge)
+  // 5. Custom edges: ConditionalEdge (пунктир + label)
+  // 6. По клику на узел: sidebar с system prompt + params
+}
+
+// Custom node: показывает
+// - Название агента (display_name)
+// - Модель (badge: "glm-4.7")
+// - Fallback model (мелким шрифтом)
+// - Статус (цвет бордера): active=cyan, completed=lime, pending=slate
+function AgentNode({ data }: { data: AgentNodeData }) { ... }
+```
+
+**Маппинг topology → React Flow:**
+```typescript
+function topologyToReactFlow(
+  topology: GraphTopology,
+  currentAgent: string
+): { nodes: Node[], edges: Edge[] } {
+  const nodes = topology.topology.nodes
+    .filter(n => n.id !== '__start__' && n.id !== '__end__')
+    .map(n => ({
+      id: n.id,
+      type: 'agentNode',
+      data: {
+        label: topology.manifest?.agents?.find(a => a.id === n.id)?.display_name || n.id,
+        model: topology.agents[n.id]?.model,
+        fallbackModel: topology.agents[n.id]?.fallback_model,
+        status: getNodeStatus(n.id, currentAgent),
+        systemPrompt: topology.prompts[n.id]?.system,
+        templates: topology.prompts[n.id]?.templates,
+      },
+      position: { x: 0, y: 0 },  // dagre расставит
+    }))
+
+  const edges = topology.topology.edges.map(e => ({
+    id: `${e.source}-${e.target}`,
+    source: e.source,
+    target: e.target,
+    animated: e.source === currentAgent,
+    style: e.conditional ? { strokeDasharray: '5,5' } : {},
+    label: e.data || '',
+  }))
+
+  return layoutWithDagre(nodes, edges)
+}
+```
+
+**Тестирование:**
+- Manual: открыть TaskDetail, проверить что граф отрисовывается
+- Проверить что активный узел подсвечен
+- Проверить клик на узел → sidebar с промптом и параметрами
+
+**Критерии приёмки:**
+- [ ] React Flow отрисовывает граф dev_team
+- [ ] Узлы показывают: название, модель (badge), статус (цвет)
+- [ ] Связи: обычные (сплошные) и conditional (пунктир + label)
+- [ ] Auto-layout через dagre (сверху вниз)
+- [ ] По клику: system prompt + параметры (модель, температура, fallback)
+- [ ] Активный узел анимирован (pulsing border)
+- [ ] Zoom, pan, minimap
+
+**Сложность: 3/10 | 2-3 дня**
+
+---
+
+### 2.9 Модуль: Frontend Streaming
+
+**Цель:** Заменить polling на SSE streaming для real-time обновлений.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `frontend/src/hooks/useStreamingTask.ts` | SSE streaming hook |
+| Изменить | `frontend/src/pages/TaskDetail.tsx` | Переключить на streaming |
+| Изменить | `frontend/src/components/Chat.tsx` | Real-time сообщения |
+| Изменить | `frontend/src/components/ProgressTracker.tsx` | Мгновенные обновления |
+
+**Зависимости:** Модуль 2.6 (Gateway — SSE proxy)
+
+**Реализация:**
+
+```typescript
+// hooks/useStreamingTask.ts
+export function useStreamingTask(threadId: string) {
+  const [state, setState] = useState<DevTeamState | null>(null)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  const startStream = useCallback(async (input: CreateTaskInput) => {
+    setIsStreaming(true)
+    setError(null)
+
+    try {
+      // 1. Создать run
+      const run = await aegraClient.createRun(threadId, input)
+
+      // 2. Подключиться к SSE stream
+      const response = await fetch(
+        `${API_URL}/threads/${threadId}/runs/stream`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({ assistant_id: input.graph_id || 'dev_team' }),
+        }
+      )
+
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6))
+            // Обновляем state
+            if (data.values) {
+              setState(prev => ({ ...prev, ...data.values }))
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setError(err as Error)
+    } finally {
+      setIsStreaming(false)
+    }
+  }, [threadId])
+
+  return { state, isStreaming, error, startStream }
+}
+```
+
+**Обратная совместимость:** `useTask` (polling) остаётся как fallback.
+`useStreamingTask` используется на TaskDetail, когда run активен.
+
+**Тестирование:**
+- Manual: создать задачу, наблюдать real-time обновления в UI
+- Проверить что ProgressTracker обновляется мгновенно (не каждые 2 сек)
+- Проверить что Chat показывает сообщения по мере их появления
+
+**Критерии приёмки:**
+- [ ] SSE stream работает через Gateway proxy
+- [ ] State обновляется в реальном времени
+- [ ] ProgressTracker: мгновенная смена активного агента
+- [ ] Chat: сообщения появляются по мере генерации
+- [ ] Fallback на polling если SSE недоступен
+- [ ] Корректная обработка разрыва соединения
+
+**Сложность: 3/10 | 1-2 дня**
+
+---
+
+### 2.10 Модуль: Web Tools
+
+**Цель:** Дать агентам доступ в интернет: поиск, скачивание страниц, загрузка файлов.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `graphs/dev_team/tools/web.py` | web_search, fetch_url, download_file |
+| Изменить | `requirements.txt` | `duckduckgo-search>=6.0.0`, `trafilatura>=1.8.0` |
+| Изменить | Агенты (по необходимости) | Подключить tools через bind_tools |
+
+**Внешние зависимости:** Нет (интернет-доступ)
+
+**Реализация:**
+
+```python
+# tools/web.py
+from langchain_core.tools import tool
+from duckduckgo_search import DDGS
+import httpx
+import trafilatura
+
+@tool
+def web_search(query: str, max_results: int = 5) -> str:
+    """Search the web using DuckDuckGo. Returns titles, URLs, and snippets."""
+    with DDGS() as ddgs:
+        results = list(ddgs.text(query, max_results=max_results))
+    return "\n\n".join(
+        f"**{r['title']}**\n{r['href']}\n{r['body']}"
+        for r in results
+    )
+
+@tool
+def fetch_url(url: str) -> str:
+    """Fetch a web page and extract its main text content."""
+    response = httpx.get(url, timeout=30, follow_redirects=True)
+    response.raise_for_status()
+    text = trafilatura.extract(response.text) or response.text[:5000]
+    return text[:10000]  # Ограничение чтобы не забить контекст
+
+@tool
+def download_file(url: str, filename: str | None = None) -> str:
+    """Download a file from URL. Returns the content as string (for text files)."""
+    response = httpx.get(url, timeout=60, follow_redirects=True)
+    response.raise_for_status()
+    if len(response.content) > 1_000_000:  # 1MB limit
+        return f"File too large: {len(response.content)} bytes"
+    return response.text[:10000]
+```
+
+**Подключение к агентам (НЕ сейчас — когда агенты будут использовать tools):**
+```python
+# Пример будущего использования в analyst.py:
+from dev_team.tools.web import web_search, fetch_url
+llm_with_tools = llm.bind_tools([web_search, fetch_url])
+```
+
+**Тестирование:**
+- Unit: `web_search` — mock DDGS, проверить формат вывода
+- Unit: `fetch_url` — mock httpx, проверить trafilatura extraction
+- Unit: ограничения (max size, timeout)
+- Integration (manual): реальный поиск + fetch
+
+**Критерии приёмки:**
+- [ ] `web_search` возвращает результаты DuckDuckGo
+- [ ] `fetch_url` извлекает текст из HTML
+- [ ] `download_file` скачивает и возвращает текст
+- [ ] Ограничения: timeout, max size, max chars
+- [ ] Tools совместимы с LangChain `@tool` (можно bind_tools)
+
+**Сложность: 3/10 | 1-2 дня**
+
+---
+
+### 2.11 Модуль: Telegram Bot
+
+**Цель:** Альтернативный интерфейс через Telegram: создание задач, HITL, статус.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `telegram/bot.py` | Aiogram bot setup + polling |
+| Создать | `telegram/handlers.py` | Обработчики: /start, /task, /status, /help |
+| Создать | `telegram/gateway_client.py` | HTTP-клиент к Gateway API |
+| Создать | `telegram/Dockerfile` | Python 3.11 + aiogram |
+| Создать | `telegram/requirements.txt` | aiogram, httpx |
+| Изменить | `docker-compose.yml` | Добавить telegram сервис |
+| Изменить | `env.example` | TELEGRAM_BOT_TOKEN |
+
+**Зависимости:** Модуль 2.6 (Gateway)
+
+**Реализация:**
+
+```python
+# telegram/gateway_client.py
+class GatewayClient:
+    """HTTP client for Gateway API."""
+
+    def __init__(self, gateway_url: str, token: str | None = None):
+        self.gateway_url = gateway_url
+        self.token = token
+        self.client = httpx.AsyncClient(timeout=300)
+
+    async def login(self, email: str, password: str) -> str:
+        """Login and get JWT token."""
+        resp = await self.client.post(
+            f"{self.gateway_url}/auth/login",
+            json={"email": email, "password": password},
+        )
+        resp.raise_for_status()
+        self.token = resp.json()["access_token"]
+        return self.token
+
+    async def create_run(self, task: str, **kwargs) -> dict:
+        """Create a new task run."""
+        resp = await self.client.post(
+            f"{self.gateway_url}/api/run",
+            json={"task": task, **kwargs},
+            headers={"Authorization": f"Bearer {self.token}"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_thread_state(self, thread_id: str) -> dict:
+        """Get current thread state."""
+        resp = await self.client.get(
+            f"{self.gateway_url}/threads/{thread_id}/state",
+            headers={"Authorization": f"Bearer {self.token}"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def send_clarification(self, thread_id: str, response: str) -> dict:
+        """Send HITL clarification response."""
+        resp = await self.client.post(
+            f"{self.gateway_url}/threads/{thread_id}/state",
+            json={
+                "values": {
+                    "clarification_response": response,
+                    "needs_clarification": False,
+                },
+                "command": {"update": True},
+            },
+            headers={"Authorization": f"Bearer {self.token}"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+```
+
+```python
+# telegram/handlers.py — ключевые команды
+/start          → Приветствие + привязка к аккаунту (или сервисный)
+/task <текст>   → Создание задачи (POST /api/run)
+/status <id>    → Статус задачи (GET /threads/{id}/state)
+/help           → Список команд
+
+# HITL:
+# Когда needs_clarification=true — бот отправляет вопрос
+# Пользователь отвечает текстом → бот вызывает send_clarification
+
+# Notifications:
+# Polling thread state каждые 10 сек для активных задач
+# При смене current_agent → уведомление
+# При завершении → финальное сообщение с PR URL
+```
+
+**Тестирование:**
+- Unit: `GatewayClient` — mock httpx
+- Unit: handlers — mock GatewayClient
+- Manual: реальный бот в Telegram
+
+**Критерии приёмки:**
+- [ ] `/task` создаёт задачу и возвращает thread_id
+- [ ] `/status` показывает текущее состояние задачи
+- [ ] HITL: бот отправляет вопрос, принимает ответ
+- [ ] Уведомления о завершении (PR URL)
+- [ ] Работает через Docker (polling, не webhook)
+- [ ] Graceful shutdown при SIGTERM
+
+**Сложность: 4/10 | 3-5 дней**
+
+---
+
+### 2.12 Модуль: State расширение (task_type, task_complexity)
+
+**Цель:** Добавить поля для классификации задач.
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Изменить | `graphs/dev_team/state.py` | Добавить `task_type`, `task_complexity` |
+
+**Зависимости:** Нет
+
+**Реализация:**
+```python
+# Добавить в DevTeamState:
+task_type: NotRequired[str]           # "new_project", "bugfix", "feature", "refactor"
+task_complexity: NotRequired[int]     # 1-10 (от router)
+```
+
+**Тестирование:**
+- Unit: `create_initial_state` — проверить что новые поля опциональны
+- Существующие тесты — убедиться что не ломаются
+
+**Критерии приёмки:**
+- [ ] Новые поля NotRequired
+- [ ] Обратная совместимость
+- [ ] Тесты проходят
+
+**Сложность: 1/10 | 0.5 дня**
+
+---
+
+## 3. Волна 2: Помодульная разбивка {#3-волна-2}
+
+> Модули Волны 2 описаны менее детально — конкретизация при приближении к реализации.
+
+---
+
+### 3.1 Модуль: Git-based Workflow
+
+**Цель:** Работа с кодом через GitHub ветки вместо `code_files` в state.
+
+**Файлы:**
+- Создать: `graphs/dev_team/tools/git_workspace.py`
+- Изменить: `graphs/dev_team/state.py` — `working_branch`, `working_repo`, `file_manifest`
+- Изменить: все агенты — адаптация к git-based
+- Изменить: `graphs/dev_team/graph.py` — обновить git_commit_node
+
+**Ключевые tools:**
+```python
+@tool
+def create_working_branch(repo: str, base_branch: str = "main") -> str:
+    """Create a new working branch for the task."""
+
+@tool
+def read_file_from_branch(repo: str, branch: str, path: str) -> str:
+    """Read a file from a specific branch."""
+
+@tool
+def write_file_to_branch(repo: str, branch: str, path: str, content: str, message: str) -> str:
+    """Write/update a file on a branch (commit)."""
+
+@tool
+def list_files_on_branch(repo: str, branch: str, path: str = "") -> list[str]:
+    """List files in a directory on a branch."""
+
+@tool
+def create_pull_request(repo: str, branch: str, title: str, body: str) -> str:
+    """Create a PR from the working branch."""
+```
+
+**Логика:**
+- Задача с repo → PM создаёт working_branch → все работают через git tools
+- Задача без repo → code_files в state (как сейчас)
+
+**Зависимости:** Нет (может реализовываться параллельно)
+
+**Тестирование:**
+- Unit: все tools с mock PyGithub
+- Integration: реальный GitHub (test repo)
+
+**Сложность: 5/10 | 3-5 дней**
+
+---
+
+### 3.2 Модуль: Switch-Agent (Router)
+
+**Цель:** Автоматическая маршрутизация задач по графам через LLM.
+
+**Файлы:**
+- Изменить: `gateway/router.py` — `classify_task()` (сейчас заготовка → реализация)
+- Изменить: `gateway/endpoints/run.py` — использовать router
+- Изменить: `frontend/src/components/TaskForm.tsx` — выбор графа / авто
+
+**Ключевая логика:**
+```python
+async def classify_task(task: str, available_graphs: list[dict]) -> TaskClassification:
+    llm = get_llm_with_fallback(role="router", temperature=0.1)
+    structured_llm = llm.with_structured_output(TaskClassification)
+    # ... prompt с описаниями графов ...
+    return await structured_llm.ainvoke(prompt)
+```
+
+**Зависимости:** Модуль 2.6 (Gateway), Модуль 2.5 (manifest.yaml), второй граф (для тестирования)
+
+**Тестирование:**
+- Unit: classify_task с mock LLM
+- Integration: реальный LLM → проверить что выбирает правильный граф
+
+**Сложность: 4/10 | 2-3 дня**
+
+---
+
+### 3.3 Модуль: Code Execution Sandbox
+
+**Цель:** Безопасное выполнение сгенерированного кода (тесты, lint).
+
+**Файлы:**
+- Создать: `sandbox/server.py` — FastAPI сервер
+- Создать: `sandbox/Dockerfile` — Docker-in-Docker
+- Создать: `graphs/dev_team/tools/sandbox.py` — клиент
+- Изменить: `graphs/dev_team/graph.py` — `sandbox_check` node
+- Изменить: `docker-compose.yml` — сервис sandbox
+
+**API Sandbox:**
+```
+POST /execute
+  Body: { language, code_files, commands, timeout, memory_limit }
+  Response: { stdout, stderr, exit_code, duration }
+```
+
+**Зависимости:** Нет (самостоятельный модуль)
+
+**Тестирование:**
+- Unit: sandbox client с mock
+- Integration: реальный Docker — запуск Python-скрипта
+
+**Сложность: 6/10 | 3-5 дней**
+
+---
+
+### 3.4 Модуль: Security Agent
+
+**Цель:** Статический анализ безопасности + runtime-проверки.
+
+**Файлы:**
+- Создать: `graphs/dev_team/agents/security.py`
+- Создать: `graphs/dev_team/prompts/security.yaml`
+- Изменить: `graphs/dev_team/graph.py` — node + conditional edge
+
+**Два режима:**
+- `security_static_review` — после Developer: SAST, secrets, deps
+- `security_runtime_check` — после Deploy: HTTPS, headers, image scan
+
+**Зависимости:** Модуль 3.3 (Sandbox — для запуска SAST-инструментов)
+
+**Тестирование:**
+- Unit: security agent с mock LLM
+- Integration: реальный код с известными уязвимостями
+
+**Сложность: 4/10 | 2-3 дня**
+
+---
+
+### 3.5 Модуль: DevOps Agent
+
+**Цель:** Генерация инфраструктурных файлов, CI/CD, деплой.
+
+**Файлы:**
+- Создать: `graphs/dev_team/agents/devops.py`
+- Создать: `graphs/dev_team/prompts/devops.yaml`
+- Создать: `graphs/dev_team/tools/github_actions.py`
+- Создать: `config/linters/` — конфигурации линтеров по стекам
+- Изменить: `graphs/dev_team/graph.py` — devops_agent node
+- Изменить: `graphs/dev_team/state.py` — `deploy_url`, `infra_files`
+
+**Что генерирует:**
+1. Dockerfile
+2. docker-compose.yml (для деплоя)
+3. `.github/workflows/deploy.yml`
+4. Traefik labels для nip.io
+5. `.pre-commit-config.yaml`
+6. Branch protection rules (через GitHub API)
+
+**Secrets workflow:**
+- AUTO (APP_NAME, DOMAIN) → прописывает в конфиг деплоя
+- Серверные секреты (VPS_SSH_KEY, DATABASE_URL) → предполагаются уже настроенными на VPS (.env)
+- По умолчанию **без DevOps HITL** — секреты готовы на VPS деплоя
+- Если чего-то не хватает — уведомление пользователю (не блокировка)
+
+**Prefect integration (опционально):**
+- Регистрирует deployment flow в Prefect Server на VPS деплоя
+- Через Prefect API (REST)
+
+**Зависимости:** Модуль 3.1 (Git-based), Модуль 3.3 (Sandbox — для проверки Dockerfile)
+
+**Тестирование:**
+- Unit: генерация Dockerfile для разных стеков
+- Unit: генерация CI/CD pipeline
+- Integration: реальный GitHub repo + Actions
+
+**Сложность: 7/10 | 5-10 дней**
+
+---
+
+### 3.6 Модуль: CLI Agents
+
+**Цель:** Интеграция мощных CLI-агентов (Claude Code, Codex) как узлов графа.
+
+**Файлы:**
+- Создать: `graphs/dev_team/agents/cli_agent.py` — node function
+- Создать: `graphs/dev_team/tools/cli_runner.py` — клиент к CLI Runner API
+- Создать: `cli_runner/` (для VPS) — server.py, Dockerfile
+- Изменить: `graphs/dev_team/graph.py` — node + conditional edge (route_to_executor)
+
+**CLI Runner Server (на отдельной VPS):**
+- API: см. ARCHITECTURE_V2 §5
+- Claude Code: `claude -p "<instructions>" --output-format stream-json`
+- Codex: `codex --approval-mode full-auto "<instructions>"`
+- Workspace: `/workspace/{job_id}/` — изолированные директории
+- Конкурентность: max 2 задачи
+
+**Роутинг: internal vs CLI:**
+```python
+def route_to_executor(state: DevTeamState) -> str:
+    mode = state.get("execution_mode", "auto")
+    if mode == "cli":     return "cli_agent"
+    if mode == "internal": return "developer"
+    # Auto: CLI для сложных задач с существующим репо
+    complexity = state.get("task_complexity", 5)
+    has_repo = bool(state.get("working_repo"))
+    if complexity >= 7 and has_repo:
+        return "cli_agent"
+    return "developer"
+```
+
+**Зависимости:** Модуль 3.1 (Git-based), отдельная VPS с установленными CLI tools
+
+**Тестирование:**
+- Unit: cli_runner.py client с mock
+- Unit: route_to_executor — разные state
+- Integration: реальный CLI Runner (на VPS) с тестовым repo
+
+**Сложность: 6/10 | 3-7 дней**
+
+---
+
+## 4. Стратегия тестирования {#4-тестирование}
+
+### 4.1 Уровни тестирования
+
+```
+┌─────────────────────────────────────────────┐
+│  E2E Tests (manual + будущие Playwright)     │
+│  Весь путь: Frontend → Gateway → Aegra →    │
+│  Agents → Git → результат                    │
+│  Количество: 3-5 сценариев                   │
+├─────────────────────────────────────────────┤
+│  Integration Tests                           │
+│  Gateway + Aegra, Gateway + DB,              │
+│  Agents + real LLM (smoke tests)             │
+│  Количество: 10-15 тестов                    │
+├─────────────────────────────────────────────┤
+│  Unit Tests                                  │
+│  Routing logic, auth, proxy, models,         │
+│  agent helpers, tools                        │
+│  Количество: 30-50 тестов                    │
+└─────────────────────────────────────────────┘
+```
+
+### 4.2 Что тестируем по модулям
+
+| Модуль | Unit | Integration | E2E |
+|--------|------|-------------|-----|
+| structlog | configure_logging() | — | Проверка формата логов |
+| agents.yaml | load_agent_config, get_model_for_role | — | — |
+| Retry + Fallback | invoke_with_retry, get_llm_with_fallback | LLM smoke test | — |
+| Langfuse fix | _get_callbacks, _invoke_chain | Langfuse traces visible | — |
+| Gateway auth | register, login, refresh, JWT validation | DB operations | Login → task flow |
+| Gateway proxy | proxy_to_aegra (mock) | Gateway → Aegra | — |
+| Graph endpoints | /graph/list, /topology (mock) | Real manifest parsing | — |
+| Frontend auth | — | — | Register → Login → Task |
+| Graph viz | — | — | Visual check |
+| Streaming | — | Gateway SSE proxy | Stream run → UI updates |
+| Web tools | web_search, fetch_url (mock) | Real DuckDuckGo | — |
+| Telegram | handlers (mock) | Bot → Gateway | Real Telegram test |
+| Git-based | git tools (mock PyGithub) | Real GitHub API | — |
+| Sandbox | — | Real Docker execution | — |
+| CLI agents | cli_runner client (mock) | Real CLI Runner | — |
+
+### 4.3 Моки и фикстуры
+
+**Что мокаем (всегда):**
+- LLM API вызовы (в unit-тестах)
+- GitHub API (в unit-тестах)
+- External HTTP (DuckDuckGo, etc.)
+
+**Что НЕ мокаем (в integration):**
+- PostgreSQL (используем test DB)
+- Gateway → Aegra (поднимаем оба)
+- Langfuse (опционально, если нужны traces)
+
+**Новые фикстуры для Gateway:**
+
+```python
+# tests/test_gateway/conftest.py
+import pytest
+from httpx import AsyncClient, ASGITransport
+from gateway.main import app
+from gateway.database import init_db, close_db
+
+@pytest.fixture
+async def gateway_client():
+    """Async test client for Gateway."""
+    await init_db()  # Test DB
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    await close_db()
+
+@pytest.fixture
+async def auth_headers(gateway_client):
+    """Create test user and return auth headers."""
+    await gateway_client.post("/auth/register", json={
+        "email": "test@test.com",
+        "password": "testpassword123",
+        "display_name": "Test User",
+    })
+    resp = await gateway_client.post("/auth/login", json={
+        "email": "test@test.com",
+        "password": "testpassword123",
+    })
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+```
+
+### 4.4 Тестовая конфигурация
+
+```python
+# pytest.ini (обновлённый)
+[pytest]
+testpaths = tests
+asyncio_mode = auto
+markers =
+    slow: marks tests as slow
+    integration: marks integration tests
+    e2e: marks end-to-end tests
+```
+
+```bash
+# Команды
+pytest tests/ -v                              # Все тесты
+pytest tests/ -v -m "not slow"                # Быстрые
+pytest tests/ -v -m "not integration"         # Только unit
+pytest tests/test_gateway/ -v                 # Только Gateway
+pytest tests/ -v --cov=graphs --cov=gateway   # С coverage
+```
+
+---
+
+## 5. CI/CD для AI-crew {#5-cicd}
+
+### 5.1 GitHub Actions Workflow
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install ruff mypy
+      - run: ruff check graphs/ gateway/
+      - run: mypy graphs/ gateway/ --ignore-missing-imports
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_aicrew
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt
+      - run: pip install -r gateway/requirements.txt
+      - run: pytest tests/ -v -m "not slow and not e2e"
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_aicrew
+          LLM_API_URL: http://mock
+          LLM_API_KEY: test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+```
+
+---
+
+## 6. Чеклист готовности {#6-чеклист}
+
+### Волна 1 — Definition of Done
+
+#### Фундамент
+- [ ] structlog: все модули переведены, LOCAL/PRODUCTION форматы
+- [ ] agents.yaml: создан, загружается, env overrides работают
+- [ ] Retry: exponential backoff, 3 попытки, логирование
+- [ ] Fallback: fallback chain из agents.yaml
+- [ ] Langfuse: callbacks пробрасываются, Generations видны
+- [ ] manifest.yaml: создан для dev_team
+- [ ] State: task_type, task_complexity добавлены
+
+#### Gateway
+- [ ] Auth: register, login, refresh, JWT validation
+- [ ] Proxy: REST + SSE streaming к Aegra
+- [ ] Graph endpoints: /graph/list, /graph/topology
+- [ ] Health: /health без auth
+- [ ] Docker: сервис в docker-compose, Aegra закрыт
+- [ ] Тесты: auth flow, proxy, graph endpoints
+
+#### Frontend
+- [ ] Login/Register страницы
+- [ ] JWT в API-клиенте, protected routes
+- [ ] Graph Visualization (React Flow): узлы, связи, модели, промпты
+- [ ] SSE Streaming: real-time обновления state и chat
+- [ ] Выбор графа в TaskForm (подготовка)
+
+#### Tools & Interfaces
+- [ ] Web tools: search, fetch, download (как LangChain @tool)
+- [ ] Telegram: /task, /status, HITL, уведомления
+
+#### Инфраструктура
+- [ ] docker-compose.yml обновлён (gateway, telegram, порты)
+- [ ] env.example обновлён
+- [ ] CORS настроен через gateway
+- [ ] Все существующие тесты проходят
+
+### Волна 2 — Definition of Done
+
+- [ ] Git-based: working branches, git tools, git_commit_node обновлён
+- [ ] Switch-Agent: classify_task работает, фронт поддерживает выбор
+- [ ] Sandbox: code execution, lint, tests
+- [ ] Security Agent: static + runtime review
+- [ ] DevOps Agent: Dockerfile, CI/CD, secrets, branch protection
+- [ ] CLI Agents: CLI Runner API, node в графе, route_to_executor
+- [ ] Prefect: deployment на VPS деплоя (рядом)
+- [ ] Integration testing: все модули вместе
+- [ ] E2E: полный цикл от задачи до PR (и деплоя)
+
+---
+
+## 7. Риски и митигации {#7-риски}
+
+| # | Риск | Вероятность | Влияние | Митигация |
+|---|------|-------------|---------|-----------|
+| 1 | **Aegra несовместимость** при SSE proxy | Средняя | Высокое | Тестировать proxy рано. При проблемах — модифицировать Aegra (мораторий снят) |
+| 2 | **LLM rate limits** при retry | Высокая | Среднее | Exponential backoff + fallback chain. Мониторинг через Langfuse |
+| 3 | **Сложность Gateway proxy** для всех Aegra API | Средняя | Среднее | Начать с минимума (threads, runs, stream). Остальное — по мере надобности |
+| 4 | **Docker-in-Docker безопасность** | Средняя | Высокое | Privileged mode на старте. Sysbox или gVisor — если проблема. Timeout + resource limits |
+| 5 | **CLI Runner доступность** (отдельная VPS) | Низкая | Среднее | Health check, auto-restart. Fallback на internal agents |
+| 6 | **Стоимость LLM** при CLI-агентах | Высокая | Среднее | Мониторинг через Langfuse. Лимиты per-task. Дешёвые модели для простых задач |
+| 7 | **Frontend усложнение** (auth + streaming + graph viz) | Средняя | Среднее | Поэтапное добавление. Feature flags. Fallback на polling |
+| 8 | **Langfuse performance** при большом количестве traces | Низкая | Низкое | Отдельная БД для Langfuse если нужно. Retention policy |
+| 9 | **Prefect Server на deploy VPS** — доп. нагрузка | Низкая | Низкое | SQLite backend (не PostgreSQL). Минимальные ресурсы |
+
+---
+
+## 8. Глоссарий зависимостей между модулями {#8-зависимости}
+
+```
+Модуль                  │ Зависит от            │ Блокирует
+────────────────────────┼───────────────────────┼─────────────────────
+2.1  structlog          │ —                     │ ничего (но лучше первым)
+2.2  agents.yaml        │ —                     │ 2.3 (fallback config)
+2.3  retry+fallback     │ 2.2 (fallback_model)  │ 2.4 (invoke_with_retry)
+2.4  langfuse fix       │ 2.3 (retry)           │ ничего
+2.5  manifest.yaml      │ —                     │ 2.6 (graph endpoints)
+2.6  Gateway            │ 2.5 (manifest)        │ 2.7, 2.8, 2.9, 2.11
+2.7  Frontend auth      │ 2.6 (auth API)        │ ничего
+2.8  Graph viz          │ 2.6 (topology API)    │ ничего
+2.9  Streaming          │ 2.6 (SSE proxy)       │ ничего
+2.10 Web tools          │ —                     │ ничего
+2.11 Telegram           │ 2.6 (Gateway API)     │ ничего
+2.12 State расширение   │ —                     │ ничего
+────────────────────────┼───────────────────────┼─────────────────────
+3.1  Git-based          │ —                     │ 3.5, 3.6
+3.2  Switch-Agent       │ 2.6, 2.5             │ ничего
+3.3  Sandbox            │ —                     │ 3.4, 3.5 (опционально)
+3.4  Security Agent     │ 3.3 (опционально)    │ ничего
+3.5  DevOps Agent       │ 3.1                   │ ничего
+3.6  CLI Agents         │ 3.1, VPS             │ ничего
+```
+
+### Рекомендуемый порядок реализации Волны 1
+
+```
+Параллельный поток A (backend):
+  2.1 structlog → 2.2 agents.yaml → 2.3 retry → 2.4 langfuse fix
+
+Параллельный поток B (infrastructure):
+  2.5 manifest.yaml → 2.6 Gateway (этапы A-F)
+
+Параллельный поток C (после Gateway готов):
+  2.7 Frontend auth ─┐
+  2.8 Graph viz ─────┤ (параллельно)
+  2.9 Streaming ─────┤
+  2.11 Telegram ─────┘
+
+Независимые:
+  2.10 Web tools (в любой момент)
+  2.12 State расширение (в любой момент)
+```
+
+### Рекомендуемый порядок реализации Волны 2
+
+```
+3.1 Git-based ─────────→ 3.5 DevOps Agent
+                    ├──→ 3.6 CLI Agents
+3.3 Sandbox ───────────→ 3.4 Security Agent
+3.2 Switch-Agent (независимо, когда второй граф готов)
+```
