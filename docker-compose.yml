@@ -138,6 +138,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - default    # aicrew-network — для postgres
+      - dokploy    # dokploy-network — для Traefik
 
 
   # ===========================================
@@ -159,6 +162,9 @@ services:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8081}
     depends_on:
       - gateway
+    networks:
+      - default    # aicrew-network — для postgres
+      - dokploy    # dokploy-network — для Traefik
 
   # ===========================================
   # Telegram Bot
