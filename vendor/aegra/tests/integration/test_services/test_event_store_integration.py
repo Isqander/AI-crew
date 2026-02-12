@@ -45,7 +45,7 @@ def database_available():
             host, port = host_port.split(":")
         else:
             host = host_port
-            port = "5432"
+            port = "5433"
 
         # Test connection with psycopg3
         with (
@@ -94,7 +94,7 @@ def clean_event_store_tables(database_available):
         host, port = host_port.split(":")
     else:
         host = host_port
-        port = "5432"
+        port = "5433"
 
     # Clean up before test
     with psycopg.connect(

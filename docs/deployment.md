@@ -22,7 +22,7 @@
 │  ├── nginx    (frontend)     → :5173        │
 │  └── langfuse (node, опц.)   → :3000        │
 │                                             │
-│  postgresql (embedded)       → :5432 (lo)   │
+│  postgresql (embedded)       → :5433 (lo)   │
 └─────────────────────────────────────────────┘
 ```
 
@@ -105,7 +105,7 @@ LANGFUSE_HOST=http://localhost:3000   # или внешний URL
 
 ```bash
 POSTGRES_HOST=your-db-host
-POSTGRES_PORT=5432
+POSTGRES_PORT=5433
 ```
 
 ### CORS
@@ -142,7 +142,7 @@ docker-compose down
 
 | Сервис | Порт | Описание |
 |--------|------|----------|
-| `postgres` | 5432 | PostgreSQL 16 + pgvector |
+| `postgres` | 5433 | PostgreSQL 16 + pgvector |
 | `aegra` | 8000 | Aegra API |
 | `frontend` | 5173 | Vite dev server (hot reload) |
 | `langfuse` | 3000 | Langfuse (official image) |
@@ -173,7 +173,7 @@ ENV_MODE=PROD
 
 # --- Database ---
 POSTGRES_HOST=127.0.0.1
-POSTGRES_PORT=5432
+POSTGRES_PORT=5433
 POSTGRES_DB=aicrew
 POSTGRES_USER=aicrew
 POSTGRES_PASSWORD=strong-password

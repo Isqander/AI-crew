@@ -17,7 +17,7 @@ log() {
 : "${LANGFUSE_ENABLED:=false}"
 : "${LANGFUSE_LOGGING:=false}"
 : "${POSTGRES_HOST:=127.0.0.1}"
-: "${POSTGRES_PORT:=5432}"
+: "${POSTGRES_PORT:=5433}"
 : "${POSTGRES_DB:=aicrew}"
 : "${POSTGRES_USER:=aicrew}"
 : "${POSTGRES_PASSWORD:=aicrew_secret_password}"

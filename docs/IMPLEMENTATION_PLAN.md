@@ -501,7 +501,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     aegra_url: str = "http://aegra:8000"
-    database_url: str = "postgresql://aicrew:password@postgres:5432/aicrew"
+    database_url: str = "postgresql://aicrew:password@postgres:5433/aicrew"
     jwt_secret: str = "change-me-in-production"
     jwt_access_ttl: int = 1800       # 30 мин
     jwt_refresh_ttl: int = 604800    # 7 дней
@@ -1502,7 +1502,7 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
           POSTGRES_DB: test_aicrew
-        ports: ["5432:5432"]
+        ports: ["5433:5433"]
         options: >-
           --health-cmd "pg_isready -U test"
           --health-interval 10s
@@ -1516,7 +1516,7 @@ jobs:
       - run: pip install -r gateway/requirements.txt
       - run: pytest tests/ -v -m "not slow and not e2e"
         env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/test_aicrew
+          DATABASE_URL: postgresql://test:test@localhost:5433/test_aicrew
           LLM_API_URL: http://mock
           LLM_API_KEY: test
 

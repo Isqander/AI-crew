@@ -76,7 +76,7 @@
 | Frontend | 5173 | Открыт, без auth | Аутентификация + регистрация |
 | Aegra API | 8000 | Открыт, `AUTH_TYPE=noop` | Закрыть за gateway |
 | Langfuse | 3000 | Открыт (свой auth есть) | Оставить, он сам умеет auth |
-| PostgreSQL | 5432 | Открыт | Оставить (для прямого доступа), но ограничить по IP если на VPS |
+| PostgreSQL | 5433 | Открыт | Оставить (для прямого доступа), но ограничить по IP если на VPS |
 
 ### 2.2 Архитектура аутентификации
 
@@ -98,7 +98,7 @@
                  │ внутренняя сеть (docker)
     ┌────────────┼────────────────┐
     ▼            ▼                ▼
-  Aegra:8000  Langfuse:3000   Postgres:5432
+  Aegra:8000  Langfuse:3000   Postgres:5433
   (нет auth)  (свой auth)    (ограничить доступ)
 ```
 
@@ -109,7 +109,7 @@
 | Gateway | **:8080** | Единственная точка входа для API |
 | Frontend | **:5173** | Статика (в проде через nginx) |
 | Langfuse | **:3000** | Свой auth (NextAuth), оставить |
-| PostgreSQL | **:5432** | Оставить для прямого доступа. На VPS — ограничить firewall по IP |
+| PostgreSQL | **:5433** | Оставить для прямого доступа. На VPS — ограничить firewall по IP |
 | Aegra | — | **Закрыть**. Доступен только из docker-сети |
 | Sandbox | — | Только внутренняя сеть |
 | Telegram | — | Только внутренняя сеть (webhook или polling) |
@@ -170,7 +170,7 @@ services:
     environment:
       AEGRA_URL: http://aegra:8000
       JWT_SECRET: ${JWT_SECRET}
-      DATABASE_URL: postgresql://...@postgres:5432/aicrew
+      DATABASE_URL: postgresql://...@postgres:5433/aicrew
     depends_on: [aegra, postgres]
 
   # Aegra — ЗАКРЫТ снаружи
@@ -199,7 +199,7 @@ services:
   # PostgreSQL — оставляем для прямого доступа
   postgres:
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5433"
 ```
 
 ---
@@ -1434,7 +1434,7 @@ parameters:
                  │
         ┌────────▼────────┐
         │   PostgreSQL     │  ← Checkpoints, users, pgvector
-        │   :5432          │
+        │   :5433          │
         └─────────────────┘
 ```
 
@@ -1489,7 +1489,7 @@ parameters:
 
   ┌─────────────────────────────────────────────────┐
   │                 Data Layer                        │
-  │  PostgreSQL + pgvector (:5432)                   │
+  │  PostgreSQL + pgvector (:5433)                   │
   │  Langfuse (:3000) — traces, costs, flow history  │
   │  structlog → JSON (→ Loki если нужно)            │
   └─────────────────────────────────────────────────┘
@@ -1504,7 +1504,7 @@ services:
   # === Core ===
   postgres:
     image: pgvector/pgvector:pg16
-    ports: ["${POSTGRES_PORT:-5432}:5432"]
+    ports: ["${POSTGRES_PORT:-5433}:5433"]
     volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck: ...
 
@@ -1514,7 +1514,7 @@ services:
     depends_on: [postgres]
     environment:
       AUTH_TYPE: noop
-      DATABASE_URL: postgresql+asyncpg://...@postgres:5432/aicrew
+      DATABASE_URL: postgresql+asyncpg://...@postgres:5433/aicrew
       LANGFUSE_ENABLED: "true"
       LANGFUSE_HOST: http://langfuse:3000
       # LLM, GitHub, etc.
@@ -1525,7 +1525,7 @@ services:
     depends_on: [aegra, postgres]
     environment:
       AEGRA_URL: http://aegra:8000
-      DATABASE_URL: postgresql://...@postgres:5432/aicrew
+      DATABASE_URL: postgresql://...@postgres:5433/aicrew
       JWT_SECRET: ${JWT_SECRET}
 
   frontend:
@@ -1540,7 +1540,7 @@ services:
     ports: ["3000:3000"]
     depends_on: [postgres]
     environment:
-      DATABASE_URL: postgresql://...@postgres:5432/aicrew
+      DATABASE_URL: postgresql://...@postgres:5433/aicrew
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
 
   # === Execution ===
@@ -1793,7 +1793,7 @@ LLM_BACKUP_KEY=
 POSTGRES_USER=aicrew
 POSTGRES_PASSWORD=strong-password
 POSTGRES_DB=aicrew
-POSTGRES_PORT=5432
+POSTGRES_PORT=5433
 
 # === Gateway ===
 JWT_SECRET=your-jwt-secret-32chars

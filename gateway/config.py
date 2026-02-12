@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     aegra_url: str = "http://aegra:8000"
 
     # --- Database ---
-    database_url: str = "postgresql://aicrew:password@postgres:5432/aicrew"
+    database_url: str = "postgresql://aicrew:password@postgres:5433/aicrew"
 
     # --- JWT ---
     jwt_secret: str = "change-me-in-production"

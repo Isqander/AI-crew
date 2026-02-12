@@ -25,7 +25,7 @@
          clarify?     clarify?            Dev↔QA   git_commit
                                          cycle     ─► PR
                             │
-        PostgreSQL (:5432)  │  Langfuse (:3000)
+        PostgreSQL (:5433)  │  Langfuse (:3000)
 ```
 
 ## Быстрый старт
