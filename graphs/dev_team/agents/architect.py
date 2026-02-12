@@ -14,7 +14,7 @@ LangGraph node function: ``architect_agent(state, config=None) -> dict``
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
 from ..state import DevTeamState
 
 logger = structlog.get_logger()
@@ -25,7 +25,7 @@ class ArchitectAgent(BaseAgent):
     
     def __init__(self):
         prompts = load_prompts("architect")
-        llm = get_llm(role="architect", temperature=0.7)
+        llm = get_llm_with_fallback(role="architect", temperature=0.7)
         super().__init__(name="architect", llm=llm, prompts=prompts)
     
     def design_architecture(self, state: DevTeamState) -> dict:

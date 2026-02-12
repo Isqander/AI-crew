@@ -15,7 +15,7 @@ import re
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm, load_prompts, create_prompt_template, CODE_TEMPERATURE
+from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template, CODE_TEMPERATURE
 from ..state import DevTeamState, CodeFile
 
 logger = structlog.get_logger()
@@ -27,7 +27,7 @@ class DeveloperAgent(BaseAgent):
     def __init__(self):
         prompts = load_prompts("developer")
         # Use lower temperature for more deterministic code generation
-        llm = get_llm(role="developer", temperature=CODE_TEMPERATURE)
+        llm = get_llm_with_fallback(role="developer", temperature=CODE_TEMPERATURE)
         super().__init__(name="developer", llm=llm, prompts=prompts)
     
     def implement(self, state: DevTeamState, config=None) -> dict:

@@ -13,7 +13,7 @@ LangGraph node function: ``analyst_agent(state, config=None) -> dict``
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
 from ..state import DevTeamState, UserStory
 
 logger = structlog.get_logger()
@@ -24,7 +24,7 @@ class AnalystAgent(BaseAgent):
     
     def __init__(self):
         prompts = load_prompts("analyst")
-        llm = get_llm(role="analyst", temperature=0.7)
+        llm = get_llm_with_fallback(role="analyst", temperature=0.7)
         super().__init__(name="analyst", llm=llm, prompts=prompts)
     
     def gather_requirements(self, state: DevTeamState, config=None) -> dict:

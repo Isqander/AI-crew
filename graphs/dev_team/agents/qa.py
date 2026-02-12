@@ -14,7 +14,7 @@ LangGraph node function: ``qa_agent(state, config=None) -> dict``
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
 from ..state import DevTeamState
 
 logger = structlog.get_logger()
@@ -25,7 +25,7 @@ class QAAgent(BaseAgent):
     
     def __init__(self):
         prompts = load_prompts("qa")
-        llm = get_llm(role="qa", temperature=0.3)
+        llm = get_llm_with_fallback(role="qa", temperature=0.3)
         super().__init__(name="qa", llm=llm, prompts=prompts)
     
     def review_code(self, state: DevTeamState, config=None) -> dict:

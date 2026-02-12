@@ -13,7 +13,7 @@ LangGraph node function: ``pm_agent(state) -> dict``
 import structlog
 from langchain_core.messages import AIMessage, HumanMessage
 
-from .base import BaseAgent, get_llm, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
 from ..state import DevTeamState
 
 logger = structlog.get_logger()
@@ -24,7 +24,7 @@ class ProjectManagerAgent(BaseAgent):
     
     def __init__(self):
         prompts = load_prompts("pm")
-        llm = get_llm(role="pm", temperature=0.7)
+        llm = get_llm_with_fallback(role="pm", temperature=0.7)
         super().__init__(name="pm", llm=llm, prompts=prompts)
     
     def decompose_task(self, state: DevTeamState, config=None) -> dict:
