@@ -75,7 +75,7 @@
 |--------|------|---------------|-----------|
 | Frontend | 5173 | Открыт, без auth | Аутентификация + регистрация |
 | Aegra API | 8000 | Открыт, `AUTH_TYPE=noop` | Закрыть за gateway |
-| Langfuse | 3000 | Открыт (свой auth есть) | Оставить, он сам умеет auth |
+| Langfuse | 3001 | Открыт (свой auth есть) | Оставить, он сам умеет auth |
 | PostgreSQL | 5433 | Открыт | Оставить (для прямого доступа), но ограничить по IP если на VPS |
 
 ### 2.2 Архитектура аутентификации
@@ -98,7 +98,7 @@
                  │ внутренняя сеть (docker)
     ┌────────────┼────────────────┐
     ▼            ▼                ▼
-  Aegra:8000  Langfuse:3000   Postgres:5433
+  Aegra:8000  Langfuse:3001   Postgres:5433
   (нет auth)  (свой auth)    (ограничить доступ)
 ```
 
@@ -108,7 +108,7 @@
 |--------|--------|-------------|
 | Gateway | **:8081** | Единственная точка входа для API |
 | Frontend | **:5173** | Статика (в проде через nginx) |
-| Langfuse | **:3000** | Свой auth (NextAuth), оставить |
+| Langfuse | **:3001** | Свой auth (NextAuth), оставить |
 | PostgreSQL | **:5433** | Оставить для прямого доступа. На VPS — ограничить firewall по IP |
 | Aegra | — | **Закрыть**. Доступен только из docker-сети |
 | Sandbox | — | Только внутренняя сеть |
@@ -194,7 +194,7 @@ services:
   # Langfuse — открыт (свой auth)
   langfuse:
     ports:
-      - "3000:3000"
+      - "3001:3001"
 
   # PostgreSQL — оставляем для прямого доступа
   postgres:
@@ -972,7 +972,7 @@ LangGraph автоматически передаёт `config` если функ
 
 ### Что будет видно после доработки
 
-В Langfuse (http://localhost:3000):
+В Langfuse (http://localhost:3001):
 - **Trace** на каждый run (thread_id + run_id)
 - **Span** на каждый node (pm, analyst, architect, developer, qa)
 - **Generation** на каждый LLM-вызов: промпт, ответ, модель, токены, стоимость, latency
@@ -988,7 +988,7 @@ Langfuse UI позволяет:
 
 Для анализа «дать ИИ посмотреть» — можно экспортировать JSON через API:
 ```bash
-curl "http://localhost:3000/api/public/traces?limit=50" \
+curl "http://localhost:3001/api/public/traces?limit=50" \
   -H "Authorization: Bearer $LANGFUSE_PUBLIC_KEY"
 ```
 
@@ -1429,7 +1429,7 @@ parameters:
                  │
     ┌────────────┼────────────┐
     ▼            ▼            ▼
-  LLM API    GitHub API   Langfuse (:3000)
+  LLM API    GitHub API   Langfuse (:3001)
   (proxy)                  (traces + costs)
                  │
         ┌────────▼────────┐
@@ -1490,7 +1490,7 @@ parameters:
   ┌─────────────────────────────────────────────────┐
   │                 Data Layer                        │
   │  PostgreSQL + pgvector (:5433)                   │
-  │  Langfuse (:3000) — traces, costs, flow history  │
+  │  Langfuse (:3001) — traces, costs, flow history  │
   │  structlog → JSON (→ Loki если нужно)            │
   └─────────────────────────────────────────────────┘
 ```
@@ -1516,7 +1516,7 @@ services:
       AUTH_TYPE: noop
       DATABASE_URL: postgresql+asyncpg://...@postgres:5433/aicrew
       LANGFUSE_ENABLED: "true"
-      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_HOST: http://langfuse:3001
       # LLM, GitHub, etc.
 
   gateway:
@@ -1537,7 +1537,7 @@ services:
   # === Observability ===
   langfuse:
     image: langfuse/langfuse:latest
-    ports: ["3000:3000"]
+    ports: ["3001:3001"]
     depends_on: [postgres]
     environment:
       DATABASE_URL: postgresql://...@postgres:5433/aicrew

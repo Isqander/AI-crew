@@ -1,11 +1,11 @@
 # ===========================================
 # AI-crew Multi-Service Dockerfile
-# Aegra API (8000) + Frontend (5173) + Langfuse (3000)
+# Aegra API (8000) + Frontend (5173) + Langfuse (3001)
 # ===========================================
 # Build:
 #   docker build -t aicrew .
 # Run:
-#   docker run -p 8000:8000 -p 5173:5173 -p 3000:3000 --env-file .env aicrew
+#   docker run -p 8000:8000 -p 5173:5173 -p 3001:3001 --env-file .env aicrew
 #
 # Build args:
 #   VITE_API_URL        — API base for frontend (default: /api → nginx proxy)
@@ -258,7 +258,7 @@ RUN useradd -m -u 1000 aicrew \
     && mkdir -p /var/log/supervisor /var/run
 
 # ---- Ports ----
-EXPOSE 8000 5173 3000
+EXPOSE 8000 5173 3001
 
 # ---- Health check (Aegra + Frontend) ----
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     env_mode: str = "LOCAL"
 
     # --- CORS ---
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3001"]
 
     @field_validator("cors_origins", mode="before")
     @classmethod

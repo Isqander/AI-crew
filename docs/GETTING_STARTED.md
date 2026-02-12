@@ -147,7 +147,7 @@ npm run dev
 1. **Aegra API**: http://localhost:8000/docs
    - Должен открыться Swagger UI с документацией API
 
-2. **Langfuse**: http://localhost:3000
+2. **Langfuse**: http://localhost:3001
    - Интерфейс для мониторинга LLM вызовов
    - При первом запуске создайте аккаунт
 

@@ -4,7 +4,7 @@
 
 | Режим | Что запускается | Когда использовать |
 |-------|----------------|--------------------|
-| **Dockerfile** (production) | Один контейнер: Aegra API (8000) + Frontend/nginx (5173) + Langfuse (3000) + PostgreSQL | VPS / Dokploy / одноконтейнерный хостинг |
+| **Dockerfile** (production) | Один контейнер: Aegra API (8000) + Frontend/nginx (5173) + Langfuse (3001) + PostgreSQL | VPS / Dokploy / одноконтейнерный хостинг |
 | **docker-compose** (development) | Отдельные контейнеры: postgres, aegra, frontend (Vite dev), langfuse | Локальная разработка |
 
 ---
@@ -20,7 +20,7 @@
 │  supervisord                                │
 │  ├── aegra    (python)       → :8000        │
 │  ├── nginx    (frontend)     → :5173        │
-│  └── langfuse (node, опц.)   → :3000        │
+│  └── langfuse (node, опц.)   → :3001        │
 │                                             │
 │  postgresql (embedded)       → :5433 (lo)   │
 └─────────────────────────────────────────────┘
@@ -45,7 +45,7 @@ Build-аргументы (опционально):
 docker run -d \
   -p 8000:8000 \
   -p 5173:5173 \
-  -p 3000:3000 \
+  -p 3001:3001 \
   -v aicrew_pgdata:/var/lib/postgresql/data \
   --env-file .env \
   aicrew
@@ -84,7 +84,7 @@ LANGFUSE_NEXTAUTH_URL=https://ai-crew-langfuse.example.com
 ```
 
 Если `LANGFUSE_ENABLED=false` (по умолчанию), процесс Langfuse не запускается,
-порт 3000 свободен.
+порт 3001 свободен.
 
 Для *клиента* Langfuse (трассировка из Aegra):
 
@@ -92,7 +92,7 @@ LANGFUSE_NEXTAUTH_URL=https://ai-crew-langfuse.example.com
 LANGFUSE_LOGGING=true
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_HOST=http://localhost:3000   # или внешний URL
+LANGFUSE_HOST=http://localhost:3001   # или внешний URL
 ```
 
 ### База данных
@@ -145,7 +145,7 @@ docker-compose down
 | `postgres` | 5433 | PostgreSQL 16 + pgvector |
 | `aegra` | 8000 | Aegra API |
 | `frontend` | 5173 | Vite dev server (hot reload) |
-| `langfuse` | 3000 | Langfuse (official image) |
+| `langfuse` | 3001 | Langfuse (official image) |
 
 ### Переменные окружения
 
@@ -189,7 +189,7 @@ LANGFUSE_NEXTAUTH_URL=https://ai-crew-langfuse.example.com
 LANGFUSE_LOGGING=true
 LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_HOST=http://127.0.0.1:3000
+LANGFUSE_HOST=http://127.0.0.1:3001
 ```
 
 ### Volumes (если Postgres внутри контейнера)
@@ -206,7 +206,7 @@ LANGFUSE_HOST=http://127.0.0.1:3000
 |-------|----------------|--------|
 | `ai-crew-aegra.*.nip.io` | 8000 | Aegra API |
 | `ai-crew-front.*.nip.io` | 5173 | Frontend (nginx) |
-| `ai-crew-langfuse.*.nip.io` | 3000 | Langfuse |
+| `ai-crew-langfuse.*.nip.io` | 3001 | Langfuse |
 
 Все три порта обслуживаются **одним контейнером** через supervisord.
 

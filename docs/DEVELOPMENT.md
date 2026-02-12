@@ -565,7 +565,7 @@ def developer_agent(state: DevTeamState) -> dict:
 ### Langfuse Tracing
 
 Все LLM вызовы автоматически логируются в Langfuse:
-- Откройте http://localhost:3000
+- Откройте http://localhost:3001
 - Найдите trace по задаче
 - Посмотрите промпты, ответы, токены
 

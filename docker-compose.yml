@@ -72,7 +72,7 @@ services:
       LANGFUSE_LOGGING: ${LANGFUSE_LOGGING:-false}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_HOST: http://langfuse:3001
 
       # GitHub
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -112,7 +112,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENV_MODE: ${ENV_MODE:-LOCAL}
       # CORS — JSON array of allowed origins
-      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000"]}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3001"]}
     depends_on:
       aegra:
         condition: service_started
@@ -127,12 +127,12 @@ services:
     container_name: aicrew-langfuse
     restart: unless-stopped
     ports:
-      - "${LANGFUSE_PORT:-3000}:3000"
+      - "${LANGFUSE_PORT:-3001}:3001"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5433/${POSTGRES_DB:-aicrew}
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mysecretkey}
       SALT: ${LANGFUSE_SALT:-mysalt}
-      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3001}
       TELEMETRY_ENABLED: "false"
       HOSTNAME: "0.0.0.0"
     depends_on:

@@ -78,7 +78,7 @@ Write-Host ""
 Write-Host "4. Open in browser:"
 Write-Host "   - Web UI: http://localhost:5173"
 Write-Host "   - API: http://localhost:8000"
-Write-Host "   - Langfuse: http://localhost:3000"
+Write-Host "   - Langfuse: http://localhost:3001"
 Write-Host ""
 Write-Host "5. Connect LangGraph Studio to http://localhost:8000"
 Write-Host "==========================================" -ForegroundColor Cyan
