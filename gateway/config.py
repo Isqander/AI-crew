@@ -4,8 +4,16 @@ Gateway Configuration
 
 Pydantic Settings for the Gateway service.
 All values can be overridden via environment variables.
+
+CORS_ORIGINS can be set as a JSON array or comma-separated list:
+  CORS_ORIGINS='["http://localhost:5173","https://front.example.com"]'
+  CORS_ORIGINS='http://localhost:5173,https://front.example.com'
 """
 
+import json
+from typing import Any
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -34,6 +42,17 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> list[str]:
+        """Accept JSON array string or comma-separated string."""
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("["):
+                return json.loads(v)
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

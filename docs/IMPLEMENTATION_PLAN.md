@@ -1540,39 +1540,47 @@ jobs:
 
 ### Волна 1 — Definition of Done
 
+> Дата верификации: 12 февраля 2026 — 142 теста passed (tests/test_wave1_verification.py)
+
 #### Фундамент
-- [ ] structlog: все модули переведены, LOCAL/PRODUCTION форматы
-- [ ] agents.yaml: создан, загружается, env overrides работают
-- [ ] Retry: exponential backoff, 3 попытки, логирование
-- [ ] Fallback: fallback chain из agents.yaml
-- [ ] Langfuse: callbacks пробрасываются, Generations видны
-- [ ] manifest.yaml: создан для dev_team
-- [ ] State: task_type, task_complexity добавлены
+- [x] structlog: все модули переведены, LOCAL/PRODUCTION форматы (включая github.py)
+- [x] agents.yaml: создан, загружается, env overrides работают
+- [x] Retry: exponential backoff, 3 попытки, логирование (invoke_with_retry)
+- [x] Fallback: get_llm_with_fallback() реализован (agents пока используют get_llm напрямую — fallback подключить при необходимости)
+- [x] Langfuse: callbacks пробрасываются через _invoke_chain, config parameter во всех node functions
+- [x] manifest.yaml: создан для dev_team (5 агентов, 4 task_types, features)
+- [x] State: task_type, task_complexity добавлены как NotRequired
 
 #### Gateway
-- [ ] Auth: register, login, refresh, JWT validation
-- [ ] Proxy: REST + SSE streaming к Aegra
-- [ ] Graph endpoints: /graph/list, /graph/topology
-- [ ] Health: /health без auth
-- [ ] Docker: сервис в docker-compose, Aegra закрыт
-- [ ] Тесты: auth flow, proxy, graph endpoints
+- [x] Auth: register, login, refresh, JWT validation (bcrypt + HS256)
+- [x] Proxy: REST + SSE streaming к Aegra (proxy.py)
+- [x] Graph endpoints: /graph/list, /graph/topology, /graph/config
+- [x] Health: /health без auth (с проверкой Aegra)
+- [x] Switch-Agent: заготовка classify_task() (всегда dev_team)
+- [x] /api/run: создание задач с auto-routing
+- [x] Docker: отдельный Dockerfile + Dockerfile.aegra, Aegra закрыт (expose only)
+- [x] Тесты: JWT, пароли, модели, конфиг, роутер (tests/test_wave1_verification.py)
 
 #### Frontend
-- [ ] Login/Register страницы
-- [ ] JWT в API-клиенте, protected routes
-- [ ] Graph Visualization (React Flow): узлы, связи, модели, промпты
-- [ ] SSE Streaming: real-time обновления state и chat
-- [ ] Выбор графа в TaskForm (подготовка)
+- [x] Login/Register страницы (dark theme, cyan accents)
+- [x] JWT в API-клиенте (Zustand store + persist), protected routes
+- [x] Graph Visualization (React Flow): узлы, связи, модели, промпты (dagre layout)
+- [x] SSE Streaming: real-time обновления (hooks/useStreamingTask.ts)
+- [ ] Выбор графа в TaskForm (подготовка к Волне 2)
 
 #### Tools & Interfaces
-- [ ] Web tools: search, fetch, download (как LangChain @tool)
-- [ ] Telegram: /task, /status, HITL, уведомления
+- [x] Web tools: web_search, fetch_url, download_file (как LangChain @tool)
+- [ ] Web tools: привязать к агентам (bind_tools) — по необходимости
+- [x] Telegram: /task, /status, /start, /help, HITL (aiogram + gateway_client)
 
 #### Инфраструктура
-- [ ] docker-compose.yml обновлён (gateway, telegram, порты)
-- [ ] env.example обновлён
-- [ ] CORS настроен через gateway
-- [ ] Все существующие тесты проходят
+- [x] docker-compose.yml обновлён (postgres, aegra, gateway, langfuse, frontend, telegram)
+- [x] Dockerfile.aegra — отдельный образ для Aegra (LangGraph Runtime)
+- [x] frontend/Dockerfile — production build (nginx + static)
+- [x] docker-compose.prod.yml — production override
+- [x] env.example обновлён (CORS_ORIGINS, LANGFUSE_NEXTAUTH_URL, FRONTEND_DOCKERFILE)
+- [x] CORS настроен через gateway (CORS_ORIGINS env — JSON array или comma-separated)
+- [x] Все 142 теста проходят (0 failures)
 
 ### Волна 2 — Definition of Done
 

@@ -1,0 +1,81 @@
+# ===========================================
+# AI-crew — Aegra (LangGraph Runtime) Service
+# ===========================================
+# Standalone Aegra image for docker-compose.
+#
+# Build:
+#   docker build -f Dockerfile.aegra -t aicrew-aegra .
+# Run:
+#   docker run --env-file .env -p 8000:8000 aicrew-aegra
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    AEGRA_CONFIG=/app/aegra.json
+
+# System deps (git for GitHub tools, curl for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Aegra from vendor
+COPY vendor/ /app/vendor/
+ARG AEGRA_PIP_SOURCE=""
+RUN if [ -n "${AEGRA_PIP_SOURCE}" ]; then \
+      pip install --no-cache-dir "${AEGRA_PIP_SOURCE}"; \
+    elif [ -d /app/vendor/aegra ]; then \
+      pip install --no-cache-dir /app/vendor/aegra; \
+    else \
+      echo "Aegra source not found." >&2; exit 1; \
+    fi
+
+# Application code
+COPY graphs/ ./graphs/
+COPY config/ ./config/
+COPY aegra*.json .
+COPY scripts/start_aegra.py ./scripts/start_aegra.py
+
+# Set up Python path for Aegra's graph loading (dev_team.* imports)
+RUN python - <<'PY'
+import site
+from pathlib import Path
+
+site_dir = Path(site.getsitepackages()[0])
+src_dir = site_dir / "src"
+src_dir.mkdir(exist_ok=True)
+init_file = src_dir / "__init__.py"
+if not init_file.exists():
+    init_file.write_text("__path__ = __import__('pkgutil').extend_path(__path__, __name__)\n")
+
+agent_server_dir = site_dir / "agent_server"
+src_agent_server = src_dir / "agent_server"
+if agent_server_dir.exists() and not src_agent_server.exists():
+    try:
+        src_agent_server.symlink_to(agent_server_dir, target_is_directory=True)
+    except Exception:
+        import shutil
+        shutil.copytree(agent_server_dir, src_agent_server)
+
+# graphs/ must be importable as `dev_team.*`
+graphs_source = Path("/app/graphs")
+graphs_link = Path("/usr/local/lib/python3.11/graphs")
+if graphs_source.exists() and not graphs_link.exists():
+    try:
+        graphs_link.symlink_to(graphs_source, target_is_directory=True)
+    except Exception:
+        import shutil
+        shutil.copytree(graphs_source, graphs_link)
+PY
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -sf http://localhost:8000/health || exit 1
+
+CMD ["python", "scripts/start_aegra.py"]

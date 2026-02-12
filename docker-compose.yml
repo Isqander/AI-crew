@@ -1,7 +1,7 @@
 # ===========================================
-# AI-crew Docker Compose — Development
+# AI-crew Docker Compose — Development / Staging
 # ===========================================
-# Starts ALL services: Postgres, Aegra API, Frontend (Vite dev), Langfuse.
+# Separate services: Postgres, Aegra, Gateway, Langfuse, Frontend, Telegram.
 #
 # Usage:
 #   docker-compose up -d              # Start all services
@@ -9,10 +9,7 @@
 #   docker-compose logs -f aegra      # View Aegra logs
 #   docker-compose down               # Stop all services
 #
-# NOTE: For production (single-container) deployment use the Dockerfile
-#       directly — it bundles Aegra + Frontend + Langfuse in one image.
-
-version: "3.8"
+# For VPS deployment, set env vars in .env file.
 
 services:
   # ===========================================
@@ -43,7 +40,7 @@ services:
   aegra:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.aegra
     container_name: aicrew-aegra
     restart: unless-stopped
     expose:
@@ -69,11 +66,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
 
       # Langfuse (client — talks to the langfuse container)
-      LANGFUSE_ENABLED: "false"
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
       LANGFUSE_LOGGING: ${LANGFUSE_LOGGING:-false}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
@@ -90,7 +85,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -105,7 +100,7 @@ services:
     container_name: aicrew-gateway
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${GATEWAY_PORT:-8080}:8080"
     environment:
       AEGRA_URL: http://aegra:8000
       DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
@@ -116,6 +111,8 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENV_MODE: ${ENV_MODE:-LOCAL}
+      # CORS — JSON array of allowed origins
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000"]}
     depends_on:
       aegra:
         condition: service_started
@@ -126,11 +123,11 @@ services:
   # Langfuse (Observability)
   # ===========================================
   langfuse:
-    image: langfuse/langfuse:latest
+    image: langfuse/langfuse:2
     container_name: aicrew-langfuse
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${LANGFUSE_PORT:-3000}:3000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mysecretkey}
@@ -143,23 +140,27 @@ services:
         condition: service_healthy
 
   # ===========================================
-  # Frontend (React + Vite dev server)
+  # Frontend (React + Vite)
+  # Development: Vite dev server
+  # Production: nginx + static build
   # ===========================================
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: ${FRONTEND_DOCKERFILE:-Dockerfile.dev}
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
     container_name: aicrew-frontend
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:${FRONTEND_INTERNAL_PORT:-5173}"
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
     depends_on:
       - gateway
 
   # ===========================================
-  # Telegram Bot (Wave 1)
+  # Telegram Bot
   # ===========================================
   telegram:
     build:
@@ -177,6 +178,8 @@ services:
       gateway:
         condition: service_started
     # No ports — polling mode
+    profiles:
+      - telegram  # Only starts with: docker-compose --profile telegram up
 
 volumes:
   postgres_data:

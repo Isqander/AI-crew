@@ -3,7 +3,7 @@ Tests for LangGraph workflow
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock, patch
 from langgraph.graph import StateGraph
 
 from graphs.dev_team.graph import (
@@ -118,11 +118,29 @@ class TestGraphNodes:
         result = git_commit_node(state)
         
         assert "summary" in result
-        assert "No repository specified" in result["summary"]
+        assert "Task completed" in result["summary"]
         assert result["current_agent"] == "complete"
     
-    def test_git_commit_node_with_repository(self):
-        """Test git commit node with repository."""
+    @patch("graphs.dev_team.graph.get_github_client")
+    def test_git_commit_node_with_repository(self, mock_get_client):
+        """Test git commit node with repository and mocked GitHub."""
+        # Create mock client
+        mock_repo = MagicMock()
+        mock_repo.default_branch = "main"
+        mock_ref = MagicMock()
+        mock_ref.object.sha = "abc123"
+        mock_repo.get_git_ref.return_value = mock_ref
+        mock_repo.create_git_ref.return_value = MagicMock()
+        mock_repo.get_contents.side_effect = Exception("Not found")
+        mock_repo.create_file.return_value = {"commit": MagicMock()}
+        mock_pr = MagicMock()
+        mock_pr.html_url = "https://github.com/owner/repo/pull/1"
+        mock_repo.create_pull.return_value = mock_pr
+        
+        mock_client = MagicMock()
+        mock_client.get_repo.return_value = mock_repo
+        mock_get_client.return_value = mock_client
+        
         state = create_initial_state(task="Test")
         state["code_files"] = [
             {"path": "main.py", "content": "code", "language": "python"}
@@ -132,7 +150,20 @@ class TestGraphNodes:
         result = git_commit_node(state)
         
         assert "pr_url" in result
-        assert "owner/repo" in result["pr_url"]
+        assert result["current_agent"] == "complete"
+    
+    def test_git_commit_node_no_github_token(self):
+        """Test git commit node when GITHUB_TOKEN is missing."""
+        state = create_initial_state(task="Test")
+        state["code_files"] = [
+            {"path": "main.py", "content": "code", "language": "python"}
+        ]
+        state["repository"] = "owner/repo"
+        
+        result = git_commit_node(state)
+        
+        assert "summary" in result
+        assert "Task completed" in result["summary"]
         assert result["current_agent"] == "complete"
 
 

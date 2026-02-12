@@ -11,12 +11,12 @@ Provides LangChain tools for interacting with GitHub repositories:
 All tools require GITHUB_TOKEN environment variable and PyGithub package.
 """
 
-import logging
 import os
 
+import structlog
 from langchain_core.tools import tool
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 # ---------------------------------------------------------------------------
 # GitHub client (lazy singleton)

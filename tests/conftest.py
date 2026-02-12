@@ -3,9 +3,20 @@ Pytest Configuration and Fixtures
 """
 
 import os
+import sys
+from pathlib import Path
+
 import pytest
 from unittest.mock import Mock, AsyncMock
 from typing import Generator
+
+# --- Path setup ---
+# Aegra uses `from dev_team.*` imports (not `from graphs.dev_team.*`),
+# so `graphs/` must be on sys.path for graph.py to load correctly.
+_PROJECT_ROOT = Path(__file__).parent.parent
+_GRAPHS_DIR = str(_PROJECT_ROOT / "graphs")
+if _GRAPHS_DIR not in sys.path:
+    sys.path.insert(0, _GRAPHS_DIR)
 
 # Set test environment variables
 os.environ["OPENAI_API_KEY"] = "test-key"

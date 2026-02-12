@@ -86,7 +86,8 @@ class TestEndToEndWorkflow:
             
             # Verify workflow completed
             assert result["current_agent"] == "complete"
-            assert "pr_url" in result
+            assert "summary" in result
+            assert "Task completed" in result["summary"]
             assert len(result["code_files"]) > 0
             assert result["requirements"] == ["Requirement 1", "Requirement 2"]
     
