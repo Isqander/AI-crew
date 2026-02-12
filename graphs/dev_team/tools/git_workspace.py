@@ -503,6 +503,160 @@ def delete_working_branch(repo: str, branch: str) -> str:
         return f"Error deleting branch: {exc}"
 
 
+# ──────────────────────── High-level workflow ────────────────────
+
+
+def commit_and_create_pr(
+    repo_name: str,
+    task: str,
+    code_files: list[dict],
+    *,
+    base_branch: str = "",
+    draft: bool = False,
+) -> dict:
+    """Create a branch, commit all files atomically, and open a PR.
+
+    This is a high-level convenience function used by ``git_commit`` nodes
+    across different graphs.  It uses the Git tree API for a single atomic
+    commit (instead of one commit per file).
+
+    Args:
+        repo_name: Full repository name (``owner/repo``).
+        task: Task description (used for branch name & PR title).
+        code_files: ``[{"path": str, "content": str, ...}, ...]``.
+        base_branch: Branch to fork from (empty → repo default).
+        draft: Create the PR as a draft.
+
+    Returns:
+        Dict with keys:
+          - ``pr_url`` — URL of the created PR (or branch URL on failure)
+          - ``commit_sha`` — SHA of the new commit
+          - ``working_branch`` — name of the created branch
+          - ``working_repo`` — repo_name echo
+          - ``files_committed`` — number of files committed
+          - ``error`` — error string if something went wrong (absent on success)
+    """
+    from github import InputGitTreeElement
+
+    result: dict = {
+        "working_repo": repo_name,
+        "working_branch": "",
+        "pr_url": "",
+        "commit_sha": "",
+        "files_committed": 0,
+    }
+
+    # ── Validate inputs ──────────────────────────────────────────
+    valid_files = [
+        f for f in code_files if f.get("path") and f.get("content")
+    ]
+    if not valid_files:
+        result["error"] = "No valid files to commit"
+        return result
+
+    # ── Get repo ─────────────────────────────────────────────────
+    try:
+        repository = _get_repo(repo_name)
+    except RuntimeError as exc:
+        result["error"] = str(exc)
+        return result
+
+    default_branch = base_branch or repository.default_branch
+
+    # ── 1. Create branch ─────────────────────────────────────────
+    branch_name = _generate_branch_name(task[:50])
+    try:
+        base = repository.get_branch(default_branch)
+        repository.create_git_ref(
+            ref=f"refs/heads/{branch_name}",
+            sha=base.commit.sha,
+        )
+        result["working_branch"] = branch_name
+        logger.info(
+            "git_workflow.branch_created",
+            repo=repo_name,
+            branch=branch_name,
+            base=default_branch,
+        )
+    except Exception as exc:
+        logger.error("git_workflow.branch_failed", error=str(exc))
+        result["error"] = f"Failed to create branch: {exc}"
+        return result
+
+    # ── 2. Atomic batch commit via Git tree API ──────────────────
+    try:
+        ref = repository.get_git_ref(f"heads/{branch_name}")
+        base_sha = ref.object.sha
+        base_commit = repository.get_git_commit(base_sha)
+
+        tree_elements = [
+            InputGitTreeElement(
+                path=f["path"],
+                mode="100644",
+                type="blob",
+                content=f["content"],
+            )
+            for f in valid_files
+        ]
+
+        new_tree = repository.create_git_tree(
+            tree_elements, base_tree=base_commit.tree,
+        )
+        commit_msg = f"feat: AI-crew implementation — {task[:80]}"
+        new_commit = repository.create_git_commit(
+            message=commit_msg,
+            tree=new_tree,
+            parents=[base_commit],
+        )
+        ref.edit(sha=new_commit.sha)
+
+        result["commit_sha"] = new_commit.sha
+        result["files_committed"] = len(valid_files)
+        logger.info(
+            "git_workflow.committed",
+            repo=repo_name,
+            branch=branch_name,
+            files=len(valid_files),
+            sha=new_commit.sha[:8],
+        )
+    except Exception as exc:
+        logger.error("git_workflow.commit_failed", error=str(exc))
+        result["error"] = f"Commit failed: {exc}"
+        return result
+
+    # ── 3. Create PR ─────────────────────────────────────────────
+    pr_title = f"[AI-crew] {task[:80]}"
+    pr_body = (
+        f"## AI-Generated Code\n\n"
+        f"**Task:** {task}\n\n"
+        f"**Files ({len(valid_files)}):**\n"
+        + "\n".join(f"- `{f['path']}`" for f in valid_files)
+        + "\n\n---\n*Created automatically by AI-crew.*"
+    )
+
+    try:
+        pr = repository.create_pull(
+            title=pr_title,
+            body=pr_body,
+            head=branch_name,
+            base=default_branch,
+            draft=draft,
+        )
+        result["pr_url"] = pr.html_url
+        logger.info(
+            "git_workflow.pr_created",
+            repo=repo_name,
+            pr_url=pr.html_url,
+            pr_number=pr.number,
+        )
+    except Exception as exc:
+        logger.error("git_workflow.pr_failed", error=str(exc))
+        result["pr_url"] = f"https://github.com/{repo_name}/tree/{branch_name}"
+        result["error"] = f"PR creation failed (branch exists): {exc}"
+
+    return result
+
+
 # ──────────────────────── Exports ────────────────────────────────
 
 git_workspace_tools = [

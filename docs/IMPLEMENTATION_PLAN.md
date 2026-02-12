@@ -1540,7 +1540,7 @@ jobs:
 
 ### Волна 1 — Definition of Done
 
-> Дата верификации: 12 февраля 2026 — 142 теста Волны 1 passed + 72 теста Волны 2 = **214 total** (tests/)
+> Дата верификации: 12 февраля 2026 — 142 теста Волны 1 + 72 Волны 2 + 49 новые графы = **263 total** (tests/)
 
 #### Фундамент
 - [x] structlog: все модули переведены, LOCAL/PRODUCTION форматы (включая github.py)
@@ -1566,7 +1566,7 @@ jobs:
 - [x] JWT в API-клиенте (Zustand store + persist), protected routes
 - [x] Graph Visualization (React Flow): узлы, связи, модели, промпты (dagre layout)
 - [x] SSE Streaming: real-time обновления (hooks/useStreamingTask.ts)
-- [ ] Выбор графа в TaskForm (подготовка к Волне 2)
+- [x] Выбор графа в TaskForm (dropdown + "Выбор ЛЛМ" по умолчанию + детали графа)
 
 #### Tools & Interfaces
 - [x] Web tools: web_search, fetch_url, download_file (как LangChain @tool)
@@ -1580,11 +1580,11 @@ jobs:
 - [x] docker-compose.prod.yml — production override
 - [x] env.example обновлён (CORS_ORIGINS, LANGFUSE_NEXTAUTH_URL, FRONTEND_DOCKERFILE)
 - [x] CORS настроен через gateway (CORS_ORIGINS env — JSON array или comma-separated)
-- [x] Все 142 теста проходят (0 failures)
+- [x] Все 263 теста проходят (0 failures)
 
 ### Волна 2 — Definition of Done
 
-> Дата начала: 12 февраля 2026 — 214 тестов passed (tests/)
+> Дата обновления: 12 февраля 2026 — 263 тестов passed (tests/)
 
 #### Git-based Workflow (Module 3.1)
 - [x] State расширен: working_branch, working_repo, file_manifest + все поля Wave 2
@@ -1592,8 +1592,9 @@ jobs:
 - [x] Safety: delete_working_branch отказывает удалять не-ai/ ветки
 - [x] Batch commit через Git tree API (атомарные операции)
 - [x] 40 unit-тестов (tests/test_git_workspace.py)
-- [ ] Git tools привязаны к агентам (bind_tools) — при интеграции
-- [ ] git_commit_node обновлён для использования git_workspace tools
+- [x] commit_and_create_pr: высокоуровневая функция для атомарного коммита + PR
+- [x] git_commit_node обновлён: использует commit_and_create_pr (атомарный коммит, working_branch в state)
+- [ ] Git tools привязаны к агентам (bind_tools) — при интеграции с tool-calling агентами
 
 #### Switch-Agent Router (Module 3.2)
 - [x] classify_task: полная LLM-based реализация (OpenAI-compatible API через httpx)
@@ -1604,7 +1605,29 @@ jobs:
 - [x] Manifest loading + prompt generation для LLM
 - [x] run.py обновлён: передаёт available_graphs в classify_task
 - [x] 32 unit-теста (tests/test_router.py)
-- [ ] Фронт поддерживает выбор графа в TaskForm
+- [x] Роутер обнаруживает все 4 графа из manifest.yaml
+
+#### Новые графы (Module 3.3 — New Graphs)
+- [x] simple_dev: Developer → git_commit → END (без HITL, 1 агент)
+- [x] standard_dev: PM → Developer → QA → git_commit → END (без HITL, QA loop max 2)
+- [x] research: Researcher (web search + synthesis) → END (без HITL, web tools)
+- [x] Все графы зарегистрированы в aegra.json (4 графа)
+- [x] Все manifest.yaml созданы и обнаруживаются роутером
+- [x] Researcher agent: web_search + fetch_url + LLM synthesis
+- [x] 49 unit-тестов для новых графов (tests/test_new_graphs.py)
+
+#### Выбор графа в интерфейсах (Module 3.4 — Graph Selection UI)
+- [x] Frontend: TaskForm с выпадающим списком графов (/graph/list)
+- [x] Frontend: "Предоставить выбор ЛЛМ" по умолчанию (graph_id=null)
+- [x] Frontend: Детали выбранного графа (агенты, описание)
+- [x] Frontend: useTask hook обновлён — использует /api/run с graph_id
+- [x] Frontend: API клиент — getGraphList() + createTaskRun()
+- [x] Frontend: типы — GraphListItem, graph_id в CreateTaskInput
+- [x] Telegram: двухшаговый диалог (FSM — task → graph selection)
+- [x] Telegram: /task <text> — пропуск шага 1, сразу выбор графа
+- [x] Telegram: нумерованный список + "Выбор сделает ЛЛМ"
+- [x] Telegram: gateway_client.get_graph_list()
+- [x] 11 unit-тестов для Telegram (tests/test_telegram_graph_selection.py)
 
 #### Остальные модули (не начаты)
 - [ ] Sandbox: code execution, lint, tests

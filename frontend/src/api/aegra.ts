@@ -11,6 +11,7 @@ import type {
   ThreadState, 
   CreateTaskInput,
   Message,
+  GraphListItem,
 } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8081'
@@ -277,6 +278,42 @@ class AegraClient {
       name: msg.name,
       created_at: new Date().toISOString(),
     }))
+  }
+
+  // ==========================================
+  // Graphs
+  // ==========================================
+
+  /**
+   * Get list of available graphs
+   */
+  async getGraphList(): Promise<GraphListItem[]> {
+    const response = await this.fetch<{ graphs: GraphListItem[] }>('/graph/list')
+    return response.graphs || []
+  }
+
+  // ==========================================
+  // Task creation (via /api/run with graph selection)
+  // ==========================================
+
+  /**
+   * Create a task via /api/run endpoint (with optional graph selection)
+   */
+  async createTaskRun(input: CreateTaskInput): Promise<{
+    thread_id: string
+    run_id: string
+    graph_id: string
+    classification?: { graph_id: string; complexity: number; reasoning: string }
+  }> {
+    return this.fetch('/api/run', {
+      method: 'POST',
+      body: JSON.stringify({
+        task: input.task,
+        repository: input.repository || null,
+        context: input.context || null,
+        graph_id: input.graph_id || null,
+      }),
+    })
   }
 
   // ==========================================

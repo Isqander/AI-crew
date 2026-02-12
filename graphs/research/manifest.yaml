@@ -1,0 +1,31 @@
+# ===========================================
+# research Graph Manifest
+# ===========================================
+# Universal research workflow: search + synthesis.
+# No HITL — fully autonomous.
+
+name: "research"
+display_name: "Research Assistant"
+description: >-
+  Universal research for any topic. Searches the web, reads sources,
+  and synthesizes a structured report with key findings and references.
+  Great for market research, technology comparisons, and fact-finding.
+version: "1.0.0"
+
+task_types:
+  - research
+  - analysis
+  - comparison
+  - review
+
+agents:
+  - id: researcher
+    display_name: "Researcher"
+    role: researcher
+
+features: []
+
+parameters:
+  max_search_queries: 3
+  max_url_fetches: 5
+  hitl_mode: "none"

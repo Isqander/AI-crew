@@ -1,0 +1,31 @@
+# ===========================================
+# simple_dev Graph Manifest
+# ===========================================
+# Minimal development graph: Developer → git_commit → END.
+# No HITL, no QA loop — for quick, simple tasks.
+
+name: "simple_dev"
+display_name: "Quick Developer"
+description: >-
+  Fast code generation for simple tasks: scripts, snippets, small features.
+  A single Developer agent writes code and commits directly.
+  No review, no planning phase — maximum speed.
+version: "1.0.0"
+
+task_types:
+  - simple_feature
+  - script
+  - snippet
+  - config
+
+agents:
+  - id: developer
+    display_name: "Developer"
+    role: developer
+
+features:
+  - git_commit
+
+parameters:
+  hitl_mode: "none"
+  deploy_after_commit: false

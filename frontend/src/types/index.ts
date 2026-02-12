@@ -76,11 +76,23 @@ export interface CodeFile {
   language: string
 }
 
+// Graph selection
+export interface GraphListItem {
+  graph_id: string
+  display_name: string
+  description: string
+  version: string
+  task_types: string[]
+  agents: { id: string; display_name: string }[]
+  features: string[]
+}
+
 // Task creation form
 export interface CreateTaskInput {
   task: string
   repository?: string
   context?: string
+  graph_id?: string  // null/undefined → LLM auto-selects
 }
 
 // Agent types

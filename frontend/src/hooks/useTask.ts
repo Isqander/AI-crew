@@ -60,21 +60,26 @@ export function useTask(threadId?: string): UseTaskReturn {
     created_at: new Date().toISOString(),
   }))
 
-  // Create task mutation
+  // Create task mutation — uses /api/run for proper graph routing
   const createTaskMutation = useMutation({
     mutationFn: async (input: CreateTaskInput) => {
-      // Create thread
-      const newThread = await aegraClient.createThread({
-        task: input.task,
+      // Use /api/run endpoint which handles:
+      // - Switch-Agent routing (when graph_id is not specified)
+      // - Thread creation (when thread_id is null)
+      // - Run creation in Aegra
+      const result = await aegraClient.createTaskRun(input)
+
+      const newThread: Thread = {
+        thread_id: result.thread_id,
         created_at: new Date().toISOString(),
-      })
+        updated_at: new Date().toISOString(),
+        metadata: { task: input.task, graph_id: result.graph_id },
+        status: 'busy',
+      }
       setActiveThread(newThread)
-      
-      // Create run
-      const run = await aegraClient.createRun(newThread.thread_id, input)
-      setActiveRunId(run.run_id)
-      
-      return { thread: newThread, run }
+      setActiveRunId(result.run_id)
+
+      return { thread: newThread, run: result }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['threads'] })

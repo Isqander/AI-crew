@@ -121,25 +121,16 @@ class TestGraphNodes:
         assert "Task completed" in result["summary"]
         assert result["current_agent"] == "complete"
     
-    @patch("graphs.dev_team.graph.get_github_client")
-    def test_git_commit_node_with_repository(self, mock_get_client):
-        """Test git commit node with repository and mocked GitHub."""
-        # Create mock client
-        mock_repo = MagicMock()
-        mock_repo.default_branch = "main"
-        mock_ref = MagicMock()
-        mock_ref.object.sha = "abc123"
-        mock_repo.get_git_ref.return_value = mock_ref
-        mock_repo.create_git_ref.return_value = MagicMock()
-        mock_repo.get_contents.side_effect = Exception("Not found")
-        mock_repo.create_file.return_value = {"commit": MagicMock()}
-        mock_pr = MagicMock()
-        mock_pr.html_url = "https://github.com/owner/repo/pull/1"
-        mock_repo.create_pull.return_value = mock_pr
-        
-        mock_client = MagicMock()
-        mock_client.get_repo.return_value = mock_repo
-        mock_get_client.return_value = mock_client
+    @patch("graphs.dev_team.graph.commit_and_create_pr")
+    def test_git_commit_node_with_repository(self, mock_commit_pr):
+        """Test git commit node with repository and mocked commit_and_create_pr."""
+        mock_commit_pr.return_value = {
+            "pr_url": "https://github.com/owner/repo/pull/1",
+            "commit_sha": "abc123",
+            "working_branch": "ai/test-123",
+            "working_repo": "owner/repo",
+            "files_committed": 1,
+        }
         
         state = create_initial_state(task="Test")
         state["code_files"] = [
@@ -150,10 +141,16 @@ class TestGraphNodes:
         result = git_commit_node(state)
         
         assert "pr_url" in result
+        assert result["pr_url"] == "https://github.com/owner/repo/pull/1"
         assert result["current_agent"] == "complete"
+        assert result["working_branch"] == "ai/test-123"
     
     def test_git_commit_node_no_github_token(self):
-        """Test git commit node when GITHUB_TOKEN is missing."""
+        """Test git commit node when GITHUB_TOKEN is missing.
+
+        commit_and_create_pr returns an error when the client is unavailable.
+        The node falls back to returning code in the summary.
+        """
         state = create_initial_state(task="Test")
         state["code_files"] = [
             {"path": "main.py", "content": "code", "language": "python"}
@@ -163,7 +160,6 @@ class TestGraphNodes:
         result = git_commit_node(state)
         
         assert "summary" in result
-        assert "Task completed" in result["summary"]
         assert result["current_agent"] == "complete"
 
 

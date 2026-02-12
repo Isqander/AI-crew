@@ -3,7 +3,12 @@ AI-crew Graphs Package
 ======================
 
 Contains LangGraph graph definitions.
-Currently includes one graph: ``dev_team``.
+
+Available graphs:
+  - ``dev_team``     — Full development pipeline (PM → Analyst → Architect → Developer → QA)
+  - ``simple_dev``   — Quick development (Developer → git_commit)
+  - ``standard_dev`` — Standard development (PM → Developer → QA → git_commit)
+  - ``research``     — Web research and analysis (Researcher → report)
 
 Aegra loads graphs via importlib from ``aegra.json`` config,
 so direct imports from this package are not required at runtime.

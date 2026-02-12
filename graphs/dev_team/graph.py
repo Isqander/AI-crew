@@ -30,7 +30,6 @@ Nodes:
 """
 
 import os
-from datetime import datetime, timezone
 from typing import Literal
 
 import structlog
@@ -49,7 +48,7 @@ from dev_team.agents.analyst import analyst_agent
 from dev_team.agents.architect import architect_agent
 from dev_team.agents.developer import developer_agent
 from dev_team.agents.qa import qa_agent
-from dev_team.tools.github import get_github_client
+from dev_team.tools.git_workspace import commit_and_create_pr
 
 
 configure_logging()
@@ -211,10 +210,15 @@ def human_escalation_node(state: DevTeamState) -> dict:
 
 def git_commit_node(state: DevTeamState) -> dict:
     """
-    Commit generated code to GitHub:
-      1. Create a feature branch
-      2. Commit every code file
+    Commit generated code to GitHub via atomic Git tree API:
+      1. Create a feature branch (``ai/<slug>-<timestamp>``)
+      2. Batch-commit all code files in a single commit
       3. Open a pull request
+
+    Uses ``commit_and_create_pr`` from ``git_workspace`` which provides:
+    - Atomic commits (Git tree API — one commit for all files)
+    - Proper branch naming (``ai/<slug>-<timestamp>``)
+    - Structured logging
 
     When no repository or GITHUB_TOKEN is configured the node
     gracefully skips the commit and returns the generated code
@@ -237,120 +241,38 @@ def git_commit_node(state: DevTeamState) -> dict:
         }
 
     # ------------------------------------------------------------------
-    # Guard: no GitHub client (token missing / PyGithub not installed)
+    # Delegate to commit_and_create_pr (atomic commit + PR)
     # ------------------------------------------------------------------
-    client = get_github_client()
-    if client is None:
-        logger.error("node.git_commit.skip", reason="github_client_unavailable")
-        summary = _build_code_summary(code_files, task)
-        return {
-            "summary": (
-                "⚠️ GitHub integration is not configured (GITHUB_TOKEN missing). "
-                "Code was generated but NOT committed.\n\n" + summary
-            ),
-            "current_agent": "complete",
-        }
-
-    # ------------------------------------------------------------------
-    # 1. Create a feature branch
-    # ------------------------------------------------------------------
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    branch_name = f"ai/task-{ts}"
-
-    try:
-        repo = client.get_repo(repository)
-        default_branch = repo.default_branch
-        base_ref = repo.get_git_ref(f"heads/{default_branch}")
-        repo.create_git_ref(
-            ref=f"refs/heads/{branch_name}",
-            sha=base_ref.object.sha,
-        )
-        logger.info("git.branch_created", branch=branch_name, base=default_branch)
-    except Exception as exc:
-        logger.error("git.branch_create_failed", error=str(exc))
-        summary = _build_code_summary(code_files, task)
-        return {
-            "summary": f"⚠️ Failed to create branch on {repository}: {exc}\n\n{summary}",
-            "current_agent": "complete",
-            "error": str(exc),
-        }
-
-    # ------------------------------------------------------------------
-    # 2. Commit every code file
-    # ------------------------------------------------------------------
-    last_sha = None
-    committed = 0
-    for cf in code_files:
-        file_path = cf.get("path", "")
-        content = cf.get("content", "")
-        if not file_path or not content:
-            continue
-
-        commit_msg = f"feat: add {file_path} (AI-generated)"
-        try:
-            # Check if file exists on the branch
-            try:
-                existing = repo.get_contents(file_path, ref=branch_name)
-                result = repo.update_file(
-                    path=file_path,
-                    message=commit_msg,
-                    content=content,
-                    sha=existing.sha,
-                    branch=branch_name,
-                )
-            except Exception:
-                result = repo.create_file(
-                    path=file_path,
-                    message=commit_msg,
-                    content=content,
-                    branch=branch_name,
-                )
-            last_sha = result["commit"].sha
-            committed += 1
-            logger.debug("git.file_committed", path=file_path, sha=last_sha[:8])
-        except Exception as exc:
-            logger.error("git.file_commit_failed", path=file_path, error=str(exc))
-
-    if committed == 0:
-        logger.warning("node.git_commit.skip", reason="no_files_committed")
-        summary = _build_code_summary(code_files, task)
-        return {
-            "summary": f"⚠️ No files were committed to {repository}.\n\n{summary}",
-            "current_agent": "complete",
-        }
-
-    # ------------------------------------------------------------------
-    # 3. Create a pull request
-    # ------------------------------------------------------------------
-    pr_title = f"[AI-crew] {task[:80]}"
-    pr_body = (
-        f"## AI-Generated Code\n\n"
-        f"**Task:** {task}\n\n"
-        f"**Files ({committed}):**\n"
-        + "\n".join(f"- `{cf['path']}`" for cf in code_files if cf.get("path"))
-        + "\n\n---\n*Created automatically by AI-crew dev team.*"
+    result = commit_and_create_pr(
+        repo_name=repository,
+        task=task,
+        code_files=code_files,
     )
 
-    try:
-        pr = repo.create_pull(
-            title=pr_title,
-            body=pr_body,
-            head=branch_name,
-            base=default_branch,
-        )
-        pr_url = pr.html_url
-        logger.info("git.pr_created", url=pr_url)
-    except Exception as exc:
-        logger.error("git.pr_create_failed", error=str(exc))
-        pr_url = None
+    # Handle errors gracefully
+    if result.get("error") and result["files_committed"] == 0:
+        logger.error("node.git_commit.failed", error=result["error"])
+        summary = _build_code_summary(code_files, task)
+        return {
+            "summary": f"⚠️ Git commit failed: {result['error']}\n\n{summary}",
+            "current_agent": "complete",
+            "error": result["error"],
+        }
+
+    pr_url = result.get("pr_url", "")
+    commit_sha = result.get("commit_sha", "")
+    branch = result.get("working_branch", "")
+    committed = result.get("files_committed", 0)
 
     return {
-        "pr_url": pr_url or f"https://github.com/{repository}/tree/{branch_name}",
-        "commit_sha": last_sha or "",
+        "pr_url": pr_url,
+        "commit_sha": commit_sha,
+        "working_branch": branch,
+        "working_repo": repository,
         "summary": (
             f"✅ Created PR with {committed} file(s) on {repository}\n"
-            f"Branch: {branch_name}\n"
-            f"PR: {pr_url or 'failed to create'}"
+            f"Branch: {branch}\n"
+            f"PR: {pr_url}"
         ),
         "current_agent": "complete",
     }

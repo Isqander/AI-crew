@@ -1,6 +1,9 @@
 {
   "graphs": {
-    "dev_team": "./graphs/dev_team/graph.py:graph"
+    "dev_team": "./graphs/dev_team/graph.py:graph",
+    "simple_dev": "./graphs/simple_dev/graph.py:graph",
+    "standard_dev": "./graphs/standard_dev/graph.py:graph",
+    "research": "./graphs/research/graph.py:graph"
   },
   "dependencies": [
     "./graphs"

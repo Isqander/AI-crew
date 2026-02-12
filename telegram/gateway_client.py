@@ -34,6 +34,16 @@ class GatewayClient:
             h["Authorization"] = f"Bearer {self.token}"
         return h
 
+    async def get_graph_list(self) -> list[dict]:
+        """Get available graphs via GET /graph/list."""
+        resp = await self.client.get(
+            f"{self.gateway_url}/graph/list",
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("graphs", [])
+
     async def create_run(self, task: str, **kwargs) -> dict:
         """Create a new task run via POST /api/run."""
         resp = await self.client.post(
