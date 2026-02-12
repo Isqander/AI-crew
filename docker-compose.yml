@@ -129,7 +129,7 @@ services:
     ports:
       - "${LANGFUSE_PORT:-3001}:3001"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}?schema=${LANGFUSE_SCHEMA:-langfuse}
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mysecretkey}
       SALT: ${LANGFUSE_SALT:-mysalt}
       NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3001}
