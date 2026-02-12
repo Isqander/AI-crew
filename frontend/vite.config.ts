@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+﻿import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    allowedHosts: ['ai-crew-front.31.59.58.143.nip.io'],
     proxy: {
       // Proxy /api/* to Gateway (which handles auth + proxies to Aegra)
       '/api': {
@@ -17,3 +18,4 @@ export default defineConfig({
     },
   },
 })
+
