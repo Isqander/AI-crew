@@ -61,7 +61,7 @@ AI-crew/
 ## Документация (`docs/`)
 
 - [GETTING_STARTED](docs/GETTING_STARTED.md) — быстрый старт
-- [architecture](docs/architecture.md) — базовая архитектура (старая)
+- [architecture](docs/architecture_old.md) — базовая архитектура (старая)
 - [ARCHITECTURE_V2](docs/ARCHITECTURE_V2.md) — обновлённая архитектура
 - [DEVELOPMENT](docs/DEVELOPMENT.md) — разработка и расширение
 - [TESTING](docs/TESTING.md) — тестирование

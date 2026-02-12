@@ -340,4 +340,4 @@ touch graphs/dev_team/tools/__init__.py
 - [Pytest Documentation](https://docs.pytest.org/)
 - [unittest.mock Guide](https://docs.python.org/3/library/unittest.mock.html)
 - [Руководство разработчика](DEVELOPMENT.md)
-- [Архитектура](architecture.md)
+- [Архитектура](architecture_old.md)

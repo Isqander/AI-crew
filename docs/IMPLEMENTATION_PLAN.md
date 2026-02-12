@@ -1540,7 +1540,7 @@ jobs:
 
 ### Волна 1 — Definition of Done
 
-> Дата верификации: 12 февраля 2026 — 142 теста passed (tests/test_wave1_verification.py)
+> Дата верификации: 12 февраля 2026 — 142 теста Волны 1 passed + 72 теста Волны 2 = **214 total** (tests/)
 
 #### Фундамент
 - [x] structlog: все модули переведены, LOCAL/PRODUCTION форматы (включая github.py)
@@ -1584,8 +1584,29 @@ jobs:
 
 ### Волна 2 — Definition of Done
 
-- [ ] Git-based: working branches, git tools, git_commit_node обновлён
-- [ ] Switch-Agent: classify_task работает, фронт поддерживает выбор
+> Дата начала: 12 февраля 2026 — 214 тестов passed (tests/)
+
+#### Git-based Workflow (Module 3.1)
+- [x] State расширен: working_branch, working_repo, file_manifest + все поля Wave 2
+- [x] tools/git_workspace.py: 8 LangChain tools (create_working_branch, read/write file, batch write, list files, diff, create PR, delete branch)
+- [x] Safety: delete_working_branch отказывает удалять не-ai/ ветки
+- [x] Batch commit через Git tree API (атомарные операции)
+- [x] 40 unit-тестов (tests/test_git_workspace.py)
+- [ ] Git tools привязаны к агентам (bind_tools) — при интеграции
+- [ ] git_commit_node обновлён для использования git_workspace tools
+
+#### Switch-Agent Router (Module 3.2)
+- [x] classify_task: полная LLM-based реализация (OpenAI-compatible API через httpx)
+- [x] Fast path: 1 граф → без LLM-вызова
+- [x] Fallback: LLM недоступен → первый граф по умолчанию
+- [x] JSON parsing: plain, markdown-wrapped, surrounded by text
+- [x] Validation: invalid graph_id → fallback, complexity 1-10 нормализация
+- [x] Manifest loading + prompt generation для LLM
+- [x] run.py обновлён: передаёт available_graphs в classify_task
+- [x] 32 unit-теста (tests/test_router.py)
+- [ ] Фронт поддерживает выбор графа в TaskForm
+
+#### Остальные модули (не начаты)
 - [ ] Sandbox: code execution, lint, tests
 - [ ] Security Agent: static + runtime review
 - [ ] DevOps Agent: Dockerfile, CI/CD, secrets, branch protection

@@ -217,7 +217,7 @@ docker-compose down -v
 
 ## Следующие шаги
 
-- [Архитектура](architecture.md) — как устроена система
+- [Архитектура](architecture_old.md) — как устроена система
 - [Разработка](DEVELOPMENT.md) — как добавить агента, изменить промпты
 - [Тестирование](TESTING.md) — как запускать и писать тесты
 - [Развёртывание](deployment.md) — Docker Compose и Production
@@ -262,5 +262,5 @@ VITE_API_URL=http://localhost:8000
 
 ## Получить помощь
 
-- [Полная документация](architecture.md)
+- [Полная документация](architecture_old.md)
 - [Руководство разработчика](DEVELOPMENT.md)

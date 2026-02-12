@@ -106,6 +106,27 @@ class DevTeamState(TypedDict):
     error: NotRequired[str]                      # Error message if any
     retry_count: int                             # Number of retries
 
+    # === Wave 2: Git-based Workflow ===
+    working_branch: NotRequired[str]             # "ai/task-20260208-123456"
+    working_repo: NotRequired[str]               # "owner/repo"
+    file_manifest: NotRequired[list[str]]        # Files tracked in the branch
+
+    # === Wave 2: Sandbox ===
+    sandbox_results: NotRequired[dict]           # {stdout, stderr, exit_code, tests_passed}
+
+    # === Wave 2: Security ===
+    security_review: NotRequired[dict]           # {critical: [], warnings: [], info: []}
+
+    # === Wave 2: Deploy ===
+    deploy_url: NotRequired[str]                 # "https://app.31.59.58.143.nip.io"
+    infra_files: NotRequired[list[dict]]         # [{path, content}]
+
+    # === Wave 2: CLI ===
+    cli_agent_output: NotRequired[str]
+    cli_agent_role: NotRequired[str]             # "developer", "architect", etc.
+    execution_mode: NotRequired[str]             # "auto" | "internal" | "cli"
+    cli_tool: NotRequired[str]                   # "claude" | "codex"
+
 
 def create_initial_state(
     task: str,

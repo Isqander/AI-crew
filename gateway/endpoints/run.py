@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from gateway.auth import get_current_user
 from gateway.config import settings
 from gateway.models import CreateRunRequest, RunResponse, User
-from gateway.router import classify_task
+from gateway.router import classify_task, get_available_graphs
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["run"])
@@ -41,7 +41,8 @@ async def create_run(
     classification = None
     graph_id = data.graph_id
     if not graph_id:
-        classification = await classify_task(data.task, [])
+        available_graphs = await get_available_graphs()
+        classification = await classify_task(data.task, available_graphs)
         graph_id = classification.graph_id
         logger.info("run.auto_routed", graph_id=graph_id, complexity=classification.complexity)
 

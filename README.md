@@ -51,7 +51,7 @@ cd frontend && npm install && npm run dev
 | Документ | Описание |
 |----------|----------|
 | [Быстрый старт](docs/GETTING_STARTED.md) | Установка и запуск за 10 минут |
-| [Архитектура](docs/architecture.md) | Детальное описание системы, граф агентов, state-модель |
+| [Архитектура](docs/architecture_old.md) | Детальное описание системы, граф агентов, state-модель |
 | [Разработка](docs/DEVELOPMENT.md) | Как добавить агента, изменить промпты, настроить LLM |
 | [Тестирование](docs/TESTING.md) | Запуск тестов, фикстуры, CI/CD |
 | [Развёртывание](docs/deployment.md) | Docker Compose (dev) и Dockerfile (prod) |
