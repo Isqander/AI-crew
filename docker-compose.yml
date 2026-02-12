@@ -188,8 +188,8 @@ services:
       gateway:
         condition: service_started
     # No ports — polling mode
-    profiles:
-      - telegram  # Only starts with: docker-compose --profile telegram up
+#    profiles:
+#      - telegram  # Only starts with: docker-compose --profile telegram up
 
 volumes:
   postgres_data:
