@@ -24,7 +24,7 @@ async def main():
         logger.error("TELEGRAM_BOT_TOKEN not set")
         sys.exit(1)
 
-    gateway_url = os.getenv("GATEWAY_URL", "http://gateway:8080")
+    gateway_url = os.getenv("GATEWAY_URL", "http://gateway:8081")
     bot_email = os.getenv("TELEGRAM_BOT_EMAIL", "bot@ai-crew.local")
     bot_password = os.getenv("TELEGRAM_BOT_PASSWORD", "botpassword123")
 

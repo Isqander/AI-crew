@@ -684,13 +684,13 @@ class TestInfrastructure:
             "Aegra should have 'expose' for internal access"
 
     def test_gateway_has_ports(self):
-        """Gateway service exposes port 8080."""
+        """Gateway service exposes port 8081."""
         path = PROJECT_ROOT / "docker-compose.yml"
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         gateway = data["services"].get("gateway", {})
         ports = gateway.get("ports", [])
-        assert any("8080" in str(p) for p in ports), \
-            "Gateway should expose port 8080"
+        assert any("8081" in str(p) for p in ports), \
+            "Gateway should expose port 8081"
 
     def test_gateway_dockerfile_exists(self):
         """gateway/Dockerfile exists."""
@@ -789,10 +789,10 @@ class TestFrontendFiles:
         assert "password" in content.lower()
 
     def test_api_client_uses_gateway(self):
-        """API client points to Gateway (port 8080), not Aegra (8000)."""
+        """API client points to Gateway (port 8081), not Aegra (8000)."""
         content = (FRONTEND_DIR / "src/api/aegra.ts").read_text(encoding="utf-8")
-        assert "8080" in content or "VITE_API_URL" in content, \
-            "API client should use Gateway (8080) or VITE_API_URL"
+        assert "8081" in content or "VITE_API_URL" in content, \
+            "API client should use Gateway (8081) or VITE_API_URL"
 
     def test_api_client_sends_auth_header(self):
         """API client includes Authorization header."""
@@ -810,9 +810,9 @@ class TestFrontendFiles:
     def test_vite_config_proxy_target(self):
         """Vite config proxy should point to Gateway, not Aegra directly."""
         content = (FRONTEND_DIR / "vite.config.ts").read_text(encoding="utf-8")
-        if "localhost:8000" in content and "localhost:8080" not in content:
+        if "localhost:8000" in content and "localhost:8081" not in content:
             pytest.xfail(
-                "Vite proxy points to Aegra (8000) instead of Gateway (8080)"
+                "Vite proxy points to Aegra (8000) instead of Gateway (8081)"
             )
 
     def test_package_json_has_dependencies(self):

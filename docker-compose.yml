@@ -100,7 +100,7 @@ services:
     container_name: aicrew-gateway
     restart: unless-stopped
     ports:
-      - "${GATEWAY_PORT:-8080}:8080"
+      - "${GATEWAY_PORT:-8081}:8081"
     environment:
       AEGRA_URL: http://aegra:8000
       DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5433/${POSTGRES_DB:-aicrew}
@@ -149,13 +149,13 @@ services:
       context: ./frontend
       dockerfile: ${FRONTEND_DOCKERFILE:-Dockerfile.dev}
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8081}
     container_name: aicrew-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-5173}:${FRONTEND_INTERNAL_PORT:-5173}"
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8081}
     depends_on:
       - gateway
 
@@ -170,7 +170,7 @@ services:
     restart: unless-stopped
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      GATEWAY_URL: http://gateway:8080
+      GATEWAY_URL: http://gateway:8081
       TELEGRAM_BOT_EMAIL: ${TELEGRAM_BOT_EMAIL:-bot@ai-crew.local}
       TELEGRAM_BOT_PASSWORD: ${TELEGRAM_BOT_PASSWORD:-botpassword123}
       TELEGRAM_ADMIN_CHAT_ID: ${TELEGRAM_ADMIN_CHAT_ID:-}

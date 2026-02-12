@@ -10,7 +10,7 @@ export default defineConfig({
     proxy: {
       // Proxy /api/* to Gateway (which handles auth + proxies to Aegra)
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8081',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

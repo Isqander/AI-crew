@@ -15,7 +15,7 @@ import '@xyflow/react/dist/style.css'
 import dagre from 'dagre'
 import { useAuthStore } from '../store/authStore'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081'
 
 // Types from ARCHITECTURE_V2
 interface AgentConfig {

@@ -19,7 +19,7 @@ RUN npm ci
 COPY . .
 
 # VITE_API_URL is baked into JS at build time
-ARG VITE_API_URL=http://localhost:8080
+ARG VITE_API_URL=http://localhost:8081
 RUN VITE_API_URL=${VITE_API_URL} npx vite build
 
 # ---- Stage 2: Serve with nginx ----

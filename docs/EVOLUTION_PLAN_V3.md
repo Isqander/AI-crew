@@ -87,7 +87,7 @@
     │
     ▼
 ┌────────────────────────────────────────┐
-│  Gateway (FastAPI)  :8080              │  ← Единственная точка входа
+│  Gateway (FastAPI)  :8081              │  ← Единственная точка входа
 │  ├── /auth/register  POST             │
 │  ├── /auth/login     POST             │
 │  ├── /auth/me        GET              │
@@ -106,7 +106,7 @@
 
 | Сервис | Наружу | Комментарий |
 |--------|--------|-------------|
-| Gateway | **:8080** | Единственная точка входа для API |
+| Gateway | **:8081** | Единственная точка входа для API |
 | Frontend | **:5173** | Статика (в проде через nginx) |
 | Langfuse | **:3000** | Свой auth (NextAuth), оставить |
 | PostgreSQL | **:5433** | Оставить для прямого доступа. На VPS — ограничить firewall по IP |
@@ -166,7 +166,7 @@ services:
   gateway:
     build: ./gateway
     ports:
-      - "8080:8080"
+      - "8081:8081"
     environment:
       AEGRA_URL: http://aegra:8000
       JWT_SECRET: ${JWT_SECRET}
@@ -189,7 +189,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_URL: http://localhost:8080  # Через gateway!
+      VITE_API_URL: http://localhost:8081  # Через gateway!
 
   # Langfuse — открыт (свой auth)
   langfuse:
@@ -1411,7 +1411,7 @@ parameters:
 └────────────────┬──────────────────────────────────────┘
                  │
         ┌────────▼────────┐
-        │   Gateway :8080 │  ← JWT auth, router, graph endpoints
+        │   Gateway :8081 │  ← JWT auth, router, graph endpoints
         └────────┬────────┘
                  │
         ┌────────▼────────┐
@@ -1443,13 +1443,13 @@ parameters:
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                      Пользователи                                  │
-│    Web UI (:5173)       Telegram (:polling)      API (:8080)       │
+│    Web UI (:5173)       Telegram (:polling)      API (:8081)       │
 └──────┬──────────────────────┬──────────────────────┬──────────────┘
        │                      │                      │
        └──────────────────────┼──────────────────────┘
                               │
                ┌──────────────▼──────────────┐
-               │   Gateway :8080             │
+               │   Gateway :8081             │
                │   ├── JWT auth              │
                │   ├── Switch-Agent/Router   │
                │   ├── /graph/* endpoints    │
@@ -1521,7 +1521,7 @@ services:
 
   gateway:
     build: ./gateway
-    ports: ["8080:8080"]  # Единственный API-порт наружу
+    ports: ["8081:8081"]  # Единственный API-порт наружу
     depends_on: [aegra, postgres]
     environment:
       AEGRA_URL: http://aegra:8000
@@ -1532,7 +1532,7 @@ services:
     build: ./frontend
     ports: ["5173:5173"]
     environment:
-      VITE_API_URL: ${GATEWAY_URL:-http://localhost:8080}
+      VITE_API_URL: ${GATEWAY_URL:-http://localhost:8081}
 
   # === Observability ===
   langfuse:
@@ -1555,7 +1555,7 @@ services:
     build: ./telegram
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      GATEWAY_URL: http://gateway:8080
+      GATEWAY_URL: http://gateway:8081
     depends_on: [gateway]
     # Нет портов наружу (polling)
 
@@ -1797,7 +1797,7 @@ POSTGRES_PORT=5433
 
 # === Gateway ===
 JWT_SECRET=your-jwt-secret-32chars
-GATEWAY_URL=http://localhost:8080    # Для фронтенда
+GATEWAY_URL=http://localhost:8081    # Для фронтенда
 
 # === GitHub ===
 GITHUB_TOKEN=ghp_xxx
