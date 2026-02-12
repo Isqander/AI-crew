@@ -18,9 +18,9 @@ _GRAPHS_DIR = str(_PROJECT_ROOT / "graphs")
 if _GRAPHS_DIR not in sys.path:
     sys.path.insert(0, _GRAPHS_DIR)
 
-# Set test environment variables
-os.environ["OPENAI_API_KEY"] = "test-key"
-os.environ["ANTHROPIC_API_KEY"] = "test-key"
+# Set test environment variables (custom OpenAI-compatible endpoint)
+os.environ["LLM_API_KEY"] = "test-key"
+os.environ["LLM_API_URL"] = "http://localhost:9999/v1"
 
 
 @pytest.fixture

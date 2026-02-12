@@ -63,12 +63,9 @@ services:
       PORT: 8000
       DEBUG: ${DEBUG:-true}
 
-      # LLM
+      # LLM (all models via custom OpenAI-compatible endpoint)
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_API_URL: ${LLM_API_URL:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
 
       # Langfuse (client — talks to the langfuse container)
       LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}

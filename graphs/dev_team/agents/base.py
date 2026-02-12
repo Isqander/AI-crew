@@ -49,8 +49,8 @@ DEFAULT_MODELS = {
     "pm": "gemini-claude-sonnet-4-5-thinking",
     "analyst": "gemini-claude-sonnet-4-5-thinking",
     "architect": "gemini-claude-opus-4-5-thinking",
-    "developer": "glm-4.7",
-    "qa": "glm-4.7",
+    "developer": "kimi-k2-thinking",
+    "qa": "kimi-k2-thinking",
 }
 
 # Available models (for reference)
@@ -59,7 +59,7 @@ AVAILABLE_MODELS = [
     "gemini-claude-sonnet-4-5-thinking",
     "gemini-3-pro-high",
     "gemini-3-flash-preview",
-    "glm-4.7",
+    "kimi-k2-thinking",
 ]
 
 
@@ -307,19 +307,19 @@ def invoke_with_retry(
 def load_prompts(agent_name: str) -> dict:
     """
     Load prompts from YAML file for an agent.
-    
+
     Args:
         agent_name: Name of the agent (e.g., "pm", "analyst")
-        
+
     Returns:
         Dictionary of prompts
     """
     prompts_dir = Path(__file__).parent.parent / "prompts"
     prompt_file = prompts_dir / f"{agent_name}.yaml"
-    
+
     if not prompt_file.exists():
         raise FileNotFoundError(f"Prompts file not found: {prompt_file}")
-    
+
     with open(prompt_file, "r", encoding="utf-8") as f:
         prompts = yaml.safe_load(f)
     logger.debug("prompts.loaded", agent=agent_name, keys=list(prompts.keys()))
@@ -332,11 +332,11 @@ def create_prompt_template(
 ) -> ChatPromptTemplate:
     """
     Create a chat prompt template.
-    
+
     Args:
         system_prompt: System message content
         human_template: Human message template with placeholders
-        
+
     Returns:
         ChatPromptTemplate instance
     """

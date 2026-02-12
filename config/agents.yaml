@@ -41,12 +41,12 @@ agents:
     fallback_model: "gemini-claude-sonnet-4-5-thinking"
 
   developer:
-    model: "glm-4.7"
+    model: "kimi-k2-thinking"
     temperature: 0.2
     fallback_model: "gemini-claude-sonnet-4-5-thinking"
 
   qa:
-    model: "glm-4.7"
+    model: "kimi-k2-thinking"
     temperature: 0.3
     fallback_model: "gemini-claude-sonnet-4-5-thinking"
 
