@@ -188,3 +188,7 @@ volumes:
 networks:
   default:
     name: aicrew-network
+  dokploy:
+    external: true
+    name: dokploy-network
+
