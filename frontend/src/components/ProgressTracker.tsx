@@ -20,6 +20,7 @@ interface ProgressTrackerProps {
   codeFiles: { path: string }[]
   issuesFound: string[]
   prUrl?: string
+  error?: string
 }
 
 interface Stage {
@@ -45,11 +46,19 @@ export function ProgressTracker({
   codeFiles,
   issuesFound,
   prUrl,
+  error,
 }: ProgressTrackerProps) {
   const getStageStatus = (stage: Stage): 'complete' | 'active' | 'pending' | 'error' => {
     const currentIndex = STAGES.findIndex(s => s.agent === currentAgent)
     const stageIndex = STAGES.findIndex(s => s.id === stage.id)
-    
+
+    // Handle graph-level error — mark active stage as error
+    if (error) {
+      if (stageIndex < currentIndex) return 'complete'
+      if (stageIndex === currentIndex) return 'error'
+      return 'pending'
+    }
+
     // Handle waiting for user
     if (currentAgent === 'waiting_for_user') {
       // Find the previous agent that was active
@@ -57,10 +66,10 @@ export function ProgressTracker({
       if (stageIndex === currentIndex) return 'active'
       return 'pending'
     }
-    
+
     if (stage.agent === 'complete' && prUrl) return 'complete'
     if (stage.id === 'qa' && issuesFound.length > 0) return 'error'
-    
+
     if (stageIndex < currentIndex) return 'complete'
     if (stageIndex === currentIndex) return 'active'
     return 'pending'
@@ -108,17 +117,22 @@ export function ProgressTracker({
                 </div>
                 
                 {/* Stage details */}
-                {status !== 'pending' && (
+                {status === 'error' && error && (
+                  <p className="text-xs text-red-400/80 font-mono mt-0.5 break-all">
+                    {error.length > 120 ? error.slice(0, 120) + '...' : error}
+                  </p>
+                )}
+                {status !== 'pending' && status !== 'error' && (
                   <p className="text-xs text-midnight-500 font-mono mt-0.5">
-                    {stage.id === 'analyst' && requirements.length > 0 && 
+                    {stage.id === 'analyst' && requirements.length > 0 &&
                       `${requirements.length} требований`}
-                    {stage.id === 'architect' && Object.keys(architecture).length > 0 && 
+                    {stage.id === 'architect' && Object.keys(architecture).length > 0 &&
                       'Архитектура определена'}
-                    {stage.id === 'developer' && codeFiles.length > 0 && 
+                    {stage.id === 'developer' && codeFiles.length > 0 &&
                       `${codeFiles.length} файлов`}
-                    {stage.id === 'qa' && issuesFound.length > 0 && 
+                    {stage.id === 'qa' && issuesFound.length > 0 &&
                       `${issuesFound.length} проблем`}
-                    {stage.id === 'complete' && prUrl && 
+                    {stage.id === 'complete' && prUrl &&
                       'PR создан'}
                   </p>
                 )}

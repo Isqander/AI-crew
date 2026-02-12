@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, Copy, Check } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Copy, Check, AlertCircle } from 'lucide-react'
 import { useState } from 'react'
 import { Chat } from '../components/Chat'
 import { ProgressTracker } from '../components/ProgressTracker'
@@ -9,11 +9,13 @@ import type { AgentName } from '../types'
 
 export function TaskDetail() {
   const { threadId } = useParams<{ threadId: string }>()
-  const { 
-    threadState, 
-    messages, 
-    isLoading, 
-    sendClarification 
+  const {
+    threadState,
+    messages,
+    isLoading,
+    error,
+    runError,
+    sendClarification
   } = useTask(threadId)
   
   const [copied, setCopied] = useState(false)
@@ -76,6 +78,19 @@ export function TaskDetail() {
         )}
       </div>
 
+      {/* Error banner */}
+      {(error || runError) && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2 text-red-400 font-mono text-sm">
+            <AlertCircle className="w-5 h-5" />
+            <span className="font-semibold">Ошибка выполнения</span>
+          </div>
+          <p className="text-red-300/80 text-sm font-mono mt-2">
+            {runError || error?.message}
+          </p>
+        </div>
+      )}
+
       {/* Main content */}
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Left column - Chat */}
@@ -113,6 +128,7 @@ export function TaskDetail() {
             codeFiles={state?.code_files || []}
             issuesFound={state?.issues_found || []}
             prUrl={state?.pr_url}
+            error={runError || state?.error || error?.message}
           />
 
           {/* Tech stack */}

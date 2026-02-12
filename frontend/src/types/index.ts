@@ -15,6 +15,7 @@ export interface Run {
   created_at: string
   updated_at: string
   status: 'pending' | 'running' | 'success' | 'error' | 'interrupted'
+  error_message?: string
   metadata: Record<string, unknown>
 }
 
@@ -55,6 +56,9 @@ export interface DevTeamState {
   // Messages
   messages: Message[]
   
+  // Error
+  error?: string
+
   // Control
   current_agent: string
   needs_clarification: boolean

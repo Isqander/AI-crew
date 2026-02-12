@@ -153,7 +153,11 @@ async def _call_llm_for_classification(
             data = resp.json()
 
         # Extract the assistant message content
-        content = data["choices"][0]["message"]["content"].strip()
+        choices = data.get("choices")
+        if not choices:
+            logger.warning("router.null_choices", response_keys=list(data.keys()))
+            return None
+        content = choices[0]["message"]["content"].strip()
         logger.debug("router.llm_response", content=content[:200])
 
         # Parse JSON from the response (handle potential markdown wrapping)

@@ -190,6 +190,14 @@ class AegraClient {
   }
 
   /**
+   * Get the latest run for a thread (for error checking)
+   */
+  async getLatestRun(threadId: string): Promise<Run | null> {
+    const runs = await this.fetch<Run[]>(`/threads/${threadId}/runs?limit=1`)
+    return runs?.[0] || null
+  }
+
+  /**
    * Cancel a run
    */
   async cancelRun(threadId: string, runId: string): Promise<void> {

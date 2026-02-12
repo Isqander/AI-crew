@@ -1,12 +1,12 @@
 import { useNavigate } from 'react-router-dom'
-import { Bot, Zap, GitBranch, MessageSquare, ArrowRight } from 'lucide-react'
+import { Bot, Zap, GitBranch, MessageSquare, ArrowRight, AlertCircle } from 'lucide-react'
 import { TaskForm } from '../components/TaskForm'
 import { useTask, useThreads } from '../hooks/useTask'
 import type { CreateTaskInput } from '../types'
 
 export function Home() {
   const navigate = useNavigate()
-  const { createTask, isCreating, thread } = useTask()
+  const { createTask, isCreating, error, thread } = useTask()
   const { data: threads } = useThreads()
 
   const handleSubmit = async (input: CreateTaskInput) => {
@@ -46,6 +46,17 @@ export function Home() {
           Новая задача
         </h2>
         <TaskForm onSubmit={handleSubmit} isLoading={isCreating} />
+        {error && (
+          <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-red-400 font-mono text-sm">
+              <AlertCircle className="w-4 h-4" />
+              <span className="font-semibold">Ошибка создания задачи</span>
+            </div>
+            <p className="text-red-300/80 text-sm font-mono mt-1">
+              {error.message}
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Features grid */}

@@ -57,6 +57,7 @@ export function useStreamingTask(threadId: string | null) {
       const reader = response.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let currentEvent = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -67,15 +68,25 @@ export function useStreamingTask(threadId: string | null) {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+            continue
+          }
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6))
+              // Handle error events from Aegra
+              if (currentEvent === 'error' || data.error) {
+                setError(new Error(data.message || data.error || 'Unknown error'))
+                return
+              }
               if (data && typeof data === 'object') {
                 setState(prev => ({ ...prev, ...data }))
               }
             } catch {
               // Skip non-JSON data lines
             }
+            currentEvent = ''
           }
         }
       }

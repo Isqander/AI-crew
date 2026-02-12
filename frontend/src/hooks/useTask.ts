@@ -11,7 +11,8 @@ interface UseTaskReturn {
   isLoading: boolean
   isCreating: boolean
   error: Error | null
-  
+  runError: string | null
+
   // Actions
   createTask: (input: CreateTaskInput) => Promise<void>
   sendClarification: (response: string) => Promise<void>
@@ -30,19 +31,39 @@ export function useTask(threadId?: string): UseTaskReturn {
     enabled: !!threadId,
   })
 
+  // Get latest run (for error detection)
+  const effectiveThreadId = threadId || activeThread?.thread_id
+  const { data: latestRun } = useQuery({
+    queryKey: ['latestRun', effectiveThreadId],
+    queryFn: () => aegraClient.getLatestRun(effectiveThreadId!),
+    enabled: !!effectiveThreadId,
+    refetchInterval: (query) => {
+      const run = query.state.data
+      if (run?.status === 'error' || run?.status === 'success') return false
+      return 3000
+    },
+  })
+
+  const runError = latestRun?.status === 'error'
+    ? (latestRun.error_message || 'Неизвестная ошибка выполнения')
+    : null
+
   // Get thread state
-  const { 
-    data: threadState, 
+  const {
+    data: threadState,
     isLoading: isLoadingState,
     refetch: refetchState,
   } = useQuery({
-    queryKey: ['threadState', threadId || activeThread?.thread_id],
-    queryFn: () => aegraClient.getThreadState(threadId || activeThread!.thread_id),
-    enabled: !!(threadId || activeThread),
-    refetchInterval: (data) => {
+    queryKey: ['threadState', effectiveThreadId],
+    queryFn: () => aegraClient.getThreadState(effectiveThreadId!),
+    enabled: !!effectiveThreadId,
+    refetchInterval: (query) => {
+      // Stop polling on run error
+      if (runError) return false
       // Auto-refresh while task is running
-      const state = data as ThreadState | undefined
-      if (state?.values?.current_agent && 
+      const state = query.state.data
+      if (state?.values?.error) return false
+      if (state?.values?.current_agent &&
           state.values.current_agent !== 'complete' &&
           state.values.current_agent !== 'waiting_for_user') {
         return 2000 // Poll every 2 seconds
@@ -129,6 +150,7 @@ export function useTask(threadId?: string): UseTaskReturn {
     isLoading: isLoadingState || clarificationMutation.isPending,
     isCreating: createTaskMutation.isPending,
     error: createTaskMutation.error || clarificationMutation.error || null,
+    runError,
     createTask,
     sendClarification,
     refreshState,
