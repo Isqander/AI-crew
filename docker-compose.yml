@@ -121,6 +121,9 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+    networks:
+      - default    # aicrew-network — для postgres
+      - dokploy    # dokploy-network — для Traefik
 
   # ===========================================
   # Langfuse (Observability)
