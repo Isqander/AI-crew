@@ -1,63 +1,71 @@
 # CURSOR.md — AI-crew
 
-> Контекст для Cursor IDE при работе с этим проектом.
+## Критические правила
 
-## Проект
+1. **Язык** — всегда отвечай на **русском языке**
 
-AI-crew — мультиагентная платформа на LangGraph. 5 ИИ-агентов (PM, Analyst,
-Architect, Developer, QA) совместно выполняют задачи по разработке:
-от требований до Pull Request.
+## Что это за проект
 
-## Где что лежит
+AI-crew — мультиагентная платформа разработки на LangGraph.
+Команды ИИ-агентов выполняют задачи по разработке ПО: от сбора требований до создания PR и деплоя.
+При этом возможны задачи и любого другого направления.
 
+Проект включает:
+- `graphs/dev_team/` — основной LangGraph-граф команды
+- `frontend/` — Web UI (React + Vite)
+- `gateway/` — API-шлюз (FastAPI)
+- `telegram/` — Telegram-бот для работы с системой
+
+## Ключевые файлы
+
+- `graphs/dev_team/graph.py` — узлы, рёбра, роутинг графа
+- `graphs/dev_team/state.py` — `DevTeamState` (shared state)
+- `graphs/dev_team/agents/base.py` — `BaseAgent`, `get_llm`, загрузка промптов
+- `graphs/dev_team/agents/{pm,analyst,architect,developer,qa}.py` — агенты
+- `graphs/dev_team/prompts/*.yaml` — YAML-промпты агентов
+- `graphs/dev_team/tools/{filesystem,github,web}.py` — инструменты агентов
+- `graphs/dev_team/manifest.yaml` — манифест графа для запуска
+- `aegra.json` / `aegra.prod.json` — конфиги регистрации графов
+- `docker-compose.yml` / `docker-compose.prod.yml` — dev/prod инфраструктура
+- `env.example` — шаблон переменных окружения
+
+## Текущее дерево (сокращённо)
+
+```text
+AI-crew/
+├── graphs/
+│   └── dev_team/
+│       ├── agents/
+│       ├── prompts/
+│       ├── tools/
+│       ├── graph.py
+│       ├── state.py
+│       ├── manifest.yaml
+│       └── logging_config.py
+├── frontend/
+├── gateway/
+├── telegram/
+├── tests/
+├── docs/
+├── scripts/
+├── vendor/aegra/
+├── aegra.json
+├── aegra.prod.json
+├── docker-compose.yml
+├── docker-compose.prod.yml
+├── Dockerfile
+├── Dockerfile.aegra
+└── env.example
 ```
-graphs/dev_team/
-  graph.py              ← Граф: узлы, рёбра, роутеры
-  state.py              ← DevTeamState (TypedDict)
-  agents/
-    base.py             ← get_llm(), BaseAgent, load_prompts()
-    pm.py               ← Project Manager
-    analyst.py          ← Business Analyst
-    architect.py        ← Software Architect
-    developer.py        ← Developer (code gen)
-    qa.py               ← QA Engineer
-  prompts/
-    *.yaml              ← YAML-промпты для каждого агента
-  tools/
-    github.py           ← GitHub API (PRs, branches, commits)
-    filesystem.py       ← Локальная ФС (workspace)
-frontend/src/           ← React + Vite + Tailwind UI
-tests/                  ← pytest тесты
-vendor/aegra/           ← Aegra server (не трогать!)
-docs/                   ← Документация
-```
 
-## Основные команды
+## Документация (`docs/`)
 
-```bash
-pytest tests/ -v                  # Тесты
-docker-compose up -d              # Dev-окружение
-docker-compose logs -f aegra      # Логи
-ruff check graphs/                # Линтер
-```
-
-## Паттерны
-
-- **Агенты** — каждый файл экспортирует `*_agent(state) -> dict` для LangGraph
-- **LLM** — `get_llm(role="...", temperature=...)`, единый прокси (env `LLM_API_URL`)
-- **Промпты** — YAML: `system` + шаблоны с `{placeholder}`, загрузка через `load_prompts()`
-- **State** — `DevTeamState` TypedDict, `NotRequired` для optional полей
-- **Imports** — в `graph.py` абсолютные (`from dev_team.*`), в agents — относительные
-
-## Что НЕ трогать
-
-- `vendor/aegra/` — внешняя зависимость, устанавливается как pip-пакет
-- `vendor/aegra/CURSOR.md`, `CLAUDE.md`, `AGENTS.md` — файлы Aegra, не проекта
-
-## Документация
-
-- [docs/architecture.md](docs/architecture.md) — архитектура, state, диаграммы
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — добавить агента, промпты, LLM
-- [docs/TESTING.md](docs/TESTING.md) — тесты
-- [docs/deployment.md](docs/deployment.md) — Docker
-- [docs/IDEAS.md](docs/IDEAS.md) — roadmap
+- [GETTING_STARTED](docs/GETTING_STARTED.md) — быстрый старт
+- [architecture](docs/architecture.md) — базовая архитектура (старая)
+- [ARCHITECTURE_V2](docs/ARCHITECTURE_V2.md) — обновлённая архитектура
+- [DEVELOPMENT](docs/DEVELOPMENT.md) — разработка и расширение
+- [TESTING](docs/TESTING.md) — тестирование
+- [deployment](docs/deployment.md) — развёртывание
+- [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md) — план реализации
+- [EVOLUTION_PLAN_V3](docs/EVOLUTION_PLAN_V3.md) — план эволюции
+- [IDEAS](docs/IDEAS.md) — backlog идей

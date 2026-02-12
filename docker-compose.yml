@@ -24,7 +24,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aicrew_secret_password}
       POSTGRES_DB: ${POSTGRES_DB:-aicrew}
     ports:
-      - "${POSTGRES_PORT:-5433}:5433"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -47,11 +47,11 @@ services:
       - "8000"                          # Internal only — not published to host
     environment:
       # Database
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5433/${POSTGRES_DB:-aicrew}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
       POSTGRES_USER: ${POSTGRES_USER:-aicrew}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aicrew_secret_password}
       POSTGRES_DB: ${POSTGRES_DB:-aicrew}
-      POSTGRES_PORT: 5433
+      POSTGRES_PORT: 5432
       POSTGRES_HOST: postgres
 
       # Aegra Config
@@ -103,7 +103,7 @@ services:
       - "${GATEWAY_PORT:-8081}:8081"
     environment:
       AEGRA_URL: http://aegra:8000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5433/${POSTGRES_DB:-aicrew}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-1800}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
@@ -129,7 +129,7 @@ services:
     ports:
       - "${LANGFUSE_PORT:-3001}:3001"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5433/${POSTGRES_DB:-aicrew}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aicrew}:${POSTGRES_PASSWORD:-aicrew_secret_password}@postgres:5432/${POSTGRES_DB:-aicrew}
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-mysecretkey}
       SALT: ${LANGFUSE_SALT:-mysalt}
       NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3001}

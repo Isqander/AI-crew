@@ -1,68 +1,72 @@
-# AGENTS.md — AI-crew
+﻿# AGENTS.md — AI-crew
 
-> Контекст для ИИ-агентов (Codex, GitHub Copilot Workspace, и т.д.)
+## Критические правила
+
+1. **Язык** — всегда отвечай на **русском языке**
+2. Если есть вопросы/уточнения - сразу спрашивай у пользователя!
 
 ## Что это за проект
 
 AI-crew — мультиагентная платформа разработки на LangGraph.
-5 ИИ-агентов (PM, Analyst, Architect, Developer, QA) совместно выполняют
-задачи по разработке ПО — от сбора требований до создания Pull Request.
+Команды ИИ-агентов выполняют задачи по разработке ПО: от сбора требований до создания PR и деплоя.
+При этом возможны задачи и любого другого направления.
+
+Проект включает:
+- `graphs/dev_team/` — основной LangGraph-граф команды
+- `frontend/` — Web UI (React + Vite)
+- `gateway/` — API-шлюз (FastAPI)
+- `telegram/` — Telegram-бот для работы с системой
 
 ## Ключевые файлы
 
-| Файл | Что делает |
-|------|-----------|
-| `graphs/dev_team/graph.py` | Главный граф: узлы, рёбра, роутеры |
-| `graphs/dev_team/state.py` | `DevTeamState` — shared state (TypedDict) |
-| `graphs/dev_team/agents/base.py` | LLM factory (`get_llm`), `BaseAgent`, `load_prompts` |
-| `graphs/dev_team/agents/pm.py` | Project Manager |
-| `graphs/dev_team/agents/analyst.py` | Business Analyst |
-| `graphs/dev_team/agents/architect.py` | Software Architect |
-| `graphs/dev_team/agents/developer.py` | Developer (code generation) |
-| `graphs/dev_team/agents/qa.py` | QA Engineer (code review) |
-| `graphs/dev_team/prompts/*.yaml` | YAML-промпты для каждого агента |
-| `graphs/dev_team/tools/github.py` | GitHub API tools (PRs, commits) |
-| `graphs/dev_team/tools/filesystem.py` | Local filesystem tools |
-| `aegra.json` | Конфиг Aegra (регистрация графов) |
-| `docker-compose.yml` | Development инфраструктура |
-| `env.example` | Шаблон переменных окружения |
+- `graphs/dev_team/graph.py` — узлы, рёбра, роутинг графа
+- `graphs/dev_team/state.py` — `DevTeamState` (shared state)
+- `graphs/dev_team/agents/base.py` — `BaseAgent`, `get_llm`, загрузка промптов
+- `graphs/dev_team/agents/{pm,analyst,architect,developer,qa}.py` — агенты
+- `graphs/dev_team/prompts/*.yaml` — YAML-промпты агентов
+- `graphs/dev_team/tools/{filesystem,github,web}.py` — инструменты агентов
+- `graphs/dev_team/manifest.yaml` — манифест графа для запуска
+- `aegra.json` / `aegra.prod.json` — конфиги регистрации графов
+- `docker-compose.yml` / `docker-compose.prod.yml` — dev/prod инфраструктура
+- `env.example` — шаблон переменных окружения
 
-## Граф агентов (поток)
+## Текущее дерево (сокращённо)
 
-```
-PM → Analyst → Architect → Developer → QA → git_commit → END
-       ↕           ↕                    ↕
-   clarification  clarification    Dev↔QA loop (≤3)
-   (HITL)         (HITL)              ↓
-                               architect_escalation
-                                      ↓
-                               human_escalation (HITL)
-```
-
-## Паттерн агента
-
-Каждый модуль агента содержит:
-1. **Класс** (наследует `BaseAgent`) — бизнес-логика
-2. **Singleton getter** (`get_*_agent()`) — ленивая инициализация
-3. **Node function** (`*_agent(state) -> dict`) — точка входа для LangGraph
-
-## Команды
-
-```bash
-pytest tests/ -v                  # Запуск тестов
-docker-compose up -d              # Запуск dev-окружения
-docker-compose logs -f aegra      # Логи Aegra
+```text
+AI-crew/
+├── graphs/
+│   └── dev_team/
+│       ├── agents/
+│       ├── prompts/
+│       ├── tools/
+│       ├── graph.py
+│       ├── state.py
+│       ├── manifest.yaml
+│       └── logging_config.py
+├── frontend/
+├── gateway/
+├── telegram/
+├── tests/
+├── docs/
+├── scripts/
+├── vendor/aegra/
+├── aegra.json
+├── aegra.prod.json
+├── docker-compose.yml
+├── docker-compose.prod.yml
+├── Dockerfile
+├── Dockerfile.aegra
+└── env.example
 ```
 
-## Полная документация
+## Документация (`docs/`)
 
-- [Архитектура](docs/architecture.md) — детальное описание системы
-- [Разработка](docs/DEVELOPMENT.md) — как добавить агента, изменить промпты
-- [Тестирование](docs/TESTING.md) — тесты, фикстуры
-- [Развёртывание](docs/deployment.md) — Docker
-
-## vendor/aegra/
-
-Директория `vendor/aegra/` содержит Aegra server — open-source бэкенд,
-совместимый с LangGraph Platform API. Устанавливается как pip-пакет
-при сборке Docker-образа. Код Aegra **не модифицируется** напрямую.
+- [GETTING_STARTED](docs/GETTING_STARTED.md) — быстрый старт
+- [architecture](docs/architecture.md) — базовая архитектура (старая)
+- [ARCHITECTURE_V2](docs/ARCHITECTURE_V2.md) — обновлённая архитектура
+- [DEVELOPMENT](docs/DEVELOPMENT.md) — разработка и расширение
+- [TESTING](docs/TESTING.md) — тестирование
+- [deployment](docs/deployment.md) — развёртывание
+- [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md) — план реализации
+- [EVOLUTION_PLAN_V3](docs/EVOLUTION_PLAN_V3.md) — план эволюции
+- [IDEAS](docs/IDEAS.md) — backlog идей
