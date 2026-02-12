@@ -32,6 +32,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - default    # aicrew-network — для postgres
+      - dokploy    # dokploy-network — для Traefik
 
   # ===========================================
   # Aegra Server (LangGraph Backend)
