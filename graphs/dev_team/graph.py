@@ -6,22 +6,25 @@ Main LangGraph definition for the AI development team.
 
 Graph flow::
 
-    START ─► PM ─► Analyst ─► Architect ─► Developer ─► QA
-                     │            │                       │
-                clarification  clarification         ┌────┴────┐
-                     │            │                  │         │
-                     └─── user ───┘          issues_found?  approved?
-                                                │         │
-                                            Developer  git_commit ─► END
-                                                │
-                                          (after N iters)
-                                        architect_escalation
-                                                │
-                                          (still stuck)
-                                        human_escalation ─► Developer
+    START ─► PM ─► Analyst ─► Architect ─► Developer
+                     │            │              │
+                clarification  clarification   ┌─┴──────────────┐
+                     │            │          security?        (fix loop)
+                     └─── user ───┘             │                │
+                                          security_review       QA
+                                                │          ┌────┴────┐
+                                                QA    issues_found? approved?
+                                                          │         │
+                                                      Developer  git_commit ─► END
+                                                          │
+                                                    (after N iters)
+                                                  architect_escalation
+                                                          │
+                                                    (still stuck)
+                                                  human_escalation ─► Developer
 
 Nodes:
-  pm, analyst, architect, developer, qa — agent nodes
+  pm, analyst, architect, developer, security_review, qa — agent nodes
   clarification — HITL interrupt for user input
   architect_escalation — architect reviews repeated QA failures
   human_escalation — HITL interrupt when both Dev↔QA and Architect fail
@@ -48,6 +51,7 @@ from dev_team.agents.analyst import analyst_agent
 from dev_team.agents.architect import architect_agent
 from dev_team.agents.developer import developer_agent
 from dev_team.agents.qa import qa_agent
+from dev_team.agents.security import security_agent
 from dev_team.tools.git_workspace import commit_and_create_pr
 
 
@@ -98,6 +102,26 @@ def route_after_architect(state: DevTeamState) -> Literal["clarification", "deve
 # Maximum Dev↔QA iterations before escalation
 MAX_QA_ITERATIONS_BEFORE_ARCHITECT = 3
 MAX_QA_ITERATIONS_BEFORE_HUMAN = 3  # After architect already escalated once
+
+# Security agent: enabled by env var or manifest parameter
+USE_SECURITY_AGENT = os.getenv("USE_SECURITY_AGENT", "true").lower() in ("true", "1", "yes")
+
+
+def route_after_developer(
+    state: DevTeamState,
+) -> Literal["security_review", "qa"]:
+    """Router: After developer, optionally run security review before QA.
+
+    Security review is enabled when ``USE_SECURITY_AGENT`` is True.
+    When the Dev↔QA loop is iterating (qa_iteration_count > 0), security
+    review is skipped to avoid redundant re-scans.
+    """
+    qa_iter = state.get("qa_iteration_count", 0)
+    if USE_SECURITY_AGENT and qa_iter == 0:
+        logger.info("router.after_developer", decision="security_review")
+        return "security_review"
+    logger.info("router.after_developer", decision="qa", qa_iter=qa_iter)
+    return "qa"
 
 
 def route_after_qa(
@@ -341,6 +365,7 @@ def create_graph() -> StateGraph:
     builder.add_node("analyst", analyst_agent)
     builder.add_node("architect", architect_agent)
     builder.add_node("developer", developer_agent)
+    builder.add_node("security_review", security_agent)
     builder.add_node("qa", qa_agent)
     builder.add_node("clarification", clarification_node)
     builder.add_node("architect_escalation", architect_escalation_node)
@@ -376,8 +401,19 @@ def create_graph() -> StateGraph:
         }
     )
 
-    # Developer -> QA
-    builder.add_edge("developer", "qa")
+    # Developer -> (security_review | qa)
+    # Security review runs on first pass; skipped during Dev↔QA fix loops
+    builder.add_conditional_edges(
+        "developer",
+        route_after_developer,
+        {
+            "security_review": "security_review",
+            "qa": "qa",
+        }
+    )
+
+    # Security review -> QA (always)
+    builder.add_edge("security_review", "qa")
 
     # QA -> (developer | architect_escalation | human_escalation | git_commit | pm_final)
     builder.add_conditional_edges(

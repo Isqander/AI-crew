@@ -1540,7 +1540,7 @@ jobs:
 
 ### Волна 1 — Definition of Done
 
-> Дата верификации: 12 февраля 2026 — 142 теста Волны 1 + 72 Волны 2 + 49 новые графы = **263 total** (tests/)
+> Дата верификации: 13 февраля 2026 — 142 теста Волны 1 + 72 Волны 2 + 49 новые графы + 80 Sandbox/Security = **343 total** (tests/)
 
 #### Фундамент
 - [x] structlog: все модули переведены, LOCAL/PRODUCTION форматы (включая github.py)
@@ -1587,11 +1587,11 @@ jobs:
 - [x] docker-compose.prod.yml — production override
 - [x] env.example обновлён (CORS_ORIGINS, LANGFUSE_NEXTAUTH_URL, FRONTEND_DOCKERFILE)
 - [x] CORS настроен через gateway (CORS_ORIGINS env — JSON array или comma-separated)
-- [x] Все 263 теста проходят (0 failures)
+- [x] Все 343 теста проходят (0 failures)
 
 ### Волна 2 — Definition of Done
 
-> Дата обновления: 12 февраля 2026 — 263 тестов passed (tests/)
+> Дата обновления: 13 февраля 2026 — 343 тестов passed (tests/)
 
 #### Git-based Workflow (Module 3.1)
 - [x] State расширен: working_branch, working_repo, file_manifest + все поля Wave 2
@@ -1636,9 +1636,32 @@ jobs:
 - [x] Telegram: gateway_client.get_graph_list()
 - [x] 11 unit-тестов для Telegram (tests/test_telegram_graph_selection.py)
 
+#### Code Execution Sandbox (Module 3.3)
+- [x] sandbox/server.py: FastAPI сервер (POST /execute, GET /health)
+- [x] sandbox/executor.py: Docker-based execution engine (language images, tar archive, timeout, memory limits)
+- [x] sandbox/models.py: Pydantic models (SandboxExecuteRequest/Response, HealthResponse)
+- [x] sandbox/Dockerfile: Docker CLI + Python dependencies
+- [x] sandbox/requirements.txt: fastapi, docker, structlog
+- [x] tools/sandbox.py: LangChain @tool wrappers (run_code, run_tests, run_lint)
+- [x] tools/sandbox.py: SandboxClient HTTP клиент + auto-detection (команды, тест-раннеры, линтеры)
+- [x] docker-compose.yml: sandbox сервис (Docker socket mount, expose 8002)
+- [x] SANDBOX_URL env var в Aegra container
+- [x] 51 unit-тест (tests/test_sandbox.py): models, executor, server, client, auto-detection, formatting
+
+#### Security Agent (Module 3.4)
+- [x] agents/security.py: SecurityAgent (static_review, runtime_check, parse, extract_deps)
+- [x] prompts/security.yaml: system prompt + security_static_review + security_runtime_check + dependency_check
+- [x] graph.py: security_review node + route_after_developer (conditional edge)
+- [x] Security review: первый проход (qa_iteration_count=0) → security_review → QA
+- [x] Security review: fix loops (qa_iteration_count>0) → прямо в QA (без повторного скана)
+- [x] USE_SECURITY_AGENT env var (default: true) — включение/выключение
+- [x] manifest.yaml: security агент + security_check feature
+- [x] _parse_security_review: парсинг risk_level, critical/warnings/info из LLM-ответа
+- [x] _extract_dependencies: автоопределение requirements.txt, package.json, go.mod, etc.
+- [x] 29 unit-тестов (tests/test_security_agent.py): agent, parsing, routing, graph integration
+- [x] Integration tests обновлены (security_agent мок добавлен)
+
 #### Остальные модули (не начаты)
-- [ ] Sandbox: code execution, lint, tests
-- [ ] Security Agent: static + runtime review
 - [ ] DevOps Agent: Dockerfile, CI/CD, secrets, branch protection
 - [ ] CLI Agents: CLI Runner API, node в графе, route_to_executor
 - [ ] Prefect: deployment на VPS деплоя (рядом)

@@ -33,15 +33,19 @@ agents:
   - id: qa
     display_name: "QA Engineer"
     role: qa
+  - id: security
+    display_name: "Security Engineer"
+    role: security
 
 features:
   - hitl_clarification
   - hitl_escalation
   - qa_loop
   - git_commit
+  - security_check
 
 parameters:
   max_qa_iterations: 3
-  use_security_agent: false
+  use_security_agent: true     # Enable security review after Developer
   deploy_after_commit: false
   hitl_mode: "optional"       # "required" | "optional" | "none"

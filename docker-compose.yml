@@ -78,6 +78,9 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_DEFAULT_REPO: ${GITHUB_DEFAULT_REPO:-}
 
+      # Sandbox
+      SANDBOX_URL: http://sandbox:8002
+
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
       ENV_MODE: ${ENV_MODE:-LOCAL}
@@ -169,6 +172,33 @@ services:
     networks:
       - default    # aicrew-network — для postgres
       - dokploy    # dokploy-network — для Traefik
+
+  # ===========================================
+  # Sandbox (Code Execution — Docker-in-Docker)
+  # ===========================================
+  sandbox:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile
+    container_name: aicrew-sandbox
+    restart: unless-stopped
+    expose:
+      - "8002"                          # Internal only — accessed by Aegra agents
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # Docker socket mount
+    environment:
+      SANDBOX_PORT: "8002"
+      SANDBOX_MAX_TIMEOUT: ${SANDBOX_MAX_TIMEOUT:-300}
+      SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-256m}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENV_MODE: ${ENV_MODE:-LOCAL}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8002/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # No ports exposed — internal service only
 
   # ===========================================
   # Telegram Bot

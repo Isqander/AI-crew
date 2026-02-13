@@ -53,6 +53,9 @@ structlog>=24.0.0
 duckduckgo-search>=6.0.0
 trafilatura>=1.8.0
 
+# --- Sandbox ---
+docker>=7.0.0
+
 # --- Utilities ---
 python-dotenv>=1.0.0
 pyyaml>=6.0.0

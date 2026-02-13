@@ -62,12 +62,26 @@ class TestEndToEndWorkflow:
                 "current_agent": "qa",
             }
         
+        def mock_security_agent(state, config=None):
+            return {
+                "messages": [AIMessage(content="No security issues found", name="security")],
+                "security_review": {
+                    "risk_level": "LOW",
+                    "critical": [],
+                    "warnings": [],
+                    "info": [],
+                    "summary": "Clean.",
+                },
+                "current_agent": "security",
+            }
+        
         # Patch agent functions at the graph module level
         with patch('graphs.dev_team.graph.pm_agent', mock_pm_agent), \
              patch('graphs.dev_team.graph.analyst_agent', mock_analyst_agent), \
              patch('graphs.dev_team.graph.architect_agent', mock_architect_agent), \
              patch('graphs.dev_team.graph.developer_agent', mock_developer_agent), \
-             patch('graphs.dev_team.graph.qa_agent', mock_qa_agent):
+             patch('graphs.dev_team.graph.qa_agent', mock_qa_agent), \
+             patch('graphs.dev_team.graph.security_agent', mock_security_agent):
             
             # Create fresh graph with mocked agents
             from langgraph.checkpoint.memory import MemorySaver
@@ -140,11 +154,25 @@ class TestEndToEndWorkflow:
                     "test_results": {"approved": True},
                 }
         
+        def mock_security_agent(state, config=None):
+            return {
+                "messages": [AIMessage(content="Security review OK", name="security")],
+                "security_review": {
+                    "risk_level": "LOW",
+                    "critical": [],
+                    "warnings": [],
+                    "info": [],
+                    "summary": "Clean.",
+                },
+                "current_agent": "security",
+            }
+        
         with patch('graphs.dev_team.graph.pm_agent', mock_pm_agent), \
              patch('graphs.dev_team.graph.analyst_agent', mock_analyst_agent), \
              patch('graphs.dev_team.graph.architect_agent', mock_architect_agent), \
              patch('graphs.dev_team.graph.developer_agent', mock_developer_agent), \
-             patch('graphs.dev_team.graph.qa_agent', mock_qa_agent):
+             patch('graphs.dev_team.graph.qa_agent', mock_qa_agent), \
+             patch('graphs.dev_team.graph.security_agent', mock_security_agent):
             
             from langgraph.checkpoint.memory import MemorySaver
             builder = create_graph()
