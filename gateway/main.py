@@ -168,6 +168,15 @@ _PROXY_PREFIXES = (
 
 
 @app.api_route(
+    "/threads",
+    methods=["GET", "POST"],
+)
+async def proxy_threads_root(request: Request, _user: User = Depends(get_current_user)):
+    """Handle bare /threads (no trailing slash) — avoids 307 redirect."""
+    return await proxy_to_aegra(request)
+
+
+@app.api_route(
     "/threads/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
 )

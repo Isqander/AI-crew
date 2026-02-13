@@ -21,7 +21,7 @@ from graphs.dev_team.agents.qa import QAAgent
 class TestAgentInitialization:
     """Test that all agents can be initialized."""
     
-    @patch('graphs.dev_team.agents.pm.get_llm')
+    @patch('graphs.dev_team.agents.pm.get_llm_with_fallback')
     @patch('graphs.dev_team.agents.pm.load_prompts')
     def test_pm_agent_initialization(self, mock_load_prompts, mock_get_llm):
         """Test PM agent can be initialized."""
@@ -38,7 +38,7 @@ class TestAgentInitialization:
         assert agent.name == "pm"
         assert agent.llm is not None
     
-    @patch('graphs.dev_team.agents.analyst.get_llm')
+    @patch('graphs.dev_team.agents.analyst.get_llm_with_fallback')
     @patch('graphs.dev_team.agents.analyst.load_prompts')
     def test_analyst_initialization(self, mock_load_prompts, mock_get_llm):
         """Test Analyst agent initialization."""
@@ -52,7 +52,7 @@ class TestAgentInitialization:
         
         assert agent.name == "analyst"
     
-    @patch('graphs.dev_team.agents.architect.get_llm')
+    @patch('graphs.dev_team.agents.architect.get_llm_with_fallback')
     @patch('graphs.dev_team.agents.architect.load_prompts')
     def test_architect_initialization(self, mock_load_prompts, mock_get_llm):
         """Test Architect agent initialization."""
@@ -67,7 +67,7 @@ class TestAgentInitialization:
         
         assert agent.name == "architect"
     
-    @patch('graphs.dev_team.agents.developer.get_llm')
+    @patch('graphs.dev_team.agents.developer.get_llm_with_fallback')
     @patch('graphs.dev_team.agents.developer.load_prompts')
     def test_developer_initialization(self, mock_load_prompts, mock_get_llm):
         """Test Developer agent initialization."""
@@ -82,7 +82,7 @@ class TestAgentInitialization:
         
         assert agent.name == "developer"
     
-    @patch('graphs.dev_team.agents.qa.get_llm')
+    @patch('graphs.dev_team.agents.qa.get_llm_with_fallback')
     @patch('graphs.dev_team.agents.qa.load_prompts')
     def test_qa_initialization(self, mock_load_prompts, mock_get_llm):
         """Test QA agent initialization."""

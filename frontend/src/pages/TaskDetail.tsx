@@ -120,6 +120,11 @@ export function TaskDetail() {
           <div className="flex items-center gap-2 text-red-400 font-mono text-sm">
             <AlertCircle className="w-5 h-5" />
             <span className="font-semibold">Ошибка выполнения</span>
+            {currentAgent && currentAgent !== 'complete' && (
+              <span className="ml-1 px-2 py-0.5 bg-red-500/20 rounded-full text-xs">
+                узел: {currentAgent}
+              </span>
+            )}
           </div>
           <p className="text-red-300/80 text-sm font-mono mt-2">
             {runError || error?.message}

@@ -72,7 +72,7 @@ services:
       LANGFUSE_LOGGING: ${LANGFUSE_LOGGING:-false}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
-      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_HOST: ${LANGFUSE_INTERNAL_HOST:-http://langfuse:3000}
 
       # GitHub
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -182,7 +182,7 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       GATEWAY_URL: http://gateway:8081
-      TELEGRAM_BOT_EMAIL: ${TELEGRAM_BOT_EMAIL:-bot@ai-crew.local}
+      TELEGRAM_BOT_EMAIL: ${TELEGRAM_BOT_EMAIL:-bot@ai-crew.dev}
       TELEGRAM_BOT_PASSWORD: ${TELEGRAM_BOT_PASSWORD:-botpassword123}
       TELEGRAM_ADMIN_CHAT_ID: ${TELEGRAM_ADMIN_CHAT_ID:-}
     depends_on:

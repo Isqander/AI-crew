@@ -168,7 +168,11 @@ class StreamingService:
         broker_manager.cleanup_broker(run_id)
 
     async def signal_run_error(
-        self, run_id: str, error_message: str, error_type: str = "Error"
+        self,
+        run_id: str,
+        error_message: str,
+        error_type: str = "Error",
+        node_name: str | None = None,
     ):
         """Signal that a run encountered an error.
 
@@ -179,13 +183,16 @@ class StreamingService:
             run_id: The run ID.
             error_message: Human-readable error message.
             error_type: Error type/class name (e.g., "ValueError", "GraphRecursionError").
+            node_name: Optional name of the graph node where the error occurred.
         """
         counter = self.event_counters.get(run_id, 0) + 1
         self.event_counters[run_id] = counter
         error_event_id = generate_event_id(run_id, counter)
 
-        # Create structured error payload
-        error_payload = {"error": error_type, "message": error_message}
+        # Create structured error payload (include node if available)
+        error_payload: dict = {"error": error_type, "message": error_message}
+        if node_name:
+            error_payload["node"] = node_name
 
         broker = broker_manager.get_or_create_broker(run_id)
         if broker:
@@ -197,7 +204,7 @@ class StreamingService:
                 run_id,
                 error_event_id,
                 "error",
-                {"error": error_type, "message": error_message},
+                error_payload,
             )
 
             # Send end event to signal stream completion

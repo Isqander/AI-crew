@@ -227,6 +227,9 @@ def get_llm_with_fallback(role: str, **kwargs) -> BaseChatModel:
     If ``agents.<role>.fallback_model`` is configured, returns
     ``primary.with_fallbacks([fallback])``.  Otherwise returns the
     primary model as-is.
+
+    The fallback chain catches **all** exceptions (including ``TypeError``
+    from null ``choices`` responses) and retries with the fallback model.
     """
     primary = get_llm(role=role, **kwargs)
 
@@ -235,9 +238,86 @@ def get_llm_with_fallback(role: str, **kwargs) -> BaseChatModel:
     if fallback_model:
         fallback = get_llm(model=fallback_model, **kwargs)
         logger.info("llm.fallback_chain", role=role, fallback=fallback_model)
-        return primary.with_fallbacks([fallback])
+        return _LoggingFallbackLLM(primary, fallback, role=role)
 
     return primary
+
+
+class _LoggingFallbackLLM(BaseChatModel):
+    """Wrapper that adds visibility into fallback attempts.
+
+    LangChain's built-in ``with_fallbacks`` works but doesn't log when
+    the fallback is tried, making it hard to diagnose production issues.
+    This thin wrapper makes the process observable.
+    """
+
+    _primary: BaseChatModel
+    _fallback: BaseChatModel
+    _role: str
+
+    def __init__(self, primary: BaseChatModel, fallback: BaseChatModel, *, role: str = ""):
+        """Initialise without calling Pydantic BaseModel validation."""
+        # BaseChatModel is a Pydantic model — bypass its __init__
+        super().__init__()
+        object.__setattr__(self, "_primary", primary)
+        object.__setattr__(self, "_fallback", fallback)
+        object.__setattr__(self, "_role", role)
+
+    # --- LangChain interface -------------------------------------------------
+
+    @property
+    def _llm_type(self) -> str:  # type: ignore[override]
+        return "logging_fallback"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        """Synchronous generation with fallback."""
+        try:
+            return self._primary._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        except Exception as exc:
+            logger.warning(
+                "llm.primary_failed",
+                role=self._role,
+                error=str(exc)[:200],
+                error_type=type(exc).__name__,
+            )
+            logger.info("llm.trying_fallback", role=self._role)
+            try:
+                result = self._fallback._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+                logger.info("llm.fallback_succeeded", role=self._role)
+                return result
+            except Exception as fallback_exc:
+                logger.error(
+                    "llm.fallback_also_failed",
+                    role=self._role,
+                    error=str(fallback_exc)[:200],
+                    error_type=type(fallback_exc).__name__,
+                )
+                raise
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        """Async generation with fallback."""
+        try:
+            return await self._primary._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        except Exception as exc:
+            logger.warning(
+                "llm.primary_failed",
+                role=self._role,
+                error=str(exc)[:200],
+                error_type=type(exc).__name__,
+            )
+            logger.info("llm.trying_fallback", role=self._role)
+            try:
+                result = await self._fallback._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+                logger.info("llm.fallback_succeeded", role=self._role)
+                return result
+            except Exception as fallback_exc:
+                logger.error(
+                    "llm.fallback_also_failed",
+                    role=self._role,
+                    error=str(fallback_exc)[:200],
+                    error_type=type(fallback_exc).__name__,
+                )
+                raise
 
 
 # ===========================================

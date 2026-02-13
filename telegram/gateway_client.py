@@ -33,8 +33,14 @@ class GatewayClient:
         try:
             return await self.login(email, password)
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 401:
-                logger.info("gateway.login_failed_trying_register", email=email)
+            if exc.response.status_code in (401, 422):
+                # 401 — wrong password / user doesn't exist
+                # 422 — validation error (e.g. email format) — try register anyway
+                logger.info(
+                    "gateway.login_failed_trying_register",
+                    email=email,
+                    status=exc.response.status_code,
+                )
             else:
                 raise
 
@@ -78,7 +84,19 @@ class GatewayClient:
         """Re-authenticate using stored credentials (token expired)."""
         if self._email and self._password:
             logger.info("gateway.re_login", email=self._email)
-            await self.login(self._email, self._password)
+            try:
+                await self.login(self._email, self._password)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 422:
+                    # Validation error — try full re-registration flow
+                    logger.warning(
+                        "gateway.re_login_validation_error",
+                        email=self._email,
+                        status=exc.response.status_code,
+                    )
+                    await self.ensure_authenticated(self._email, self._password)
+                else:
+                    raise
         else:
             logger.error("gateway.re_login_no_credentials")
 

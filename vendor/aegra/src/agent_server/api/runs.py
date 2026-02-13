@@ -967,6 +967,7 @@ async def execute_run_async(
         event_counter = 0
         final_output = None
         has_interrupt = False
+        current_node: str | None = None  # Track last-known node for error context
 
         # Prepare stream modes for execution
         if stream_mode is None:
@@ -1021,6 +1022,20 @@ async def execute_run_async(
                         if event_type.startswith("values"):
                             final_output = event_data
 
+                        # Track current node from updates (key = node name)
+                        # or from values containing current_agent
+                        if event_type.startswith("updates") and isinstance(event_data, dict):
+                            # updates events are {node_name: output}
+                            node_names = [k for k in event_data if k != "__interrupt__"]
+                            if node_names:
+                                current_node = node_names[-1]
+                        elif (
+                            event_type.startswith("values")
+                            and isinstance(event_data, dict)
+                            and event_data.get("current_agent")
+                        ):
+                            current_node = event_data["current_agent"]
+
                     except Exception as event_error:
                         # Error processing individual event - send error to frontend immediately
                         logger.error(
@@ -1028,7 +1043,8 @@ async def execute_run_async(
                         )
                         error_type = type(event_error).__name__
                         await streaming_service.signal_run_error(
-                            run_id, str(event_error), error_type
+                            run_id, str(event_error), error_type,
+                            node_name=current_node,
                         )
                         raise
 
@@ -1036,11 +1052,13 @@ async def execute_run_async(
                 # Error during streaming (e.g., graph execution error)
                 # Send error to frontend before re-raising
                 logger.error(
-                    f"[execute_run_async] streaming error for run_id={run_id}: {stream_error}"
+                    f"[execute_run_async] streaming error for run_id={run_id} "
+                    f"(node={current_node}): {stream_error}"
                 )
                 error_type = type(stream_error).__name__
                 await streaming_service.signal_run_error(
-                    run_id, str(stream_error), error_type
+                    run_id, str(stream_error), error_type,
+                    node_name=current_node,
                 )
                 raise
 
@@ -1093,7 +1111,10 @@ async def execute_run_async(
         broker = broker_manager.get_broker(run_id)
         if broker and not broker.is_finished():
             error_type = type(e).__name__
-            await streaming_service.signal_run_error(run_id, str(e), error_type)
+            await streaming_service.signal_run_error(
+                run_id, str(e), error_type,
+                node_name=current_node,
+            )
         raise
     finally:
         # Clean up broker

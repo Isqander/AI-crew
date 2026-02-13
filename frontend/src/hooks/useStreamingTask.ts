@@ -77,7 +77,8 @@ export function useStreamingTask(threadId: string | null) {
               const data = JSON.parse(line.slice(6))
               // Handle error events from Aegra
               if (currentEvent === 'error' || data.error) {
-                setError(new Error(data.message || data.error || 'Unknown error'))
+                const node = data.node ? `[${data.node}] ` : ''
+                setError(new Error(`${node}${data.message || data.error || 'Unknown error'}`))
                 return
               }
               if (data && typeof data === 'object') {
