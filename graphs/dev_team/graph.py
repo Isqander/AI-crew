@@ -59,8 +59,11 @@ def should_clarify(state: DevTeamState) -> Literal["clarification", "continue"]:
     """
     Router: Check if clarification is needed from user.
     """
-    logger.debug("router.should_clarify", needs_clarification=state.get("needs_clarification", False))
-    if state.get("needs_clarification", False):
+    needs = state.get("needs_clarification", False)
+    decision = "clarification" if needs else "continue"
+    logger.info("router.should_clarify", needs_clarification=needs, decision=decision,
+                current_agent=state.get("current_agent"))
+    if needs:
         return "clarification"
     return "continue"
 
@@ -69,8 +72,11 @@ def route_after_analyst(state: DevTeamState) -> Literal["clarification", "archit
     """
     Router: After analyst, check if clarification needed.
     """
-    logger.debug("router.after_analyst", needs_clarification=state.get("needs_clarification", False))
-    if state.get("needs_clarification", False):
+    needs = state.get("needs_clarification", False)
+    decision = "clarification" if needs else "architect"
+    logger.info("router.after_analyst", needs_clarification=needs, decision=decision,
+                requirements_count=len(state.get("requirements", [])))
+    if needs:
         return "clarification"
     return "architect"
 
@@ -79,8 +85,12 @@ def route_after_architect(state: DevTeamState) -> Literal["clarification", "deve
     """
     Router: After architect, check if approval needed.
     """
-    logger.debug("router.after_architect", needs_clarification=state.get("needs_clarification", False))
-    if state.get("needs_clarification", False):
+    needs = state.get("needs_clarification", False)
+    decision = "clarification" if needs else "developer"
+    logger.info("router.after_architect", needs_clarification=needs, decision=decision,
+                has_architecture=bool(state.get("architecture")),
+                tech_stack=state.get("tech_stack", []))
+    if needs:
         return "clarification"
     return "developer"
 
@@ -224,16 +234,23 @@ def git_commit_node(state: DevTeamState) -> dict:
     gracefully skips the commit and returns the generated code
     in the summary so it is still visible in the chat.
     """
+    import time as _time
+    t0 = _time.monotonic()
     code_files = state.get("code_files", [])
     repository = state.get("repository") or os.getenv("GITHUB_DEFAULT_REPO", "")
     task = state.get("task", "AI-generated task")
-    logger.info("node.git_commit", repository=repository or "none", files=len(code_files))
+    github_token_set = bool(os.getenv("GITHUB_TOKEN"))
+    logger.info("node.git_commit.enter", repository=repository or "none",
+                files=len(code_files), github_token_set=github_token_set,
+                task_preview=task[:80])
 
     # ------------------------------------------------------------------
     # Guard: no repository → return code in summary
     # ------------------------------------------------------------------
     if not repository:
-        logger.warning("node.git_commit.skip", reason="no_repository")
+        elapsed_ms = (_time.monotonic() - t0) * 1000
+        logger.warning("node.git_commit.skip", reason="no_repository",
+                       elapsed_ms=round(elapsed_ms))
         summary = _build_code_summary(code_files, task)
         return {
             "summary": summary,
@@ -243,15 +260,19 @@ def git_commit_node(state: DevTeamState) -> dict:
     # ------------------------------------------------------------------
     # Delegate to commit_and_create_pr (atomic commit + PR)
     # ------------------------------------------------------------------
+    logger.info("node.git_commit.committing", repository=repository, files=len(code_files))
     result = commit_and_create_pr(
         repo_name=repository,
         task=task,
         code_files=code_files,
     )
 
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+
     # Handle errors gracefully
     if result.get("error") and result["files_committed"] == 0:
-        logger.error("node.git_commit.failed", error=result["error"])
+        logger.error("node.git_commit.failed", error=result["error"],
+                     elapsed_ms=round(elapsed_ms))
         summary = _build_code_summary(code_files, task)
         return {
             "summary": f"⚠️ Git commit failed: {result['error']}\n\n{summary}",
@@ -263,6 +284,10 @@ def git_commit_node(state: DevTeamState) -> dict:
     commit_sha = result.get("commit_sha", "")
     branch = result.get("working_branch", "")
     committed = result.get("files_committed", 0)
+
+    logger.info("node.git_commit.success", pr_url=pr_url, branch=branch,
+                commit_sha=commit_sha[:12] if commit_sha else "",
+                files_committed=committed, elapsed_ms=round(elapsed_ms))
 
     return {
         "pr_url": pr_url,

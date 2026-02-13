@@ -16,21 +16,31 @@ The Researcher node:
 No HITL, no code generation — pure research and synthesis.
 """
 
+import time as _time
+
 import structlog
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from research.state import ResearchState
 from research.agents.researcher import researcher_agent
+from dev_team.logging_config import configure_logging
 
-structlog.configure()
+configure_logging()
 logger = structlog.get_logger()
 
 
 def researcher_node(state: ResearchState, config=None) -> dict:
     """Researcher searches the web and produces a report."""
-    logger.info("research.researcher", task_len=len(state.get("task", "")))
-    return researcher_agent(state, config=config)
+    t0 = _time.monotonic()
+    logger.info("research.researcher.enter", task_len=len(state.get("task", "")),
+                task_preview=state.get("task", "")[:80])
+    result = researcher_agent(state, config=config)
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+    summary_len = len(result.get("summary", ""))
+    logger.info("research.researcher.exit", elapsed_ms=round(elapsed_ms),
+                summary_chars=summary_len)
+    return result
 
 
 def create_graph() -> StateGraph:

@@ -13,6 +13,7 @@ Single Developer agent writes code and commits directly.
 """
 
 import os
+import time as _time
 
 import structlog
 from langgraph.graph import StateGraph, START, END
@@ -23,8 +24,9 @@ from simple_dev.state import SimpleDevState
 # Reuse the developer agent from dev_team
 from dev_team.agents.developer import developer_agent as _dev_agent
 from dev_team.tools.git_workspace import commit_and_create_pr
+from dev_team.logging_config import configure_logging
 
-structlog.configure()
+configure_logging()
 logger = structlog.get_logger()
 
 
@@ -52,32 +54,51 @@ def developer_node(state: SimpleDevState, config=None) -> dict:
     Reuses the DeveloperAgent from dev_team. The agent works with
     dict state via .get(), so it's compatible with SimpleDevState.
     """
-    logger.info("simple_dev.developer", task_len=len(state.get("task", "")))
-    return _dev_agent(state, config=config)
+    t0 = _time.monotonic()
+    logger.info("simple_dev.developer.enter", task_len=len(state.get("task", "")))
+    result = _dev_agent(state, config=config)
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+    logger.info("simple_dev.developer.exit", elapsed_ms=round(elapsed_ms),
+                code_files=len(result.get("code_files", [])))
+    return result
 
 
 def git_commit_node(state: SimpleDevState) -> dict:
     """Commit code and create PR (or return code in summary)."""
+    t0 = _time.monotonic()
     code_files = state.get("code_files", [])
     repository = state.get("repository") or os.getenv("GITHUB_DEFAULT_REPO", "")
     task = state.get("task", "AI-generated task")
-    logger.info("simple_dev.git_commit", repository=repository or "none", files=len(code_files))
+    github_token_set = bool(os.getenv("GITHUB_TOKEN"))
+    logger.info("simple_dev.git_commit.enter", repository=repository or "none",
+                files=len(code_files), github_token_set=github_token_set)
 
     if not repository:
+        elapsed_ms = (_time.monotonic() - t0) * 1000
+        logger.warning("simple_dev.git_commit.skip", reason="no_repository",
+                       elapsed_ms=round(elapsed_ms))
         return {
             "summary": _build_code_summary(code_files, task),
             "current_agent": "complete",
         }
 
+    logger.info("simple_dev.git_commit.committing", repository=repository, files=len(code_files))
     result = commit_and_create_pr(repo_name=repository, task=task, code_files=code_files)
+    elapsed_ms = (_time.monotonic() - t0) * 1000
 
     if result.get("error") and result["files_committed"] == 0:
+        logger.error("simple_dev.git_commit.failed", error=result["error"],
+                     elapsed_ms=round(elapsed_ms))
         return {
             "summary": f"⚠️ Git failed: {result['error']}\n\n{_build_code_summary(code_files, task)}",
             "current_agent": "complete",
             "error": result["error"],
         }
 
+    logger.info("simple_dev.git_commit.success", pr_url=result.get("pr_url", ""),
+                branch=result.get("working_branch", ""),
+                files_committed=result.get("files_committed", 0),
+                elapsed_ms=round(elapsed_ms))
     return {
         "pr_url": result.get("pr_url", ""),
         "commit_sha": result.get("commit_sha", ""),

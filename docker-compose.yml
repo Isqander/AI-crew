@@ -86,9 +86,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
-      interval: 30s
+      interval: 1200s       # 20 min — reduce log noise from frequent health checks
       timeout: 10s
       retries: 3
+      start_period: 30s     # Allow 30s for initial startup before first check
 
   # ===========================================
   # Gateway (FastAPI — auth, proxy, endpoints)

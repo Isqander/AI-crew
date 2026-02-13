@@ -105,17 +105,21 @@ async def list_graphs(_user: User = Depends(get_current_user)) -> GraphListRespo
                 features=m.get("features", []),
             )
         )
-    logger.debug("graph.list", count=len(items))
+    logger.info("graph.list", count=len(items),
+                graph_ids=[i.graph_id for i in items])
     return GraphListResponse(graphs=items)
 
 
 @router.get("/topology/{graph_id}", response_model=GraphTopologyResponse)
 async def graph_topology(graph_id: str, _user: User = Depends(get_current_user)) -> GraphTopologyResponse:
     """Return topology, agent configs, and prompt info for visualisation."""
+    logger.info("graph.topology_request", graph_id=graph_id)
     # Find manifest
     manifests = _load_manifests()
     manifest = next((m for m in manifests if m.get("name") == graph_id), None)
     if not manifest:
+        logger.warning("graph.topology_not_found", graph_id=graph_id,
+                       available=[m.get("name") for m in manifests])
         raise HTTPException(status_code=404, detail=f"Graph '{graph_id}' not found")
 
     # Agent configs from agents.yaml

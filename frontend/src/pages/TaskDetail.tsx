@@ -1,15 +1,17 @@
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, Copy, Check, AlertCircle } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Copy, Check, AlertCircle, Network, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
 import { Chat } from '../components/Chat'
 import { ProgressTracker } from '../components/ProgressTracker'
 import { ClarificationPanel } from '../components/ClarificationPanel'
+import { GraphVisualization } from '../components/GraphVisualization'
 import { useTask } from '../hooks/useTask'
 import type { AgentName } from '../types'
 
 export function TaskDetail() {
   const { threadId } = useParams<{ threadId: string }>()
   const {
+    thread,
     threadState,
     messages,
     isLoading,
@@ -19,12 +21,16 @@ export function TaskDetail() {
   } = useTask(threadId)
   
   const [copied, setCopied] = useState(false)
+  const [showGraph, setShowGraph] = useState(false)
 
   const state = threadState?.values
   const currentAgent = (state?.current_agent || 'pm') as AgentName
   const needsClarification = state?.needs_clarification || false
   const clarificationQuestion = state?.clarification_question
   const clarificationContext = state?.clarification_context
+
+  // Get graph_id from thread metadata (set by /api/run → _create_thread)
+  const graphId = (thread?.metadata as Record<string, unknown>)?.graph_id as string | undefined
 
   const handleCopy = () => {
     if (threadId) {
@@ -59,24 +65,54 @@ export function TaskDetail() {
               >
                 {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
               </button>
+              {graphId && (
+                <span className="ml-2 px-2 py-0.5 bg-accent-cyan/10 text-accent-cyan text-xs font-mono rounded-full">
+                  {graphId}
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* PR Link */}
-        {state?.pr_url && (
-          <a
-            href={state.pr_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 bg-accent-lime/10 text-accent-lime px-4 py-2 rounded-lg
-                       font-mono text-sm hover:bg-accent-lime/20 transition-colors"
-          >
-            <ExternalLink className="w-4 h-4" />
-            Открыть PR
-          </a>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Graph Visualization Toggle */}
+          {graphId && (
+            <button
+              onClick={() => setShowGraph(!showGraph)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm transition-colors border
+                ${showGraph
+                  ? 'bg-accent-cyan/20 text-accent-cyan border-accent-cyan/40'
+                  : 'bg-midnight-900 text-midnight-300 border-midnight-700 hover:border-accent-cyan/30 hover:text-accent-cyan'
+                }`}
+            >
+              <Network className="w-4 h-4" />
+              Граф
+              {showGraph ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+          )}
+
+          {/* PR Link */}
+          {state?.pr_url && (
+            <a
+              href={state.pr_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-accent-lime/10 text-accent-lime px-4 py-2 rounded-lg
+                         font-mono text-sm hover:bg-accent-lime/20 transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Открыть PR
+            </a>
+          )}
+        </div>
       </div>
+
+      {/* Graph Visualization (collapsible) */}
+      {showGraph && graphId && (
+        <div className="mb-6">
+          <GraphVisualization graphId={graphId} currentAgent={currentAgent} />
+        </div>
+      )}
 
       {/* Error banner */}
       {(error || runError) && (

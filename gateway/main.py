@@ -13,6 +13,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import time
 from contextlib import asynccontextmanager
 
 import httpx
@@ -49,8 +50,10 @@ logger = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    logger.info("gateway.startup")
+    logger.info("gateway.startup", aegra_url=settings.aegra_url,
+                cors_origins=settings.cors_origins)
     await init_db()
+    logger.info("gateway.db_ready")
     yield
     await close_db()
     logger.info("gateway.shutdown")
@@ -76,6 +79,30 @@ app.add_middleware(
 # Sub-routers
 app.include_router(graph_router)
 app.include_router(run_router)
+
+
+# ────────────────────── Request Logging Middleware ─────────────
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log every incoming request with timing (skip /health for noise reduction)."""
+    path = request.url.path
+    # Skip health checks to reduce noise
+    if path == "/health":
+        return await call_next(request)
+
+    method = request.method
+    t0 = time.monotonic()
+    logger.info("http.request", method=method, path=path,
+                client=request.client.host if request.client else "unknown")
+
+    response = await call_next(request)
+
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    logger.info("http.response", method=method, path=path,
+                status=response.status_code, elapsed_ms=round(elapsed_ms))
+    return response
 
 
 # ────────────────────── Auth Endpoints ────────────────────────

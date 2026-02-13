@@ -385,7 +385,25 @@ class BaseAgent:
           * Langfuse callbacks from the LangGraph config are forwarded
             to the underlying LLM call.
         """
-        return invoke_with_retry(chain, inputs, config=config)
+        import time as _time
+        t0 = _time.monotonic()
+        logger.info("agent.llm_call_start", agent=self.name,
+                     input_keys=list(inputs.keys()))
+        try:
+            result = invoke_with_retry(chain, inputs, config=config)
+            elapsed_ms = (_time.monotonic() - t0) * 1000
+            # Log response size for visibility
+            content_len = len(result.content) if hasattr(result, 'content') else 0
+            logger.info("agent.llm_call_done", agent=self.name,
+                         elapsed_ms=round(elapsed_ms),
+                         response_chars=content_len)
+            return result
+        except Exception as exc:
+            elapsed_ms = (_time.monotonic() - t0) * 1000
+            logger.error("agent.llm_call_failed", agent=self.name,
+                          elapsed_ms=round(elapsed_ms),
+                          error=str(exc)[:300])
+            raise
 
     # ------------------------------------------------------------------
 

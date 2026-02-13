@@ -35,21 +35,34 @@ async def create_run(
     user: User = Depends(get_current_user),
 ) -> RunResponse:
     """Create a task run — the main entry point for new tasks."""
-    logger.info("run.create", user=user.id, task_len=len(data.task), graph_id=data.graph_id)
+    import time as _time
+    t0 = _time.monotonic()
+    logger.info("run.create", user=user.id, task_len=len(data.task),
+                graph_id=data.graph_id, repository=data.repository or "none",
+                task_preview=data.task[:100])
 
     # --- 1. Determine graph_id ------------------------------------------------
     classification = None
     graph_id = data.graph_id
     if not graph_id:
+        logger.info("run.classifying", task_preview=data.task[:60])
         available_graphs = await get_available_graphs()
+        logger.debug("run.available_graphs", graphs=[g.get("graph_id") for g in available_graphs])
         classification = await classify_task(data.task, available_graphs)
         graph_id = classification.graph_id
-        logger.info("run.auto_routed", graph_id=graph_id, complexity=classification.complexity)
+        logger.info("run.auto_routed", graph_id=graph_id,
+                     complexity=classification.complexity,
+                     reasoning=classification.reasoning[:200] if classification.reasoning else "")
+    else:
+        logger.info("run.manual_graph", graph_id=graph_id)
 
     # --- 2. Create or reuse thread --------------------------------------------
     thread_id = data.thread_id
     if not thread_id:
         thread_id = await _create_thread(graph_id)
+        logger.info("run.new_thread", thread_id=thread_id, graph_id=graph_id)
+    else:
+        logger.info("run.reuse_thread", thread_id=thread_id)
 
     # --- 3. Create run in Aegra -----------------------------------------------
     run_id = await _create_aegra_run(
@@ -59,6 +72,10 @@ async def create_run(
         repository=data.repository,
         context=data.context,
     )
+
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+    logger.info("run.complete", thread_id=thread_id, run_id=run_id,
+                graph_id=graph_id, elapsed_ms=round(elapsed_ms))
 
     return RunResponse(
         thread_id=thread_id,

@@ -114,6 +114,7 @@ async def register(data: UserCreate) -> AuthResponse:
 
 async def login(data: UserLogin) -> AuthResponse:
     """Authenticate user by email + password."""
+    logger.info("auth.login_attempt", email=data.email)
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -122,9 +123,12 @@ async def login(data: UserLogin) -> AuthResponse:
         )
 
     if not row or not _verify_password(data.password, row["password_hash"]):
+        logger.warning("auth.login_failed", email=data.email,
+                       reason="invalid_credentials" if row else "user_not_found")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not row["is_active"]:
+        logger.warning("auth.login_failed", email=data.email, reason="account_deactivated")
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
     user = User(
@@ -134,7 +138,7 @@ async def login(data: UserLogin) -> AuthResponse:
         is_active=row["is_active"],
         created_at=row["created_at"],
     )
-    logger.info("auth.login", user_id=user.id)
+    logger.info("auth.login_success", user_id=user.id, email=user.email)
     return AuthResponse(
         user=user,
         access_token=_create_token(user.id, user.email, "access"),
@@ -160,10 +164,12 @@ async def refresh_token(data: RefreshRequest) -> TokenPair:
 async def get_current_user(token: Optional[str] = Depends(oauth2_scheme)) -> User:
     """FastAPI dependency — extract and validate the current user from JWT."""
     if not token:
+        logger.debug("auth.no_token")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
     payload = _decode_token(token)
     if payload.get("type") != "access":
+        logger.warning("auth.wrong_token_type", token_type=payload.get("type"))
         raise HTTPException(status_code=401, detail="Not an access token")
 
     pool = await get_pool()
@@ -174,6 +180,7 @@ async def get_current_user(token: Optional[str] = Depends(oauth2_scheme)) -> Use
         )
 
     if not row:
+        logger.warning("auth.user_not_found", user_id=payload["sub"])
         raise HTTPException(status_code=401, detail="User not found")
 
     return User(

@@ -1564,17 +1564,20 @@ jobs:
 #### Frontend
 - [x] Login/Register страницы (dark theme, cyan accents)
 - [x] JWT в API-клиенте (Zustand store + persist), protected routes
-- [x] Graph Visualization (React Flow): узлы, связи, модели, промпты (dagre layout)
+- [x] Graph Visualization (React Flow): узлы, связи, модели, промпты (dagre layout) — интегрирована в TaskDetail (кнопка «Граф»)
 - [x] SSE Streaming: real-time обновления (hooks/useStreamingTask.ts)
 - [x] Выбор графа в TaskForm (dropdown + "Выбор ЛЛМ" по умолчанию + детали графа)
 
 #### Tools & Interfaces
 - [x] Web tools: web_search, fetch_url, download_file (как LangChain @tool)
 - [ ] Web tools: привязать к агентам (bind_tools) — по необходимости
-- [x] Telegram: /task, /status, /start, /help, HITL (aiogram + gateway_client)
+- [x] Telegram: /task, /status, /start, /help, HITL (aiogram + gateway_client) — исправлен Dockerfile (COPY . ./telegram/)
 
 #### Инфраструктура
 - [x] docker-compose.yml обновлён (postgres, aegra, gateway, langfuse, frontend, telegram)
+- [x] Aegra healthcheck: interval 1200s (20 мин) — снижение шума в логах
+- [x] Structured logging: тайминг в proxy, agent _invoke_chain, graph nodes (enter/exit/elapsed_ms)
+- [x] HTTP request middleware logging в gateway (метод, путь, статус, время)
 - [x] Dockerfile.aegra — отдельный образ для Aegra (LangGraph Runtime)
 - [x] frontend/Dockerfile — production build (nginx + static)
 - [x] docker-compose.prod.yml — production override
