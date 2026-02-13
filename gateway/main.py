@@ -13,8 +13,17 @@ Responsibilities:
 
 from __future__ import annotations
 
+import sys
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Aegra graph modules use ``from dev_team.*`` imports (not ``graphs.dev_team.*``).
+# Add ``graphs/`` to sys.path so these imports work when gateway loads
+# graph topology via importlib.
+_GRAPHS_DIR = str(Path(__file__).parent.parent / "graphs")
+if _GRAPHS_DIR not in sys.path:
+    sys.path.insert(0, _GRAPHS_DIR)
 
 import httpx
 import structlog

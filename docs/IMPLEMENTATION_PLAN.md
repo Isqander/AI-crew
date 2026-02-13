@@ -1564,14 +1564,18 @@ jobs:
 #### Frontend
 - [x] Login/Register страницы (dark theme, cyan accents)
 - [x] JWT в API-клиенте (Zustand store + persist), protected routes
-- [x] Graph Visualization (React Flow): узлы, связи, модели, промпты (dagre layout) — интегрирована в TaskDetail (кнопка «Граф»)
+- [x] Graph Visualization (React Flow): узлы, связи, модели, промпты (dagre layout) — интегрирована в TaskDetail (раскрыта по умолчанию)
+- [x] Graph Visualization: исправлен импорт графа (graphs/ → sys.path в gateway), fallback на manifest-based topology, warning-level логирование ошибок
 - [x] SSE Streaming: real-time обновления (hooks/useStreamingTask.ts)
 - [x] Выбор графа в TaskForm (dropdown + "Выбор ЛЛМ" по умолчанию + детали графа)
+- [x] Страница «Задачи» (/tasks): список тредов с поиском, фильтрацией по статусу, бейджами графов
+- [x] Страница «Настройки» (/settings): профиль, статус системы, графы/модели (read-only), информация о системе
 
 #### Tools & Interfaces
 - [x] Web tools: web_search, fetch_url, download_file (как LangChain @tool)
 - [ ] Web tools: привязать к агентам (bind_tools) — по необходимости
 - [x] Telegram: /task, /status, /start, /help, HITL (aiogram + gateway_client) — исправлен Dockerfile (COPY . ./telegram/)
+- [x] Telegram: авто-регистрация бот-аккаунта при старте (ensure_authenticated), авто-реlogin при истечении JWT
 
 #### Инфраструктура
 - [x] docker-compose.yml обновлён (postgres, aegra, gateway, langfuse, frontend, telegram)

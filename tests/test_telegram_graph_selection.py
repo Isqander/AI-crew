@@ -130,6 +130,7 @@ class TestGatewayClientGraphList:
 
         client = GatewayClient("http://mock:8081")
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {
             "graphs": [
                 {"graph_id": "dev_team", "display_name": "Dev Team"},
@@ -138,7 +139,7 @@ class TestGatewayClientGraphList:
         }
         mock_response.raise_for_status = MagicMock()
         client.client = MagicMock()
-        client.client.get = AsyncMock(return_value=mock_response)
+        client.client.request = AsyncMock(return_value=mock_response)
 
         graphs = await client.get_graph_list()
         assert len(graphs) == 2
@@ -151,10 +152,11 @@ class TestGatewayClientGraphList:
 
         client = GatewayClient("http://mock:8081")
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {"graphs": []}
         mock_response.raise_for_status = MagicMock()
         client.client = MagicMock()
-        client.client.get = AsyncMock(return_value=mock_response)
+        client.client.request = AsyncMock(return_value=mock_response)
 
         graphs = await client.get_graph_list()
         assert graphs == []
@@ -166,10 +168,11 @@ class TestGatewayClientGraphList:
 
         client = GatewayClient("http://mock:8081")
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {}
         mock_response.raise_for_status = MagicMock()
         client.client = MagicMock()
-        client.client.get = AsyncMock(return_value=mock_response)
+        client.client.request = AsyncMock(return_value=mock_response)
 
         graphs = await client.get_graph_list()
         assert graphs == []

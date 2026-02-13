@@ -28,14 +28,17 @@ async def main():
     bot_email = os.getenv("TELEGRAM_BOT_EMAIL", "bot@ai-crew.local")
     bot_password = os.getenv("TELEGRAM_BOT_PASSWORD", "botpassword123")
 
-    # Init Gateway client
+    # Init Gateway client — auto-register bot account if it doesn't exist
     gateway = GatewayClient(gateway_url)
     try:
-        await gateway.login(bot_email, bot_password)
+        await gateway.ensure_authenticated(bot_email, bot_password)
         logger.info("telegram.gateway_connected", url=gateway_url)
     except Exception as exc:
-        logger.warning("telegram.gateway_login_failed", error=str(exc))
-        # Continue anyway — will retry on first command
+        logger.warning("telegram.gateway_auth_failed", error=str(exc),
+                       hint="Bot will retry authentication on first command")
+        # Store credentials so _re_login works later
+        gateway._email = bot_email
+        gateway._password = bot_password
 
     # Init bot
     bot = Bot(token=token)

@@ -21,7 +21,7 @@ export function TaskDetail() {
   } = useTask(threadId)
   
   const [copied, setCopied] = useState(false)
-  const [showGraph, setShowGraph] = useState(false)
+  const [showGraph, setShowGraph] = useState(true)
 
   const state = threadState?.values
   const currentAgent = (state?.current_agent || 'pm') as AgentName

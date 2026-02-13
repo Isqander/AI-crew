@@ -180,7 +180,7 @@ async def graph_config(graph_id: str, _user: User = Depends(get_current_user)) -
 def _get_graph_topology(graph_id: str) -> dict:
     """Try to extract the graph topology as a JSON-serialisable dict.
 
-    Falls back to an empty ``{nodes: [], edges: []}`` if the graph
+    Falls back to a manifest-based topology if the compiled graph
     cannot be loaded (common in test environments without full deps).
     """
     try:
@@ -191,8 +191,39 @@ def _get_graph_topology(graph_id: str) -> dict:
         graph = getattr(mod, "graph", None)
         if graph and hasattr(graph, "get_graph"):
             raw = graph.get_graph().to_json()
+            logger.info("graph.topology_loaded", graph_id=graph_id,
+                        nodes=len(raw.get("nodes", [])) if isinstance(raw, dict) else "?")
             return raw if isinstance(raw, dict) else {"raw": str(raw)}
+        logger.warning("graph.topology_no_graph_attr", graph_id=graph_id,
+                       has_graph=graph is not None,
+                       has_get_graph=hasattr(graph, "get_graph") if graph else False)
     except Exception as exc:
-        logger.debug("graph.topology_fallback", graph_id=graph_id, error=str(exc))
+        logger.warning("graph.topology_import_failed", graph_id=graph_id,
+                       error=str(exc), error_type=type(exc).__name__)
 
-    return {"nodes": [], "edges": []}
+    # Fallback: build topology from manifest
+    return _build_topology_from_manifest(graph_id)
+
+
+def _build_topology_from_manifest(graph_id: str) -> dict:
+    """Build a simplified topology from manifest.yaml when graph import fails."""
+    manifest_path = _GRAPHS_DIR / graph_id / "manifest.yaml"
+    if not manifest_path.exists():
+        return {"nodes": [], "edges": []}
+
+    try:
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {"nodes": [], "edges": []}
+
+    agents = manifest.get("agents", [])
+    if not agents:
+        return {"nodes": [], "edges": []}
+
+    nodes = [{"id": a["id"], "type": "runnable", "data": {}} for a in agents]
+    edges = []
+    for i in range(len(agents) - 1):
+        edges.append({"source": agents[i]["id"], "target": agents[i + 1]["id"]})
+
+    logger.info("graph.topology_from_manifest", graph_id=graph_id, nodes=len(nodes))
+    return {"nodes": nodes, "edges": edges}
