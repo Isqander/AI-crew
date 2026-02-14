@@ -33,8 +33,8 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy sandbox code
-COPY . .
+# Copy sandbox code into package directory
+COPY . ./sandbox/
 
 # Pre-pull common images (optional — saves time on first execution)
 # Uncomment if you want images ready at build time:

@@ -1,0 +1,35 @@
+# ===========================================
+# qa_agent_test Graph Manifest
+# ===========================================
+# Focused graph for QA-agent testing on a tiny web app.
+# Flow: Developer -> QA (sandbox + visual) -> Report -> END.
+
+name: "qa_agent_test"
+display_name: "QA Agent Test"
+description: >-
+  Test workflow for QA agent capabilities. Developer generates a minimal
+  web app, QA runs sandbox and visual browser checks, then produces a
+  textual report with successful and failed observations.
+version: "1.0.0"
+
+task_types:
+  - qa_test
+  - visual_qa
+  - sandbox_validation
+
+agents:
+  - id: developer
+    display_name: "Developer"
+    role: developer
+  - id: qa
+    display_name: "QA"
+    role: qa
+
+features:
+  - sandbox_testing
+  - visual_qa_report
+
+parameters:
+  use_browser_testing: true
+  hitl_mode: "none"
+
