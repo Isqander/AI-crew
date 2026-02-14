@@ -77,7 +77,7 @@ approval_request: |
   Do you approve this architecture? Any changes needed?
 
 qa_escalation: |
-  The Developer and QA have been going back and forth for {iteration_count} iterations
+  The Developer and Reviewer have been going back and forth for {iteration_count} iterations
   without resolving the following issues:
 
   Task: {task}

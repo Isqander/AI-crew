@@ -11,6 +11,7 @@ from .pm import pm_agent, ProjectManagerAgent
 from .analyst import analyst_agent, AnalystAgent
 from .architect import architect_agent, ArchitectAgent
 from .developer import developer_agent, DeveloperAgent
+from .reviewer import reviewer_agent, ReviewerAgent
 from .qa import qa_agent, QAAgent
 
 __all__ = [
@@ -24,11 +25,13 @@ __all__ = [
     "analyst_agent",
     "architect_agent",
     "developer_agent",
+    "reviewer_agent",
     "qa_agent",
     # Classes (for direct instantiation / testing)
     "ProjectManagerAgent",
     "AnalystAgent",
     "ArchitectAgent",
     "DeveloperAgent",
+    "ReviewerAgent",
     "QAAgent",
 ]

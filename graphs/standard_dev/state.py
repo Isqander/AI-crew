@@ -3,7 +3,7 @@ Standard Dev State
 ==================
 
 State for the standard_dev graph.
-PM → Developer → QA → git_commit.
+PM -> Developer -> Reviewer -> git_commit.
 """
 
 from typing import TypedDict, Annotated
@@ -39,7 +39,7 @@ class StandardDevState(TypedDict):
     code_files: list[CodeFile]
     implementation_notes: str
 
-    # === QA Output ===
+    # === Reviewer Output ===
     review_comments: list[str]
     test_results: dict
     issues_found: list[str]
@@ -57,6 +57,6 @@ class StandardDevState(TypedDict):
     # === Control ===
     current_agent: str
     next_agent: NotRequired[str]
-    qa_iteration_count: int
+    review_iteration_count: int
     needs_clarification: bool  # Always False in this graph (no HITL)
     error: NotRequired[str]

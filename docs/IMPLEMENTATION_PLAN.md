@@ -1587,11 +1587,11 @@ jobs:
 - [x] docker-compose.prod.yml — production override
 - [x] env.example обновлён (CORS_ORIGINS, LANGFUSE_NEXTAUTH_URL, FRONTEND_DOCKERFILE)
 - [x] CORS настроен через gateway (CORS_ORIGINS env — JSON array или comma-separated)
-- [x] Все 343 теста проходят (0 failures)
+- [x] Все 398 тестов проходят (0 failures)
 
 ### Волна 2 — Definition of Done
 
-> Дата обновления: 13 февраля 2026 — 343 тестов passed (tests/)
+> Дата обновления: 14 февраля 2026 — 398 тестов passed (tests/)
 
 #### Git-based Workflow (Module 3.1)
 - [x] State расширен: working_branch, working_repo, file_manifest + все поля Wave 2
@@ -1647,13 +1647,37 @@ jobs:
 - [x] docker-compose.yml: sandbox сервис (Docker socket mount, expose 8002)
 - [x] SANDBOX_URL env var в Aegra container
 - [x] 51 unit-тест (tests/test_sandbox.py): models, executor, server, client, auto-detection, formatting
+- [x] tools/__init__.py: sandbox tools экспортированы (run_code, run_tests, run_lint, SandboxClient)
+
+#### QA → Reviewer + QA (Sandbox) Refactoring
+- [x] Переименование: QA agent → Reviewer agent (код-ревью, не тестирование)
+- [x] agents/reviewer.py: ReviewerAgent (review_code, verify_fixes, final_approval)
+- [x] prompts/reviewer.yaml: system + code_review + verify_fixes + final_approval
+- [x] agents/qa.py: Новый QAAgent (sandbox-based testing)
+- [x] prompts/qa.yaml: system + analyse_sandbox
+- [x] QAAgent: _detect_language, _build_commands, _parse_approved, _parse_issues
+- [x] QAAgent: SandboxClient интеграция + LLM-анализ sandbox output
+- [x] graph.py: Developer → Security → Reviewer → QA (sandbox) → git_commit
+- [x] route_after_reviewer: escalation ladder (Developer → Architect → Human)
+- [x] route_after_qa: pass → git_commit, fail → Developer
+- [x] USE_QA_SANDBOX env var (default: true) — включение/выключение
+- [x] state.py: qa_iteration_count → review_iteration_count
+- [x] manifest.yaml: 7 агентов (PM, Analyst, Architect, Developer, Security, Reviewer, QA)
+- [x] manifest.yaml: features: review_loop + sandbox_testing
+- [x] standard_dev: QA → Reviewer (переименование, без sandbox)
+- [x] prompts/developer.yaml + architect.yaml: "QA" → "Reviewer" в текстах
+- [x] agents/__init__.py: экспорт ReviewerAgent + QAAgent
+- [x] ARCHITECTURE_V2.md: обновлена (Reviewer + QA роли, DevTeamState fields)
+- [x] 51 unit-тест (tests/test_reviewer_and_qa.py): оба агента, routing, prompts, graph
+- [x] 4 интеграционных теста (tests/test_reviewer_qa_integration.py): happy path, QA fail, reviewer reject, skip
+- [x] Все существующие тесты обновлены (398 passed, 0 failures)
 
 #### Security Agent (Module 3.4)
 - [x] agents/security.py: SecurityAgent (static_review, runtime_check, parse, extract_deps)
 - [x] prompts/security.yaml: system prompt + security_static_review + security_runtime_check + dependency_check
 - [x] graph.py: security_review node + route_after_developer (conditional edge)
-- [x] Security review: первый проход (qa_iteration_count=0) → security_review → QA
-- [x] Security review: fix loops (qa_iteration_count>0) → прямо в QA (без повторного скана)
+- [x] Security review: первый проход (review_iteration_count=0) → security_review → Reviewer
+- [x] Security review: fix loops (review_iteration_count>0) → прямо в Reviewer (без повторного скана)
 - [x] USE_SECURITY_AGENT env var (default: true) — включение/выключение
 - [x] manifest.yaml: security агент + security_check feature
 - [x] _parse_security_review: парсинг risk_level, critical/warnings/info из LLM-ответа
@@ -1665,7 +1689,6 @@ jobs:
 - [ ] DevOps Agent: Dockerfile, CI/CD, secrets, branch protection
 - [ ] CLI Agents: CLI Runner API, node в графе, route_to_executor
 - [ ] Prefect: deployment на VPS деплоя (рядом)
-- [ ] Integration testing: все модули вместе
 - [ ] E2E: полный цикл от задачи до PR (и деплоя)
 
 ---

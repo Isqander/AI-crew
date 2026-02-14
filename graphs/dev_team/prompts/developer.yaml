@@ -47,7 +47,7 @@ implementation: |
   ```
 
 fix_issues: |
-  The QA agent found the following issues with your code:
+  The Reviewer / QA agent found the following issues with your code:
   
   Issues:
   {issues}

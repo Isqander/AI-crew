@@ -75,9 +75,9 @@ class DevTeamState(TypedDict):
     code_files: list[CodeFile]                   # Generated code files
     implementation_notes: str                    # Notes about implementation
     
-    # === QA Output ===
+    # === Reviewer Output ===
     review_comments: list[str]                   # Code review feedback
-    test_results: dict                           # Test execution results
+    test_results: dict                           # Test / sandbox execution results
     issues_found: list[str]                      # Issues to fix
     
     # === Final Output ===
@@ -99,8 +99,8 @@ class DevTeamState(TypedDict):
     clarification_response: NotRequired[str]     # User's response
     
     # === Iteration control ===
-    qa_iteration_count: int                      # Dev↔QA loop counter (reset after architect escalation)
-    architect_escalated: bool                    # True after first architect escalation in Dev↔QA loop
+    review_iteration_count: int                  # Dev↔Reviewer/QA loop counter (reset after architect escalation)
+    architect_escalated: bool                    # True after first architect escalation in Dev↔Reviewer loop
 
     # === Error Handling ===
     error: NotRequired[str]                      # Error message if any
@@ -172,7 +172,7 @@ def create_initial_state(
         "needs_clarification": False,
         
         # Iteration control
-        "qa_iteration_count": 0,
+        "review_iteration_count": 0,
         "architect_escalated": False,
 
         # Error handling

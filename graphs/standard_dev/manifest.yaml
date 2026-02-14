@@ -2,16 +2,16 @@
 # standard_dev Graph Manifest
 # ===========================================
 # Medium-complexity development workflow.
-# PM → Developer → QA (with limited loop) → git_commit → END.
-# No HITL — fully autonomous.
+# PM -> Developer -> Reviewer (with limited loop) -> git_commit -> END.
+# No HITL -- fully autonomous.
 
 name: "standard_dev"
 display_name: "Standard Developer"
 description: >-
   Autonomous development for medium-complexity tasks.
-  PM gathers requirements, Developer writes code, QA reviews.
-  Limited QA loop (max 2 iterations), no human intervention.
-version: "1.0.0"
+  PM gathers requirements, Developer writes code, Reviewer reviews.
+  Limited review loop (max 2 iterations), no human intervention.
+version: "1.1.0"
 
 task_types:
   - feature
@@ -26,15 +26,15 @@ agents:
   - id: developer
     display_name: "Developer"
     role: developer
-  - id: qa
-    display_name: "QA Engineer"
-    role: qa
+  - id: reviewer
+    display_name: "Code Reviewer"
+    role: reviewer
 
 features:
-  - qa_loop
+  - review_loop
   - git_commit
 
 parameters:
-  max_qa_iterations: 2
+  max_review_iterations: 2
   hitl_mode: "none"
   deploy_after_commit: false

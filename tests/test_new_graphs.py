@@ -325,7 +325,7 @@ class TestStandardDevGraph:
         node_names = set(builder.nodes.keys())
         assert "pm" in node_names
         assert "developer" in node_names
-        assert "qa" in node_names
+        assert "reviewer" in node_names
         assert "git_commit" in node_names
 
     def test_state_definition(self):
@@ -336,7 +336,7 @@ class TestStandardDevGraph:
         assert "requirements" in annotations
         assert "code_files" in annotations
         assert "issues_found" in annotations
-        assert "qa_iteration_count" in annotations
+        assert "review_iteration_count" in annotations
 
     def test_manifest_loads(self):
         """Manifest YAML loads correctly."""
@@ -344,38 +344,38 @@ class TestStandardDevGraph:
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         assert manifest["name"] == "standard_dev"
         assert manifest["parameters"]["hitl_mode"] == "none"
-        assert len(manifest["agents"]) == 3  # pm, developer, qa
+        assert len(manifest["agents"]) == 3  # pm, developer, reviewer
 
-    def test_route_after_qa_no_issues_commits(self):
-        """QA approves → route to git_commit."""
-        from standard_dev.graph import route_after_qa
+    def test_route_after_reviewer_no_issues_commits(self):
+        """Reviewer approves -> route to git_commit."""
+        from standard_dev.graph import route_after_reviewer
 
-        state = {"issues_found": [], "qa_iteration_count": 0}
-        assert route_after_qa(state) == "git_commit"
+        state = {"issues_found": [], "review_iteration_count": 0}
+        assert route_after_reviewer(state) == "git_commit"
 
-    def test_route_after_qa_issues_loops_back(self):
-        """Issues found, below max iterations → back to developer."""
-        from standard_dev.graph import route_after_qa
+    def test_route_after_reviewer_issues_loops_back(self):
+        """Issues found, below max iterations -> back to developer."""
+        from standard_dev.graph import route_after_reviewer
 
-        state = {"issues_found": ["bug"], "qa_iteration_count": 0}
-        assert route_after_qa(state) == "developer"
+        state = {"issues_found": ["bug"], "review_iteration_count": 0}
+        assert route_after_reviewer(state) == "developer"
 
-        state = {"issues_found": ["bug"], "qa_iteration_count": 1}
-        assert route_after_qa(state) == "developer"
+        state = {"issues_found": ["bug"], "review_iteration_count": 1}
+        assert route_after_reviewer(state) == "developer"
 
-    def test_route_after_qa_max_iterations_commits(self):
-        """Max QA iterations reached → force commit."""
-        from standard_dev.graph import route_after_qa
+    def test_route_after_reviewer_max_iterations_commits(self):
+        """Max review iterations reached -> force commit."""
+        from standard_dev.graph import route_after_reviewer
 
-        state = {"issues_found": ["bug"], "qa_iteration_count": 2}
-        assert route_after_qa(state) == "git_commit"
+        state = {"issues_found": ["bug"], "review_iteration_count": 2}
+        assert route_after_reviewer(state) == "git_commit"
 
-    def test_route_after_qa_max_iterations_higher(self):
-        """Higher than max → still commits."""
-        from standard_dev.graph import route_after_qa
+    def test_route_after_reviewer_max_iterations_higher(self):
+        """Higher than max -> still commits."""
+        from standard_dev.graph import route_after_reviewer
 
-        state = {"issues_found": ["bug"], "qa_iteration_count": 5}
-        assert route_after_qa(state) == "git_commit"
+        state = {"issues_found": ["bug"], "review_iteration_count": 5}
+        assert route_after_reviewer(state) == "git_commit"
 
     def test_no_interrupt_points(self):
         """No HITL interrupt points in standard_dev."""

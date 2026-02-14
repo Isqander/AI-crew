@@ -5,9 +5,20 @@ Agent tools (LangChain ``@tool`` functions).
 - ``filesystem_tools``    — read/write files in a local workspace directory
 - ``git_workspace_tools`` — high-level Git-based workflow (Wave 2)
 - ``web_tools``           — web search, fetch URL, download file
+- ``sandbox``             — code execution in isolated Docker containers (Wave 2)
 """
 from .github import github_tools
 from .filesystem import filesystem_tools
 from .git_workspace import git_workspace_tools
+from .sandbox import run_code, run_tests, run_lint, SandboxClient, get_sandbox_client
 
-__all__ = ["github_tools", "filesystem_tools", "git_workspace_tools"]
+__all__ = [
+    "github_tools",
+    "filesystem_tools",
+    "git_workspace_tools",
+    "run_code",
+    "run_tests",
+    "run_lint",
+    "SandboxClient",
+    "get_sandbox_client",
+]

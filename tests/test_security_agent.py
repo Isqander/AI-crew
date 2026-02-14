@@ -79,7 +79,7 @@ class TestSecurityAgent:
             "issues_found": [],
             "summary": "",
             "messages": [],
-            "qa_iteration_count": 0,
+            "review_iteration_count": 0,
             "architect_escalated": False,
             "retry_count": 0,
         }
@@ -103,7 +103,7 @@ class TestSecurityAgent:
             "issues_found": [],
             "summary": "",
             "messages": [],
-            "qa_iteration_count": 0,
+            "review_iteration_count": 0,
             "architect_escalated": False,
             "retry_count": 0,
         }
@@ -452,32 +452,32 @@ class TestRouteAfterDeveloper:
     """Test the route_after_developer conditional edge."""
 
     def test_route_to_security_first_pass(self):
-        """On first pass (qa_iteration_count=0), route to security_review."""
+        """On first pass (review_iteration_count=0), route to security_review."""
         from dev_team.graph import route_after_developer
 
-        state = {"qa_iteration_count": 0}
+        state = {"review_iteration_count": 0}
         with patch("dev_team.graph.USE_SECURITY_AGENT", True):
             result = route_after_developer(state)
             assert result == "security_review"
 
-    def test_route_to_qa_fix_loop(self):
-        """During fix loops (qa_iteration_count > 0), skip security."""
+    def test_route_to_reviewer_fix_loop(self):
+        """During fix loops (review_iteration_count > 0), skip security."""
         from dev_team.graph import route_after_developer
 
-        state = {"qa_iteration_count": 1}
+        state = {"review_iteration_count": 1}
         # Even with security enabled, skip on fix loops
         with patch("dev_team.graph.USE_SECURITY_AGENT", True):
             result = route_after_developer(state)
-            assert result == "qa"
+            assert result == "reviewer"
 
-    def test_route_to_qa_security_disabled(self):
-        """When security agent is disabled, always route to QA."""
+    def test_route_to_reviewer_security_disabled(self):
+        """When security agent is disabled, always route to reviewer."""
         from dev_team.graph import route_after_developer
 
-        state = {"qa_iteration_count": 0}
+        state = {"review_iteration_count": 0}
         with patch("dev_team.graph.USE_SECURITY_AGENT", False):
             result = route_after_developer(state)
-            assert result == "qa"
+            assert result == "reviewer"
 
 
 # ==================================================================
