@@ -196,6 +196,9 @@ services:
       SANDBOX_BROWSER_IMAGE: ${SANDBOX_BROWSER_IMAGE:-aicrew-sandbox-browser:latest}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENV_MODE: ${ENV_MODE:-LOCAL}
+    depends_on:
+      sandbox-browser:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8002/health"]
       interval: 60s
@@ -207,8 +210,8 @@ services:
   # ===========================================
   # Sandbox Browser (Playwright + Chromium)
   # ===========================================
-  # Pre-built image for Visual QA browser testing.
-  # Built separately, used by sandbox executor when browser=true.
+  # Build-only service: builds the browser image and exits.
+  # The sandbox executor uses this image for browser E2E tests.
   sandbox-browser:
     build:
       context: ./sandbox
@@ -216,10 +219,7 @@ services:
     image: aicrew-sandbox-browser:latest
     container_name: aicrew-sandbox-browser-build
     entrypoint: ["echo", "Browser sandbox image built successfully"]
-    # This service only builds the image — it doesn't run.
-    # The sandbox executor pulls this image for browser test containers.
-    profiles:
-      - build                               # Only built on demand: docker compose --profile build build sandbox-browser
+    # Builds the image, prints success, exits. No profiles — always built.
 
   # ===========================================
   # Telegram Bot
