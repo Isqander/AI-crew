@@ -27,8 +27,8 @@ logger = structlog.get_logger()
 # Sandbox service URL (internal docker network)
 SANDBOX_URL = os.getenv("SANDBOX_URL", "http://sandbox:8002")
 
-# Shared HTTP client timeout (long — code execution can take a while)
-_TIMEOUT = httpx.Timeout(timeout=120.0, connect=10.0)
+# Default connect timeout (seconds)
+_CONNECT_TIMEOUT = 10.0
 
 
 # ------------------------------------------------------------------
@@ -91,8 +91,15 @@ class SandboxClient:
             commands=len(commands),
         )
 
+        # HTTP timeout must exceed sandbox execution timeout + overhead
+        # (image pull, container create/start, file copy, cleanup)
+        http_timeout = httpx.Timeout(
+            timeout=float(timeout) + 120.0,
+            connect=_CONNECT_TIMEOUT,
+        )
+
         try:
-            with httpx.Client(timeout=_TIMEOUT) as client:
+            with httpx.Client(timeout=http_timeout) as client:
                 response = client.post(f"{self.base_url}/execute", json=payload)
                 response.raise_for_status()
                 result = response.json()

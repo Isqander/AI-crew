@@ -123,6 +123,15 @@ class QAAgent(BaseAgent):
             duration=sandbox_results["duration_seconds"],
         )
 
+        # Log stdout/stderr on failure for easier debugging
+        if sandbox_results["exit_code"] != 0:
+            stdout_preview = sandbox_results["stdout"][:2000]
+            stderr_preview = sandbox_results["stderr"][:2000]
+            if stdout_preview:
+                logger.warning("qa.test_code.stdout", output=stdout_preview)
+            if stderr_preview:
+                logger.warning("qa.test_code.stderr", output=stderr_preview)
+
         # ── LLM analyses results ────────────────────────────────────
         verdict = self._analyse_results(
             task=task,
@@ -270,12 +279,22 @@ class QAAgent(BaseAgent):
             app_ready_timeout=30,
         )
 
+        ui_exit_code = sandbox_result.get("exit_code")
         logger.info(
             "qa.test_ui.sandbox_done",
-            exit_code=sandbox_result.get("exit_code"),
+            exit_code=ui_exit_code,
             screenshots=len(sandbox_result.get("screenshots", [])),
             duration=sandbox_result.get("duration_seconds"),
         )
+
+        # Log stdout/stderr on failure for easier debugging
+        if ui_exit_code != 0:
+            stdout_preview = sandbox_result.get("stdout", "")[:2000]
+            stderr_preview = sandbox_result.get("stderr", "")[:2000]
+            if stdout_preview:
+                logger.warning("qa.test_ui.stdout", output=stdout_preview)
+            if stderr_preview:
+                logger.warning("qa.test_ui.stderr", output=stderr_preview)
 
         # ── 5. LLM analyses browser results ──────────────────────
         verdict = self._analyse_browser_results(
