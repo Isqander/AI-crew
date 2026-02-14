@@ -1,12 +1,14 @@
 """
-QA Agent (Sandbox Testing)
-==========================
+QA Agent (Sandbox Testing + Visual QA)
+========================================
 
 Responsible for:
   - Running generated code in an isolated sandbox
   - Executing tests (pytest, jest, etc.)
   - Verifying that code compiles / runs without errors
   - Analysing sandbox output with LLM and deciding pass/fail
+  - **Visual QA (Phase 1):** Generating and running Playwright E2E tests
+    for UI projects, collecting screenshots, analysing visual results
 
 The QA agent delegates execution to the :mod:`sandbox` service and
 uses an LLM to interpret the results.
@@ -20,14 +22,29 @@ Note:
 
 from __future__ import annotations
 
+import os
+import re
+
 import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
 from ..state import DevTeamState
 from ..tools.sandbox import SandboxClient, get_sandbox_client
+from ..tools.browser_runner import build_runner_script, detect_framework_defaults
 
 logger = structlog.get_logger()
+
+# Feature flags
+USE_BROWSER_TESTING = os.getenv("USE_BROWSER_TESTING", "true").lower() in ("true", "1", "yes")
+
+# UI framework indicators (lowercase)
+UI_INDICATORS: set[str] = {
+    "react", "vue", "angular", "svelte", "next.js", "nuxt",
+    "nextjs", "gatsby", "vite", "html", "css", "tailwind",
+    "bootstrap", "frontend", "web", "ui", "next", "remix",
+    "solid", "solidjs", "astro", "qwik", "preact",
+}
 
 
 class QAAgent(BaseAgent):
@@ -148,6 +165,354 @@ class QAAgent(BaseAgent):
             "next_agent": next_agent,
             "review_iteration_count": review_iter,
         }
+
+    # ------------------------------------------------------------------
+    # Visual QA: Browser E2E testing (Phase 1)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def has_ui(state: DevTeamState) -> bool:
+        """Determine if the project has a UI component.
+
+        Checks ``tech_stack`` and ``code_files`` for indicators of
+        a frontend / web UI project.
+        """
+        # Check tech_stack
+        tech_stack = state.get("tech_stack", [])
+        for tech in tech_stack:
+            if tech.lower().replace(".", "").replace("js", "").strip() in UI_INDICATORS:
+                return True
+            # Partial match
+            for indicator in UI_INDICATORS:
+                if indicator in tech.lower():
+                    return True
+
+        # Check code_files for UI file extensions
+        ui_extensions = (".html", ".jsx", ".tsx", ".vue", ".svelte", ".astro")
+        for f in state.get("code_files", []):
+            path = f.get("path", "").lower()
+            if any(path.endswith(ext) for ext in ui_extensions):
+                return True
+
+        return False
+
+    def test_ui(self, state: DevTeamState, config=None) -> dict:
+        """Generate and run Playwright E2E tests for UI projects.
+
+        Steps:
+          1. LLM generates a Playwright test script from user_stories + code
+          2. Build the browser_runner.py with framework-specific defaults
+          3. Execute in browser-sandbox (code_files + runner + test)
+          4. LLM analyses screenshots + console + test results
+          5. Return browser_test_results + verdict
+
+        Returns a dict with ``browser_test_results`` and ``issues_found``.
+        """
+        code_files = state.get("code_files", [])
+        task = state.get("task", "")
+        tech_stack = state.get("tech_stack", [])
+
+        logger.info(
+            "qa.test_ui.start",
+            files=len(code_files),
+            tech_stack=tech_stack[:5],
+        )
+
+        # ── 1. Generate Playwright test script ────────────────────
+        test_script = self._generate_browser_test(state, config)
+
+        if not test_script:
+            logger.warning("qa.test_ui.skip", reason="empty_test_script")
+            return {
+                "browser_test_results": {
+                    "mode": "scripted_e2e",
+                    "test_status": "skip",
+                    "screenshots": [],
+                    "console_logs": "",
+                    "network_errors": [],
+                    "defects_found": [],
+                    "duration_seconds": 0,
+                },
+                "issues_found": [],
+            }
+
+        # ── 2. Detect framework and build runner script ───────────
+        defaults = detect_framework_defaults(tech_stack)
+        runner_script = build_runner_script(
+            app_command=defaults["start"],
+            app_port=defaults["port"],
+            app_ready_timeout=30,
+            install_command=defaults["install"],
+        )
+
+        # ── 3. Prepare files for sandbox ──────────────────────────
+        sandbox_files = [
+            {"path": f["path"], "content": f["content"]}
+            for f in code_files
+            if f.get("path") and f.get("content")
+        ]
+        # Add runner and test
+        sandbox_files.append({"path": "browser_runner.py", "content": runner_script})
+        sandbox_files.append({"path": "playwright_test.py", "content": test_script})
+
+        # ── 4. Execute in browser sandbox ─────────────────────────
+        logger.info("qa.test_ui.execute", sandbox_files=len(sandbox_files))
+
+        sandbox_result = self.sandbox.execute(
+            language="python",
+            code_files=sandbox_files,
+            commands=["python browser_runner.py"],
+            timeout=120,
+            memory_limit="512m",
+            network=False,
+            browser=True,
+            collect_screenshots=True,
+            app_ready_timeout=30,
+        )
+
+        logger.info(
+            "qa.test_ui.sandbox_done",
+            exit_code=sandbox_result.get("exit_code"),
+            screenshots=len(sandbox_result.get("screenshots", [])),
+            duration=sandbox_result.get("duration_seconds"),
+        )
+
+        # ── 5. LLM analyses browser results ──────────────────────
+        verdict = self._analyse_browser_results(
+            task=task,
+            sandbox_result=sandbox_result,
+            config=config,
+        )
+
+        browser_results = {
+            "mode": "scripted_e2e",
+            "screenshots": [
+                {"name": s.get("name", ""), "step": ""}
+                for s in sandbox_result.get("screenshots", [])
+            ],
+            "console_logs": sandbox_result.get("browser_console", ""),
+            "network_errors": sandbox_result.get("network_errors", []),
+            "test_status": "pass" if verdict["approved"] else "fail",
+            "defects_found": verdict.get("defects", []),
+            "duration_seconds": sandbox_result.get("duration_seconds", 0),
+        }
+
+        logger.info(
+            "qa.test_ui.verdict",
+            approved=verdict["approved"],
+            defects=len(verdict.get("defects", [])),
+            issues=len(verdict.get("issues", [])),
+        )
+
+        return {
+            "browser_test_results": browser_results,
+            "issues_found": verdict.get("issues", []),
+        }
+
+    def merge_results(self, code_result: dict, browser_result: dict) -> dict:
+        """Merge code test results with browser test results.
+
+        If browser tests fail, the overall verdict is FAIL and
+        ``next_agent`` is set to ``"developer"`` for fixes.
+        """
+        merged = {**code_result}
+
+        # Add browser results
+        merged["browser_test_results"] = browser_result.get("browser_test_results")
+
+        # Merge issues
+        all_issues = (
+            code_result.get("issues_found", [])
+            + browser_result.get("issues_found", [])
+        )
+        merged["issues_found"] = all_issues
+
+        # Overall verdict: both must pass
+        code_approved = code_result.get("test_results", {}).get("approved", True)
+        browser_status = (
+            browser_result.get("browser_test_results", {}).get("test_status", "pass")
+        )
+        browser_approved = browser_status == "pass"
+
+        if not browser_approved and code_approved:
+            # Code passed but browser failed → mark as failed
+            merged["test_results"] = {**code_result.get("test_results", {})}
+            merged["test_results"]["approved"] = False
+            merged["test_results"]["browser_failed"] = True
+            merged["next_agent"] = "developer"
+
+        return merged
+
+    # ------------------------------------------------------------------
+    # Visual QA: internal helpers
+    # ------------------------------------------------------------------
+
+    def _generate_browser_test(self, state: DevTeamState, config=None) -> str:
+        """Use LLM to generate a Playwright test script.
+
+        Returns a Python source string (pytest-playwright style), or
+        empty string on failure.
+        """
+        prompt = create_prompt_template(
+            self.system_prompt,
+            self.prompts["generate_browser_test"],
+        )
+        chain = prompt | self.llm
+
+        user_stories = state.get("user_stories", [])
+        stories_text = "\n".join(
+            f"- {s.get('title', '')}: {s.get('description', '')}"
+            for s in user_stories[:5]
+        ) if user_stories else "No user stories available"
+
+        tech_stack = ", ".join(state.get("tech_stack", [])) or "Unknown"
+        code_structure = self._summarize_code_files(state.get("code_files", []))
+
+        try:
+            response = self._invoke_chain(chain, {
+                "task": state.get("task", ""),
+                "user_stories": stories_text,
+                "tech_stack": tech_stack,
+                "code_structure": code_structure,
+            }, config=config)
+
+            return self._extract_code_block(response.content)
+        except Exception as exc:
+            logger.error("qa.generate_browser_test.failed", error=str(exc)[:300])
+            return ""
+
+    def _analyse_browser_results(
+        self,
+        task: str,
+        sandbox_result: dict,
+        config=None,
+    ) -> dict:
+        """Use LLM to interpret browser test output and screenshots.
+
+        Returns ``{"approved": bool, "issues": list[str], "defects": list[dict]}``.
+        """
+        prompt = create_prompt_template(
+            self.system_prompt,
+            self.prompts["analyse_browser_results"],
+        )
+        chain = prompt | self.llm
+
+        stdout = sandbox_result.get("stdout", "")[:4000]
+        stderr = sandbox_result.get("stderr", "")[:4000]
+        console_logs = sandbox_result.get("browser_console", "")[:2000]
+        network_errors = sandbox_result.get("network_errors", [])
+
+        try:
+            response = self._invoke_chain(chain, {
+                "task": task,
+                "exit_code": str(sandbox_result.get("exit_code", -1)),
+                "stdout": stdout or "(empty)",
+                "stderr": stderr or "(empty)",
+                "console_logs": console_logs or "(none)",
+                "network_errors": ", ".join(network_errors[:10]) or "(none)",
+            }, config=config)
+
+            content = response.content
+            approved = self._parse_browser_verdict(content, sandbox_result)
+            issues = self._parse_issues(content)
+            defects = self._parse_defects(content)
+
+            return {
+                "approved": approved,
+                "issues": issues,
+                "defects": defects,
+                "explanation": content,
+            }
+        except Exception as exc:
+            logger.error("qa.analyse_browser_results.failed", error=str(exc)[:300])
+            # Fallback: use exit code
+            return {
+                "approved": sandbox_result.get("exit_code", -1) == 0,
+                "issues": [f"Browser analysis failed: {exc}"],
+                "defects": [],
+                "explanation": f"Analysis error: {exc}",
+            }
+
+    @staticmethod
+    def _parse_browser_verdict(content: str, sandbox_result: dict) -> bool:
+        """Parse PASS/FAIL from browser analysis LLM response."""
+        content_lower = content.lower()
+        if "verdict: pass" in content_lower:
+            return True
+        if "verdict: fail" in content_lower:
+            return False
+        # Fallback
+        return sandbox_result.get("exit_code", -1) == 0
+
+    @staticmethod
+    def _parse_defects(content: str) -> list[dict]:
+        """Extract defect descriptions from the ``## Visual Issues``
+        and ``## Functional Issues`` sections."""
+        defects: list[dict] = []
+        in_section = False
+        current_severity = "medium"
+
+        for line in content.split("\n"):
+            stripped = line.strip()
+            lower = stripped.lower()
+
+            if "## visual issues" in lower:
+                in_section = True
+                current_severity = "medium"
+                continue
+            if "## functional issues" in lower:
+                in_section = True
+                current_severity = "high"
+                continue
+            if in_section and stripped.startswith("#"):
+                in_section = False
+                continue
+            if in_section and stripped.startswith("- ") and "none" not in lower:
+                defects.append({
+                    "description": stripped[2:],
+                    "severity": current_severity,
+                })
+
+        return defects
+
+    @staticmethod
+    def _extract_code_block(content: str) -> str:
+        """Extract the first fenced code block from LLM output.
+
+        Supports ```python ... ``` and ``` ... ``` formats.
+        Returns the code without the fences, or empty string if none found.
+        """
+        # Try to find ```python ... ``` or ``` ... ```
+        pattern = r"```(?:python)?\s*\n(.*?)```"
+        match = re.search(pattern, content, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+
+        # Fallback: if the entire response looks like code, return it
+        if "import " in content and "def " in content:
+            return content.strip()
+
+        return ""
+
+    @staticmethod
+    def _summarize_code_files(code_files: list[dict]) -> str:
+        """Build a compact summary of code files for the LLM prompt."""
+        if not code_files:
+            return "(no code files)"
+
+        parts: list[str] = []
+        for f in code_files[:15]:
+            path = f.get("path", "unknown")
+            content = f.get("content", "")
+            lines = len(content.split("\n"))
+            # Include first few lines for context
+            preview = "\n".join(content.split("\n")[:5])
+            parts.append(f"  {path} ({lines} lines):\n    {preview[:200]}")
+
+        if len(code_files) > 15:
+            parts.append(f"  ... and {len(code_files) - 15} more files")
+
+        return "\n".join(parts)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -328,7 +693,31 @@ def get_qa_agent() -> QAAgent:
 
 
 def qa_agent(state: DevTeamState, config=None) -> dict:
-    """QA agent node function for LangGraph."""
+    """QA agent node function for LangGraph.
+
+    Runs code tests (always), then browser E2E tests (if the project
+    has a UI component and ``USE_BROWSER_TESTING`` is enabled).
+    """
     agent = get_qa_agent()
+
+    # Phase 0: Unit / Integration / Syntax tests
     logger.debug("qa.route", action="test_code")
-    return agent.test_code(state, config=config)
+    code_result = agent.test_code(state, config=config)
+
+    # Phase 1: Browser E2E tests (Visual QA)
+    if USE_BROWSER_TESTING and agent.has_ui(state):
+        logger.info("qa.route", action="test_ui", reason="ui_detected")
+        try:
+            browser_result = agent.test_ui(state, config=config)
+            code_result = agent.merge_results(code_result, browser_result)
+        except Exception as exc:
+            logger.error("qa.test_ui.error", error=str(exc)[:300])
+            # Don't fail the whole QA on browser test errors
+            # — code test results still apply
+    else:
+        if not USE_BROWSER_TESTING:
+            logger.debug("qa.route", action="skip_test_ui", reason="disabled")
+        else:
+            logger.debug("qa.route", action="skip_test_ui", reason="no_ui")
+
+    return code_result

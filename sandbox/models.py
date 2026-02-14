@@ -51,12 +51,39 @@ class SandboxExecuteRequest(BaseModel):
         description="Whether to allow network access inside the sandbox",
     )
 
+    # === Browser mode (Visual QA Phase 1) ===
+    browser: bool = Field(
+        default=False,
+        description="Use the browser sandbox image (Playwright + Chromium)",
+    )
+    collect_screenshots: bool = Field(
+        default=False,
+        description="Collect screenshots from /screenshots/ after execution",
+    )
+    app_start_command: str | None = Field(
+        default=None,
+        description="Command to start the web app in background before tests (e.g. 'npm run dev')",
+    )
+    app_ready_timeout: int = Field(
+        default=30,
+        ge=1,
+        le=120,
+        description="Seconds to wait for the app to become ready (port listening)",
+    )
+
 
 class FileOutput(BaseModel):
     """A file produced by the sandbox execution."""
 
     path: str
     content: str
+
+
+class ScreenshotOutput(BaseModel):
+    """A screenshot collected from the sandbox container."""
+
+    name: str = Field(..., description="Screenshot filename (e.g. 'homepage.png')")
+    base64: str = Field(..., description="Base64-encoded PNG image data")
 
 
 class SandboxExecuteResponse(BaseModel):
@@ -77,6 +104,20 @@ class SandboxExecuteResponse(BaseModel):
     error: str | None = Field(
         default=None,
         description="Internal error message (container creation failure, timeout, etc.)",
+    )
+
+    # === Browser mode outputs (Visual QA Phase 1) ===
+    screenshots: list[ScreenshotOutput] = Field(
+        default_factory=list,
+        description="Screenshots collected from /screenshots/ (browser mode)",
+    )
+    browser_console: str = Field(
+        default="",
+        description="Browser console output captured during tests",
+    )
+    network_errors: list[str] = Field(
+        default_factory=list,
+        description="Failed network requests captured during browser tests",
     )
 
 

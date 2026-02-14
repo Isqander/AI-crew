@@ -3,7 +3,7 @@
 > Полное описание целевой архитектуры после Волн 1 и 2.
 > Включает: компоненты, API-контракты, модели данных, протоколы, безопасность.
 > 
-> Дата: 11 февраля 2026
+> Дата: 14 февраля 2026 (обновлено: Visual QA Testing)
 > Основан на: [EVOLUTION_PLAN_V3.md](EVOLUTION_PLAN_V3.md)
 
 ---
@@ -21,7 +21,10 @@
 9. [Безопасность](#9-безопасность)
 10. [Data Layer](#10-data-layer)
 11. [Observability и мониторинг](#11-observability)
-12. [Открытые вопросы](#12-открытые-вопросы)
+12. [Решённые вопросы](#12-открытые-вопросы)
+- [Приложение A: Docker Compose](#приложение-a)
+- [Приложение B: Структура файлов](#приложение-b)
+- [Приложение C: Архитектура Visual QA Testing](#appendix-c-visual-qa)
 
 ---
 
@@ -1620,5 +1623,274 @@ AI-crew/
     ├── DEVELOPMENT.md
     ├── TESTING.md
     ├── GETTING_STARTED.md
-    └── deployment.md
+    ├── deployment.md
+    └── VISUAL_QA_PLAN.md              # План Visual QA Testing
 ```
+
+---
+
+## Приложение C: Архитектура Visual QA Testing {#appendix-c-visual-qa}
+
+> Расширение QA-агента для визуального тестирования UI через Playwright.
+> Реализуемые фазы: **Scripted E2E** (Фаза 1) → **Guided Exploration** (Фаза 2).
+> Фаза 3 (Autonomous Loop) — **отложена на неопределённый срок** (см. [VISUAL_QA_PLAN.md §7](VISUAL_QA_PLAN.md#7-целесообразность)).
+>
+> Связанный документ: [VISUAL_QA_PLAN.md](VISUAL_QA_PLAN.md)
+
+### C.1 Обзор и мотивация
+
+Текущий QA-агент умеет:
+- Запускать код в sandbox (pytest, jest, go test, cargo test)
+- Проверять синтаксис и компиляцию
+- Анализировать stdout/stderr/exit_code через LLM
+
+**Чего не хватает:** проверки того, что UI **выглядит и работает правильно** —
+кнопки кликабельны, формы отправляются, страницы рендерятся без ошибок,
+визуал соответствует требованиям.
+
+### C.2 Архитектурное решение: три фазы
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                        QA Agent — Testing Pipeline                   │
+│                                                                      │
+│  ┌─────────────┐   ┌─────────────────┐   ┌───────────────────────┐  │
+│  │  test_code() │   │   test_ui()     │   │  test_explore()       │  │
+│  │  (Фаза 0)   │   │   (Фаза 1)     │   │  (Фаза 2)             │  │
+  │  │             │   │                 │   │                       │  │
+  │  │ Unit/Integ  │   │ Scripted E2E    │   │ Guided Exploration    │  │
+  │  │ pytest/jest │   │ Playwright      │   │ (batch)               │  │
+│  │ (sandbox)   │   │ (browser-       │   │ (browser-sandbox)     │  │
+│  │             │   │  sandbox)       │   │                       │  │
+│  └──────┬──────┘   └──────┬──────────┘   └──────┬────────────────┘  │
+│         │                 │                      │                   │
+│         ▼                 ▼                      ▼                   │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │                   Итоговый Verdict (pass/fail)                │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Политика запуска:**
+
+1. `test_code()` — **всегда** (unit / integration / syntax check)
+2. `test_ui()` — **если проект имеет UI** (определяется по tech_stack: React, Vue, Angular, Next.js, HTML и т.д.)
+3. `test_explore()` — **только при явном включении** (`USE_BROWSER_EXPLORATION=true`)
+
+### C.3 Sandbox: Browser Mode
+
+Расширение существующего sandbox-сервиса для поддержки Playwright.
+
+**Изменения в Sandbox API:**
+
+```python
+class SandboxExecuteRequest(BaseModel):
+    language: str
+    code_files: list[dict]
+    commands: list[str]
+    timeout: int = 60
+    memory_limit: str = "256m"
+    network: bool = False
+    # === Новые поля ===
+    browser: bool = False               # Использовать образ с Playwright
+    collect_screenshots: bool = False   # Собирать скриншоты из /screenshots/
+    app_start_command: str | None = None  # Команда запуска приложения (фоном)
+    app_ready_timeout: int = 30          # Секунды на ожидание готовности приложения
+
+class SandboxExecuteResponse(BaseModel):
+    stdout: str
+    stderr: str
+    exit_code: int
+    duration_seconds: float
+    tests_passed: bool | None = None
+    files_output: list[dict] = []
+    # === Новые поля ===
+    screenshots: list[dict] = []         # [{name: str, base64: str}]
+    browser_console: str = ""            # Console output из браузера
+    network_errors: list[str] = []       # Failed requests
+```
+
+**Docker-образ `sandbox-browser`:**
+
+```dockerfile
+FROM mcr.microsoft.com/playwright/python:v1.50.0-noble
+# Включает: Chromium, Firefox, WebKit + Python 3.x
+
+RUN pip install pytest pytest-playwright
+# + Node.js runtime для JS-приложений
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs
+```
+
+**Выбор образа:** При `browser: true` sandbox executor использует `sandbox-browser`
+вместо стандартного языкового образа. Приложение и тесты запускаются в одном контейнере.
+
+### C.4 QA Agent: расширенный pipeline
+
+```python
+# Расширенный QA node function (концепт)
+
+def qa_agent(state, config=None):
+    agent = get_qa_agent()
+    
+    # Фаза 0: Unit / Integration tests (существующий)
+    code_result = agent.test_code(state, config)
+    
+    # Фаза 1: Browser E2E tests (если проект имеет UI)
+    if agent.has_ui(state) and USE_BROWSER_TESTING:
+        browser_result = agent.test_ui(state, config)
+        code_result = agent.merge_results(code_result, browser_result)
+    
+    # Фаза 2/3: Exploration (если включено)
+    if USE_BROWSER_EXPLORATION and agent.has_ui(state):
+        explore_result = agent.test_explore(state, config)
+        code_result = agent.merge_results(code_result, explore_result)
+    
+    return code_result
+```
+
+**Метод `test_ui()` — Scripted E2E (Фаза 1):**
+
+```
+QA Agent                    LLM                      Sandbox
+    │                        │                          │
+    │ 1. Собирает контекст:  │                          │
+    │    user_stories         │                          │
+    │    tech_stack           │                          │
+    │    code_files           │                          │
+    │                        │                          │
+    │ 2. Генерирует тест ───>│                          │
+    │    (промпт: generate_  │                          │
+    │     browser_test)      │                          │
+    │                        │                          │
+    │ <── Playwright скрипт  │                          │
+    │     (Python / TS)      │                          │
+    │                        │                          │
+    │ 3. Отправляет в sandbox ─────────────────────────>│
+    │    code_files +                                   │
+    │    playwright_test.py +                            │
+    │    browser=true                                    │
+    │                                                    │
+    │    Sandbox:                                        │
+    │    a) Устанавливает зависимости                   │
+    │    b) Запускает приложение (фоном)                │
+    │    c) Ждёт готовности (healthcheck)               │
+    │    d) Запускает Playwright тесты                  │
+    │    e) Собирает скриншоты                          │
+    │                                                    │
+    │ <── {stdout, stderr, exit_code, screenshots,      │
+    │      browser_console, network_errors}              │
+    │                        │                          │
+    │ 4. Анализирует ───────>│                          │
+    │    (промпт: analyse_   │                          │
+    │     browser_results)   │                          │
+    │    + скриншоты (base64) │                          │
+    │                        │                          │
+    │ <── Verdict + Issues   │                          │
+```
+
+**Метод `test_explore()` — Guided Exploration (Фаза 2):**
+
+```
+QA Agent                    LLM                      Sandbox
+    │                        │                          │
+    │ 1. Генерирует план ──>│                          │
+    │    обхода              │                          │
+    │    (промпт: generate_ │                          │
+    │     exploration_plan)  │                          │
+    │                        │                          │
+    │ <── exploration.json   │                          │
+    │  [{url, actions,       │                          │
+    │    assertions}]        │                          │
+    │                        │                          │
+    │ 2. Отправляет план ──────────────────────────────>│
+    │    + exploration_      │                          │
+    │      runner.py         │                          │
+    │    + browser=true      │                          │
+    │                        │                          │
+    │    Runner выполняет    │                          │
+    │    весь план за один   │                          │
+    │    прогон, на каждом   │                          │
+    │    шаге: screenshot +  │                          │
+    │    console + result    │                          │
+    │                        │                          │
+    │ <── report.json +      │                          │
+    │     screenshots[]      │                          │
+    │                        │                          │
+    │ 3. Пакетный анализ ──>│                          │
+    │    (промпт: analyse_   │                          │
+    │     exploration)       │                          │
+    │    + все скриншоты     │                          │
+    │                        │                          │
+    │ <── Defects + Score    │                          │
+```
+
+### C.5 State: новые поля
+
+```python
+class DevTeamState(TypedDict):
+    # ... существующие поля ...
+
+    # === Visual QA ===
+    browser_test_results: NotRequired[dict]
+    # Структура:
+    # {
+    #     "mode": "scripted_e2e" | "guided_exploration" | "autonomous",
+    #     "screenshots": [{"name": str, "step": str}],
+    #     "console_logs": str,
+    #     "network_errors": [str],
+    #     "test_status": "pass" | "fail" | "partial",
+    #     "steps_executed": int,
+    #     "urls_visited": [str],
+    #     "defects_found": [{"description": str, "severity": str, "screenshot": str}],
+    #     "duration_seconds": float,
+    # }
+```
+
+### C.6 Переменные окружения
+
+```bash
+# Browser testing
+USE_BROWSER_TESTING=true         # Включить Scripted E2E (Фаза 1)
+USE_BROWSER_EXPLORATION=false    # Включить Guided Exploration (Фаза 2)
+# USE_AUTONOMOUS_TESTING=false   # Фаза 3 — отложена на неопределённый срок
+BROWSER_TEST_TIMEOUT=120         # Таймаут на browser тесты (секунды)
+BROWSER_MAX_SCREENSHOTS=20       # Лимит скриншотов за один прогон
+BROWSER_EXPLORATION_MAX_STEPS=30 # Лимит шагов для exploration
+```
+
+### C.7 Артефакты и хранение
+
+Скриншоты возвращаются как base64 в `SandboxExecuteResponse.screenshots`.
+Для LLM-анализа передаются как image content в multimodal message.
+Не хранятся на диске долгосрочно — только на время одного run.
+
+**Будущее:** если потребуется baseline-сравнение (visual regression),
+скриншоты будут сохраняться в Git-репозиторий проекта или в S3-совместимое хранилище.
+
+### C.8 Безопасность и лимиты
+
+| Параметр | Значение | Обоснование |
+|----------|----------|-------------|
+| Timeout на browser-тесты | 120s | Достаточно для E2E, не слишком долго |
+| Memory limit | 512m | Chromium требует больше RAM, чем CLI |
+| Network | Только localhost | Приложение и тесты в одном контейнере |
+| Max screenshots | 20 | Ограничение объёма данных для LLM |
+| Max exploration steps | 30 | Предотвращение зацикливания |
+| Domain allowlist | localhost only | Фаза 1-2; настраиваемый в Фазе 3 |
+
+### C.9 Потоковая диаграмма в графе
+
+```
+Developer → Security → Reviewer → QA ─────────────→ git_commit
+                                   │                    ↑
+                                   │  test_code()       │
+                                   │  test_ui()         │ (pass)
+                                   │  test_explore()    │
+                                   │                    │
+                                   └── (fail) ─→ developer
+```
+
+QA node остаётся одним узлом в графе. Внутри он последовательно
+запускает доступные тестовые режимы. Итоговый verdict — AND:
+все режимы должны пройти для общего PASS.

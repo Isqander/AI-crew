@@ -1587,11 +1587,11 @@ jobs:
 - [x] docker-compose.prod.yml — production override
 - [x] env.example обновлён (CORS_ORIGINS, LANGFUSE_NEXTAUTH_URL, FRONTEND_DOCKERFILE)
 - [x] CORS настроен через gateway (CORS_ORIGINS env — JSON array или comma-separated)
-- [x] Все 398 тестов проходят (0 failures)
+- [x] Все 449 тестов проходят (0 failures)
 
 ### Волна 2 — Definition of Done
 
-> Дата обновления: 14 февраля 2026 — 398 тестов passed (tests/)
+> Дата обновления: 14 февраля 2026 — 449 тестов passed (tests/)
 
 #### Git-based Workflow (Module 3.1)
 - [x] State расширен: working_branch, working_repo, file_manifest + все поля Wave 2
@@ -1684,6 +1684,38 @@ jobs:
 - [x] _extract_dependencies: автоопределение requirements.txt, package.json, go.mod, etc.
 - [x] 29 unit-тестов (tests/test_security_agent.py): agent, parsing, routing, graph integration
 - [x] Integration tests обновлены (security_agent мок добавлен)
+
+#### Visual QA Testing (Browser)
+> Подробный план: [VISUAL_QA_PLAN.md](VISUAL_QA_PLAN.md)
+> Архитектура: [ARCHITECTURE_V2.md — Приложение C](ARCHITECTURE_V2.md#appendix-c-visual-qa)
+
+**Фаза 1: Scripted E2E (Playwright в Sandbox) — MVP** `[DONE]`
+- [x] `sandbox/Dockerfile.browser`: образ с Playwright + Chromium + Node.js
+- [x] `sandbox/models.py`, `executor.py`, `server.py`: browser mode (выбор образа, скриншоты)
+- [x] `graphs/dev_team/tools/browser_runner.py`: runner-скрипт для sandbox-контейнера
+- [x] `graphs/dev_team/agents/qa.py`: `has_ui()`, `test_ui()`, `merge_results()`
+- [x] `graphs/dev_team/prompts/qa.yaml`: `generate_browser_test`, `analyse_browser_results`
+- [x] `graphs/dev_team/state.py`: `browser_test_results: NotRequired[dict]`
+- [x] `USE_BROWSER_TESTING` env var (default: true)
+- [x] 51 unit-тест (tests/test_visual_qa.py): модели, executor, runner, QA agent, node, state
+- [x] Все 449 тестов проходят (0 failures)
+
+**Фаза 2: Guided Exploration (Batch)** `[PLANNED]`
+- [ ] `tools/exploration_runner.py`: batch exploration runner
+- [ ] `agents/qa.py`: `test_explore()`, `_generate_exploration_plan()`
+- [ ] `prompts/qa.yaml`: `generate_exploration_plan`, `analyse_exploration`
+- [ ] `USE_BROWSER_EXPLORATION` env var (default: false)
+- [ ] Unit + Integration тесты
+
+**Фаза 3: Autonomous Loop (Experimental)** `[DEFERRED — отложено на неопределённый срок]`
+> Решение: Фаза 3 отложена в долгосрочный бэклог. Scripted E2E (Фаза 1) + Guided Exploration (Фаза 2)
+> покрывают 95% потребностей визуального QA. Autonomous Loop целесообразен только если Фазы 1-2
+> окажутся недостаточными. См. анализ в [VISUAL_QA_PLAN.md §7](VISUAL_QA_PLAN.md#7-целесообразность).
+- [ ] `sandbox/session_manager.py`: stateful browser sessions
+- [ ] Session API: POST /sessions, POST /action, GET /state, DELETE
+- [ ] `agents/qa.py`: `autonomous_test()`, guardrails, explainability
+- [ ] `USE_AUTONOMOUS_TESTING` env var (default: false)
+- [ ] Unit + Integration тесты
 
 #### Остальные модули (не начаты)
 - [ ] DevOps Agent: Dockerfile, CI/CD, secrets, branch protection

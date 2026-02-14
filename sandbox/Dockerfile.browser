@@ -1,0 +1,26 @@
+# ===========================================
+# AI-crew Sandbox — Browser Mode (Playwright)
+# ===========================================
+# Extended sandbox image with Chromium and Playwright for
+# visual E2E testing of web applications.
+#
+# Used when QA agent detects a UI project and needs to run
+# browser-based tests (Scripted E2E — Phase 1).
+#
+# Base image: Microsoft Playwright with pre-installed browsers.
+# Additional: Node.js 20 for JS/TS apps, pytest-playwright.
+
+FROM mcr.microsoft.com/playwright/python:v1.50.0-noble
+
+# Node.js 20 — for running JS/TS web applications
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Python test dependencies
+RUN pip install --no-cache-dir pytest pytest-playwright
+
+# Directory for collected screenshots
+RUN mkdir -p /screenshots
+
+WORKDIR /workspace

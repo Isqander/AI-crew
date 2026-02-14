@@ -22,6 +22,8 @@ Docker images used (pulled automatically):
 
 from __future__ import annotations
 
+import base64
+import os
 import time
 import tarfile
 import io
@@ -48,6 +50,15 @@ LANGUAGE_IMAGES: dict[str, str] = {
 }
 
 DEFAULT_IMAGE = "ubuntu:22.04"
+
+# Browser sandbox image (built from sandbox/Dockerfile.browser)
+BROWSER_IMAGE = os.getenv("SANDBOX_BROWSER_IMAGE", "aicrew-sandbox-browser:latest")
+
+# Maximum screenshots to collect (to prevent memory issues)
+MAX_SCREENSHOTS = int(os.getenv("BROWSER_MAX_SCREENSHOTS", "20"))
+
+# Maximum single screenshot size in bytes (5MB)
+MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024
 
 # Working directory inside the container
 WORKDIR = "/sandbox"
@@ -120,12 +131,19 @@ class SandboxExecutor:
         timeout: int = 60,
         memory_limit: str = "256m",
         network: bool = False,
+        browser: bool = False,
+        collect_screenshots: bool = False,
+        app_start_command: str | None = None,
+        app_ready_timeout: int = 30,
     ) -> dict:
         """Run *commands* inside an isolated container.
 
         Returns a dict compatible with ``SandboxExecuteResponse``.
+
+        When *browser* is True, uses the Playwright browser image and
+        optionally collects screenshots from ``/screenshots/``.
         """
-        image = get_image_for_language(language)
+        image = BROWSER_IMAGE if browser else get_image_for_language(language)
         container = None
         t0 = time.monotonic()
 
@@ -138,6 +156,8 @@ class SandboxExecutor:
             timeout=timeout,
             memory_limit=memory_limit,
             network=network,
+            browser=browser,
+            collect_screenshots=collect_screenshots,
         )
 
         try:
@@ -145,21 +165,29 @@ class SandboxExecutor:
             self._ensure_image(image)
 
             # 2. Create container
+            #    Browser mode needs more memory and localhost network
+            effective_memory = memory_limit
+            if browser and memory_limit == "256m":
+                effective_memory = "512m"  # Chromium needs more RAM
+
             container = self.client.containers.create(
                 image=image,
                 command="sleep infinity",  # keep alive while we exec commands
                 working_dir=WORKDIR,
-                mem_limit=memory_limit,
-                network_mode="none" if not network else "bridge",
+                mem_limit=effective_memory,
+                network_mode="none" if (not network and not browser) else "bridge",
                 detach=True,
                 # Security: drop all capabilities, read-only root (except /sandbox, /tmp)
-                cap_drop=["ALL"],
-                tmpfs={"/tmp": "size=64m"},
+                # Note: browser mode needs slightly relaxed security for Chromium
+                cap_drop=[] if browser else ["ALL"],
+                tmpfs={"/tmp": "size=128m"} if browser else {"/tmp": "size=64m"},
             )
             container.start()
 
-            # 3. Create working directory & copy files
+            # 3. Create working directory & screenshot directory, copy files
             container.exec_run(f"mkdir -p {WORKDIR}", user="root")
+            if browser:
+                container.exec_run("mkdir -p /screenshots", user="root")
             if code_files:
                 tar_data = _create_tar_archive(
                     [{"path": f["path"], "content": f["content"]} for f in code_files]
@@ -205,6 +233,17 @@ class SandboxExecutor:
             # 5. Detect test results
             tests_passed = _detect_test_result(combined_stdout, combined_stderr, last_exit_code)
 
+            # 6. Collect screenshots (browser mode)
+            screenshots: list[dict[str, str]] = []
+            browser_console = ""
+            network_errors: list[str] = []
+
+            if browser and collect_screenshots:
+                screenshots = self._collect_screenshots(container)
+                browser_console, network_errors = self._collect_browser_logs(
+                    combined_stdout, combined_stderr
+                )
+
             logger.info(
                 "sandbox.execute.done",
                 exit_code=last_exit_code,
@@ -212,6 +251,7 @@ class SandboxExecutor:
                 tests_passed=tests_passed,
                 stdout_chars=len(combined_stdout),
                 stderr_chars=len(combined_stderr),
+                screenshots_collected=len(screenshots),
             )
 
             return {
@@ -222,6 +262,9 @@ class SandboxExecutor:
                 "tests_passed": tests_passed,
                 "files_output": [],
                 "error": None,
+                "screenshots": screenshots,
+                "browser_console": browser_console,
+                "network_errors": network_errors,
             }
 
         except Exception as exc:
@@ -235,6 +278,9 @@ class SandboxExecutor:
                 "tests_passed": None,
                 "files_output": [],
                 "error": str(exc)[:500],
+                "screenshots": [],
+                "browser_console": "",
+                "network_errors": [],
             }
 
         finally:
@@ -264,6 +310,91 @@ class SandboxExecutor:
             return len(containers)
         except Exception:
             return 0
+
+    # ------------------------------------------------------------------
+    # Browser mode helpers
+    # ------------------------------------------------------------------
+
+    def _collect_screenshots(self, container: Any) -> list[dict[str, str]]:
+        """Collect PNG screenshots from ``/screenshots/`` inside the container.
+
+        Returns a list of ``{"name": ..., "base64": ...}`` dicts.
+        """
+        screenshots: list[dict[str, str]] = []
+        try:
+            # List files in /screenshots/
+            exec_result = container.exec_run(
+                ["sh", "-c", "ls -1 /screenshots/*.png 2>/dev/null || true"],
+                demux=True,
+            )
+            stdout_bytes = (exec_result.output[0] or b"") if exec_result.output else b""
+            file_list = stdout_bytes.decode("utf-8", errors="replace").strip().split("\n")
+            file_list = [f.strip() for f in file_list if f.strip() and f.endswith(".png")]
+
+            if not file_list:
+                logger.debug("sandbox.screenshots.none_found")
+                return screenshots
+
+            # Limit number of screenshots
+            file_list = file_list[:MAX_SCREENSHOTS]
+
+            # Extract each screenshot via get_archive
+            for filepath in file_list:
+                try:
+                    bits, _stat = container.get_archive(filepath)
+                    # get_archive returns a tar stream
+                    tar_bytes = b"".join(bits)
+                    tar_stream = io.BytesIO(tar_bytes)
+                    with tarfile.open(fileobj=tar_stream, mode="r") as tar:
+                        for member in tar.getmembers():
+                            if member.isfile() and member.size <= MAX_SCREENSHOT_SIZE:
+                                fobj = tar.extractfile(member)
+                                if fobj:
+                                    raw = fobj.read()
+                                    encoded = base64.b64encode(raw).decode("ascii")
+                                    name = os.path.basename(filepath)
+                                    screenshots.append({"name": name, "base64": encoded})
+                                    logger.debug(
+                                        "sandbox.screenshot.collected",
+                                        name=name,
+                                        size_bytes=len(raw),
+                                    )
+                except Exception as e:
+                    logger.warning(
+                        "sandbox.screenshot.extract_failed",
+                        path=filepath,
+                        error=str(e)[:200],
+                    )
+
+        except Exception as exc:
+            logger.warning("sandbox.screenshots.collection_failed", error=str(exc)[:200])
+
+        logger.info("sandbox.screenshots.total", count=len(screenshots))
+        return screenshots
+
+    @staticmethod
+    def _collect_browser_logs(
+        stdout: str, stderr: str
+    ) -> tuple[str, list[str]]:
+        """Extract browser console logs and network errors from output.
+
+        The browser_runner.py script outputs tagged lines:
+          ``[console] ...`` for browser console messages
+          ``[network-error] ...`` for failed network requests
+
+        Returns (browser_console, network_errors).
+        """
+        console_lines: list[str] = []
+        network_errors: list[str] = []
+
+        for line in (stdout + "\n" + stderr).split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("[console]"):
+                console_lines.append(stripped[len("[console]"):].strip())
+            elif stripped.startswith("[network-error]"):
+                network_errors.append(stripped[len("[network-error]"):].strip())
+
+        return "\n".join(console_lines), network_errors
 
     # ------------------------------------------------------------------
     # Internal helpers

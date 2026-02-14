@@ -444,9 +444,10 @@ class TestQANodeFunction:
             "issues_found": [],
             "messages": [],
         }
+        mock_agent.has_ui.return_value = False  # No UI → skip browser tests
         mock_get_agent.return_value = mock_agent
 
-        state = {"code_files": [], "task": "test"}
+        state = {"code_files": [], "task": "test", "tech_stack": []}
         result = qa_agent(state)
 
         mock_agent.test_code.assert_called_once()

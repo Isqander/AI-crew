@@ -53,13 +53,20 @@ class SandboxClient:
         timeout: int = 60,
         memory_limit: str = "256m",
         network: bool = False,
+        browser: bool = False,
+        collect_screenshots: bool = False,
+        app_start_command: str | None = None,
+        app_ready_timeout: int = 30,
     ) -> dict[str, Any]:
         """Send an execution request to the sandbox.
 
         Returns the full response dict (stdout, stderr, exit_code, etc.).
+        When *browser* is True, the response may also contain
+        ``screenshots``, ``browser_console``, and ``network_errors``.
+
         Raises ``httpx.HTTPError`` on transport-level failures.
         """
-        payload = {
+        payload: dict[str, Any] = {
             "language": language,
             "code_files": code_files,
             "commands": commands,
@@ -67,6 +74,14 @@ class SandboxClient:
             "memory_limit": memory_limit,
             "network": network,
         }
+
+        # Browser mode fields (only sent when browser=True)
+        if browser:
+            payload["browser"] = True
+            payload["collect_screenshots"] = collect_screenshots
+            if app_start_command:
+                payload["app_start_command"] = app_start_command
+            payload["app_ready_timeout"] = app_ready_timeout
 
         logger.info(
             "sandbox.client.execute",

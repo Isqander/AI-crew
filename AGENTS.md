@@ -1,4 +1,4 @@
-﻿# AGENTS.md — AI-crew
+# AGENTS.md — AI-crew
 
 ## Критические правила
 
@@ -68,5 +68,6 @@ AI-crew/
 - [TESTING](docs/TESTING.md) — тестирование
 - [deployment](docs/deployment.md) — развёртывание
 - [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md) — план реализации
+- [VISUAL_QA_PLAN](docs/VISUAL_QA_PLAN.md) — план Visual QA Testing (Playwright)
 - [EVOLUTION_PLAN_V3](docs/EVOLUTION_PLAN_V3.md) — план эволюции
 - [IDEAS](docs/IDEAS.md) — backlog идей

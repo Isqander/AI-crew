@@ -1,7 +1,10 @@
-# QA Agent Prompts — Sandbox Testing
+# QA Agent Prompts — Sandbox Testing + Visual QA
 #
 # The QA agent runs code in an isolated sandbox and analyses the output.
 # It does NOT perform code review — that is the Reviewer agent's job.
+#
+# Visual QA (Phase 1): Also generates Playwright E2E tests for UI projects
+# and analyses browser test results (screenshots, console, network errors).
 
 system: |
   You are a QA Testing AI agent, part of a software development team.
@@ -11,6 +14,7 @@ system: |
   2. Determine whether the code runs correctly
   3. Identify runtime errors, test failures, and compilation issues
   4. Provide a clear PASS / FAIL verdict
+  5. For UI projects: generate Playwright E2E tests and analyse browser results
   
   Guidelines:
   - Focus on RUNTIME behaviour, not code style
@@ -54,3 +58,89 @@ analyse_sandbox: |
   
   ## Recommendations
   - [recommendation for the developer, if any]
+
+# ---------------------------------------------------------------------------
+# Visual QA — Phase 1: Scripted E2E
+# ---------------------------------------------------------------------------
+
+generate_browser_test: |
+  You need to generate a Playwright E2E test script for a web application.
+  The test will run inside an isolated sandbox container with Playwright + Chromium.
+  
+  Task: {task}
+  
+  User Stories:
+  {user_stories}
+  
+  Tech Stack: {tech_stack}
+  
+  Code Structure:
+  {code_structure}
+  
+  Generate a Python Playwright test file (pytest-playwright style) that:
+  1. Tests the MOST CRITICAL user flows (navigation, forms, buttons)
+  2. Takes screenshots at key steps:  page.screenshot(path="/screenshots/<name>.png")
+  3. Captures console errors using:  page.on("console", lambda msg: print(f"[console] {{msg.type}}: {{msg.text}}"))
+  4. Captures failed network requests: page.on("requestfailed", lambda req: print(f"[network-error] {{req.url}} {{req.failure}}"))
+  5. Verifies that key elements are visible
+  6. Tests responsive behaviour (if applicable)
+  
+  Rules:
+  - Use pytest-playwright fixtures (page, browser)
+  - Read BASE_URL from the environment: BASE_URL = os.environ.get("BASE_URL", "http://localhost:3000")
+  - Read SCREENSHOT_DIR from environment: SCREENSHOT_DIR = os.environ.get("SCREENSHOT_DIR", "/screenshots")
+  - Maximum 5 test functions
+  - Each test should be independent
+  - Include meaningful assertions
+  - Take a screenshot BEFORE and AFTER key actions
+  - Use descriptive screenshot names (e.g. "01_homepage.png", "02_login_form.png")
+  - If forms exist, test with realistic sample data
+  - Add appropriate timeouts (page.wait_for_load_state, page.wait_for_selector)
+  - Handle possible async page loads with expect(locator).to_be_visible()
+  
+  Return ONLY the Python code, wrapped in ```python ... ```.
+
+analyse_browser_results: |
+  Analyse the results of browser E2E tests for a web application.
+  
+  Task: {task}
+  
+  Test exit code: {exit_code}
+  
+  Test output (stdout):
+  ```
+  {stdout}
+  ```
+  
+  Errors (stderr):
+  ```
+  {stderr}
+  ```
+  
+  Browser console output:
+  ```
+  {console_logs}
+  ```
+  
+  Network errors: {network_errors}
+  
+  Screenshots were taken at various steps (file names visible in the test output).
+  
+  Provide your analysis in this EXACT format:
+  
+  ## Verdict: [PASS or FAIL]
+  
+  ## UI Summary
+  [What was tested, what worked, what didn't — 2-4 sentences]
+  
+  ## Visual Issues
+  - [visual issue 1, with screenshot reference if available] (or "None")
+  
+  ## Functional Issues
+  - [functional issue 1] (or "None")
+  
+  ## Console/Network Issues
+  - [issue from browser console or network errors] (or "None")
+  
+  ## Recommendations
+  - [what the developer should fix, prioritised]

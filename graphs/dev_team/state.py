@@ -114,6 +114,9 @@ class DevTeamState(TypedDict):
     # === Wave 2: Sandbox ===
     sandbox_results: NotRequired[dict]           # {stdout, stderr, exit_code, tests_passed}
 
+    # === Visual QA (Browser E2E testing) ===
+    browser_test_results: NotRequired[dict]      # See ARCHITECTURE_V2 Appendix C.5
+
     # === Wave 2: Security ===
     security_review: NotRequired[dict]           # {critical: [], warnings: [], info: []}
 

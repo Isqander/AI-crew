@@ -117,6 +117,8 @@ async def execute_code(request: SandboxExecuteRequest) -> SandboxExecuteResponse
         timeout=effective_timeout,
         memory=request.memory_limit,
         network=request.network,
+        browser=request.browser,
+        collect_screenshots=request.collect_screenshots,
     )
 
     # Run in a thread to avoid blocking the event loop
@@ -129,6 +131,10 @@ async def execute_code(request: SandboxExecuteRequest) -> SandboxExecuteResponse
         timeout=effective_timeout,
         memory_limit=request.memory_limit,
         network=request.network,
+        browser=request.browser,
+        collect_screenshots=request.collect_screenshots,
+        app_start_command=request.app_start_command,
+        app_ready_timeout=request.app_ready_timeout,
     )
 
     return SandboxExecuteResponse(**result)
