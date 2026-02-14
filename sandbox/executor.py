@@ -401,13 +401,28 @@ class SandboxExecutor:
     # ------------------------------------------------------------------
 
     def _ensure_image(self, image: str) -> None:
-        """Pull *image* if it is not available locally."""
+        """Pull *image* if it is not available locally.
+
+        Local-only images (like the browser sandbox) are never pulled
+        from a registry — if they are missing, we raise immediately
+        with a helpful message.
+        """
         try:
             self.client.images.get(image)
+            return
         except Exception:
-            logger.info("sandbox.image.pulling", image=image)
-            self.client.images.pull(image)
-            logger.info("sandbox.image.pulled", image=image)
+            pass
+
+        # For the browser image (local-only), don't attempt pull
+        if image == BROWSER_IMAGE:
+            raise RuntimeError(
+                f"Browser image '{image}' not found locally. "
+                f"Build it first: docker compose build sandbox-browser"
+            )
+
+        logger.info("sandbox.image.pulling", image=image)
+        self.client.images.pull(image)
+        logger.info("sandbox.image.pulled", image=image)
 
     def _docker_version(self) -> str:
         """Return Docker server version string (for logging)."""
