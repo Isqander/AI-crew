@@ -665,6 +665,21 @@ class QAAgent(BaseAgent):
                 commands.append("go test -v ./... 2>&1 || true")
             elif lang == "rust":
                 commands.append("cargo test 2>&1 || true")
+            else:
+                # Fallback: detect runner from test file extensions
+                js_tests = [f for f in test_files if f.endswith((".js", ".ts", ".mjs"))]
+                py_tests = [f for f in test_files if f.endswith(".py")]
+                if js_tests:
+                    commands.append("npx jest --no-cache 2>&1 || npx vitest run 2>&1 || true")
+                elif py_tests:
+                    commands.append("python -m pytest -v --tb=short 2>&1 || true")
+                else:
+                    # HTML/CSS projects: validate files exist
+                    html_files = [f for f in filenames if f.endswith(".html")]
+                    if html_files:
+                        commands.append(f"cat {html_files[0]} | head -5 && echo 'HTML files present'")
+                    else:
+                        commands.append("ls -la")
         else:
             # No tests — just try to run / compile
             main_files = [f for f in filenames if "main" in f.lower()]
@@ -683,6 +698,10 @@ class QAAgent(BaseAgent):
                 commands.append("rustc --edition 2021 -o /dev/null " + target + " 2>&1 || true")
             else:
                 commands.append(f"cat {target}")
+
+        # Safety net: sandbox API requires at least one command
+        if not commands:
+            commands.append("echo 'No runnable commands detected' && ls -la")
 
         return commands
 

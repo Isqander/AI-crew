@@ -17,8 +17,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Python test dependencies
-RUN pip install --no-cache-dir pytest pytest-playwright
+# Python test dependencies + ensure browser binaries match installed playwright version
+RUN pip install --no-cache-dir pytest pytest-playwright && \
+    playwright install --with-deps chromium
 
 # Directory for collected screenshots
 RUN mkdir -p /screenshots
