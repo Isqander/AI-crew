@@ -197,6 +197,7 @@ def build_runner_script(
 
 # Common app start commands and ports by framework
 FRAMEWORK_DEFAULTS: dict[str, dict] = {
+    # Node.js frameworks
     "react": {"install": "npm install", "start": "npx vite --host 0.0.0.0", "port": 5173},
     "vite": {"install": "npm install", "start": "npx vite --host 0.0.0.0", "port": 5173},
     "next": {"install": "npm install", "start": "npx next dev", "port": 3000},
@@ -206,27 +207,62 @@ FRAMEWORK_DEFAULTS: dict[str, dict] = {
     "angular": {"install": "npm install", "start": "npx ng serve --host 0.0.0.0", "port": 4200},
     "svelte": {"install": "npm install", "start": "npx vite --host 0.0.0.0", "port": 5173},
     "gatsby": {"install": "npm install", "start": "npx gatsby develop -H 0.0.0.0", "port": 8000},
+    "express": {"install": "npm install", "start": "npm start", "port": 3000},
+    "node": {"install": "npm install", "start": "npm start", "port": 3000},
+    # Python frameworks
     "flask": {"install": "pip install -r requirements.txt -q", "start": "python app.py", "port": 5000},
     "fastapi": {"install": "pip install -r requirements.txt -q", "start": "uvicorn app:app --host 0.0.0.0 --port 8000", "port": 8000},
     "django": {"install": "pip install -r requirements.txt -q", "start": "python manage.py runserver 0.0.0.0:8000", "port": 8000},
+    # Static (lowest priority — matched only in fallback pass)
     "html": {"install": "", "start": "python -m http.server 8080", "port": 8080},
 }
 
 
-def detect_framework_defaults(tech_stack: list[str]) -> dict:
+def detect_framework_defaults(
+    tech_stack: list[str],
+    code_files: list[dict] | None = None,
+) -> dict:
     """Detect install/start/port defaults from the tech stack.
 
     Returns a dict with keys ``install``, ``start``, ``port``.
-    Falls back to generic Node.js defaults.
+
+    Detection strategy:
+      1. Check tech_stack for specific frameworks (skip generic html/css)
+      2. Check code_files for package.json → Node.js project
+      3. Fall back to generic html/css match from tech_stack
+      4. Default: Node.js (npm start on port 3000)
     """
+    generic_keys = {"html", "css"}
+
+    def _normalize(tech: str) -> str:
+        return tech.lower().replace(".", "").replace(".js", "").strip()
+
+    # Pass 1: specific frameworks (skip html/css)
     for tech in tech_stack:
-        key = tech.lower().replace(".", "").replace("js", "").strip()
+        key = _normalize(tech)
+        if key in generic_keys:
+            continue
         if key in FRAMEWORK_DEFAULTS:
             return FRAMEWORK_DEFAULTS[key]
-        # Try partial match
+        # Partial match
+        tech_lower = tech.lower()
         for fk, fv in FRAMEWORK_DEFAULTS.items():
-            if fk in tech.lower():
+            if fk in tech_lower:
                 return fv
+
+    # Pass 2: detect from code_files (package.json → Node.js project)
+    if code_files:
+        has_package_json = any(
+            f.get("path", "").endswith("package.json") for f in code_files
+        )
+        if has_package_json:
+            return FRAMEWORK_DEFAULTS["node"]
+
+    # Pass 3: generic match (html)
+    for tech in tech_stack:
+        key = _normalize(tech)
+        if key in FRAMEWORK_DEFAULTS:
+            return FRAMEWORK_DEFAULTS[key]
 
     # Default: assume Node.js/npm project
     return {"install": "npm install", "start": "npm start", "port": 3000}

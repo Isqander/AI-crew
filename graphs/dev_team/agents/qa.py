@@ -264,7 +264,7 @@ class QAAgent(BaseAgent):
 
         # ── 2. Detect framework and build runner script ───────────
         sandbox_timeout = 240  # Browser tests need more time than unit tests
-        defaults = detect_framework_defaults(tech_stack)
+        defaults = detect_framework_defaults(tech_stack, code_files=code_files)
         runner_script = build_runner_script(
             app_command=defaults["start"],
             app_port=defaults["port"],
@@ -440,7 +440,7 @@ class QAAgent(BaseAgent):
 
         # ── 3. Build runner + prepare sandbox files ────────────────
         sandbox_timeout = 300  # Exploration needs more time
-        defaults = detect_framework_defaults(tech_stack)
+        defaults = detect_framework_defaults(tech_stack, code_files=code_files)
 
         runner_script = build_exploration_runner(
             app_command=defaults["start"],
@@ -585,7 +585,8 @@ class QAAgent(BaseAgent):
         code_structure = self._summarize_code_files(state.get("code_files", []))
 
         # Detect default port for the plan template
-        defaults = detect_framework_defaults(tech_stack)
+        code_files = state.get("code_files", [])
+        defaults = detect_framework_defaults(tech_stack, code_files=code_files)
         app_port = defaults.get("port", 3000)
 
         try:
