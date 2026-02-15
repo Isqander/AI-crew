@@ -3,10 +3,11 @@
 > Помодульная разбивка реализации, тестирование, критерии приёмки.
 > Рабочий документ для автономной реализации каждого модуля.
 >
-> Дата: 11 февраля 2026
+> Дата: 15 февраля 2026 (обновлено: QA improvements)
 > Связанные документы:
 > - [ARCHITECTURE_V2.md](ARCHITECTURE_V2.md) — целевая архитектура, API-контракты, модели данных
 > - [EVOLUTION_PLAN_V3.md](EVOLUTION_PLAN_V3.md) — решения и обоснования
+> - [ARCHITECTURE_V2.md — Приложение D](ARCHITECTURE_V2.md#appendix-d-qa-evolution) — архитектура QA-улучшений
 
 ---
 
@@ -1355,6 +1356,216 @@ def route_to_executor(state: DevTeamState) -> str:
 
 ---
 
+### 3.7 Модуль: Sandbox инфраструктура (PostgreSQL, Redis, инструменты)
+
+**Цель:** Расширить sandbox-среду постоянными сервисами и инструментами анализа.
+
+> Приоритет: P0 (минимальные инфра-изменения) + P2 (расширение).
+> Архитектура: [ARCHITECTURE_V2.md — Приложение D, §D.2](ARCHITECTURE_V2.md#appendix-d-qa-evolution)
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Изменить | `sandbox/Dockerfile.browser` | Добавить pip-audit |
+| Создать | `sandbox/Dockerfile.browser-node` | Образ с Node.js 20 + lighthouse + axe-core |
+| Изменить | `docker-compose.yml` | sandbox-postgres, sandbox-redis сервисы |
+| Изменить | `sandbox/executor.py` | Подключение к PG/Redis сети, выбор образа |
+
+**Подэтапы:**
+
+| # | Этап | Приоритет | Сложность |
+|---|------|-----------|-----------|
+| 1 | PostgreSQL контейнер для sandbox (видимость из sandbox) | P0 | Средняя |
+| 2 | pip-audit в sandbox-образе | P0 | Низкая |
+| 3 | Lighthouse + axe-core в browser-node образе | P0 | Низкая |
+| 4 | Redis контейнер для sandbox | P2 | Средняя |
+| 5 | Nexus proxy (кэш pip/npm) | P2 | Средняя |
+| 6 | Visual regression (pixelmatch) | P2 | Средняя |
+
+**Зависимости:** Модуль 3.3 (Sandbox — базовая реализация)
+
+**Тестирование:**
+- Integration: sandbox видит PostgreSQL, может создать таблицу
+- Integration: sandbox видит Redis, может set/get
+- Unit: новые образы билдятся корректно
+
+**Критерии приёмки:**
+- [ ] PostgreSQL-контейнер запускается и доступен из sandbox
+- [ ] pip-audit предустановлен в browser-python образе
+- [ ] lighthouse + axe-core предустановлены в browser-node образе
+- [ ] Redis-контейнер (P2) запускается и доступен из sandbox
+- [ ] Nexus proxy (P2) кэширует pip/npm пакеты
+
+**Сложность: 4/10 | 2-4 дня**
+
+---
+
+### 3.8 Модуль: CI/CD интеграция (CI-луп в графе)
+
+**Цель:** Добавить CI/CD-луп: после git commit → GitHub Actions → FAIL → Developer, PASS → QA.
+
+> Приоритет: P1.
+> Архитектура: [ARCHITECTURE_V2.md — Приложение D, §D.3](ARCHITECTURE_V2.md#appendix-d-qa-evolution)
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | `graphs/dev_team/tools/github_actions.py` | Клиент GitHub Actions API (trigger, wait, logs) |
+| Изменить | `graphs/dev_team/graph.py` | CI-луп роутинг: post-commit → CI check → route |
+| Изменить | `graphs/dev_team/state.py` | `ci_status: NotRequired[dict]`, `ci_log: NotRequired[str]` |
+| Изменить | `graphs/dev_team/prompts/developer.yaml` | Генерация CI-конфига в промпте |
+
+**Ключевые tools:**
+```python
+# tools/github_actions.py
+@tool
+def trigger_ci(repo: str, branch: str) -> str:
+    """Trigger CI workflow and return run ID."""
+
+@tool
+def wait_for_ci(repo: str, run_id: str, timeout: int = 300) -> dict:
+    """Wait for CI completion, return status + logs."""
+
+@tool
+def get_ci_logs(repo: str, run_id: str) -> str:
+    """Get CI run logs for analysis."""
+```
+
+**Роутинг CI-лупа:**
+```python
+# graph.py — CI-луп
+def route_after_ci(state: DevTeamState) -> str:
+    ci_status = state.get("ci_status", {}).get("conclusion")
+    if ci_status == "success":
+        return "qa_agent"
+    return "developer"  # CI fail → developer fixes
+```
+
+**Принцип:** к моменту, когда код попадает к QA, все стандартные проверки (lint, typecheck, tests, build, security) уже пройдены через CI. QA фокусируется на уникальной ценности: visual exploration, security pen-testing, performance/a11y.
+
+**Зависимости:** Модуль 3.1 (Git-based), Модуль 3.5 (DevOps — генерация CI-конфига)
+
+**Тестирование:**
+- Unit: github_actions tools с mock
+- Unit: route_after_ci routing logic
+- Integration: реальный GitHub Actions workflow
+
+**Критерии приёмки:**
+- [ ] `trigger_ci` запускает GitHub Actions workflow
+- [ ] `wait_for_ci` ждёт завершения и возвращает статус + логи
+- [ ] CI FAIL → Developer получает CI-логи и фиксит
+- [ ] CI PASS → QA (стандартные проверки пройдены)
+- [ ] State содержит `ci_status` и `ci_log`
+
+**Сложность: 5/10 | 3-5 дней**
+
+---
+
+### 3.9 Модуль: QA промпт-инжиниринг
+
+**Цель:** Улучшить промпты агентов для повышения качества тестирования без изменений кода.
+
+> Приоритет: G0 (0 кода, только промпты).
+> Архитектура: [ARCHITECTURE_V2.md — Приложение D, §D.7-D.8](ARCHITECTURE_V2.md#appendix-d-qa-evolution)
+
+**Файлы:**
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Изменить | `graphs/dev_team/prompts/developer.yaml` | Генерация тестов + CI-конфиг + Dockerfile |
+| Изменить | `graphs/dev_team/prompts/reviewer.yaml` | Проверка покрытия тестов, поиск подгонки |
+| Изменить | `graphs/dev_team/prompts/qa.yaml` | Security pen-testing, code-aware exploration |
+| Изменить | `graphs/dev_team/prompts/architect.yaml` | (опционально) тесты-контракты для TDD |
+
+**Изменения по агентам:**
+
+| Агент | Изменение промпта | Приоритет |
+|-------|-------------------|-----------|
+| Developer | Генерировать тесты + CI-конфиг + Dockerfile | G0 (#10) |
+| Reviewer | Проверять покрытие тестов, искать подгонку | G0 (#13) |
+| QA | Security pen-testing: SQL injection, XSS, auth bypass | G0 (#11) |
+| QA | Code-aware exploration: план на основе реального кода | G0 (#12) |
+
+> **Примечание о вариативности:** промпты привязаны к конкретному графу. Разные графы могут использовать разные варианты промптов для одного и того же типа агента. Например, developer в `dev_team` пишет тесты (подход A), а developer в будущем TDD-графе получает тесты от architect'а (подход B). См. [ARCHITECTURE_V2 §7.4](ARCHITECTURE_V2.md#7-4-agent-variability).
+
+**Зависимости:** Нет (только изменение YAML-файлов)
+
+**Тестирование:**
+- Smoke: запуск графа с обновлёнными промптами, проверка что Developer генерирует тесты
+- Manual: ревью качества сгенерированных тестов
+- Manual: проверка что QA exploration учитывает код
+
+**Критерии приёмки:**
+- [ ] Developer генерирует unit-тесты к своему коду
+- [ ] Developer генерирует CI-конфиг (`.github/workflows/ci.yml`)
+- [ ] Reviewer проверяет покрытие тестов и ищет подгонку (пустые assert'ы, тесты без утверждений)
+- [ ] QA промпт включает security pen-testing сценарии
+- [ ] QA exploration plan учитывает код (декораторы, роуты, модели)
+
+**Сложность: 2/10 | 1-3 дня**
+
+---
+
+### 3.10 Модуль: Пайплайн-изменения графов (TDD, Multi-pass, QA-CLI)
+
+**Цель:** Структурные изменения графов: TDD-подход, multi-pass testing, QA-CLI-агент.
+
+> Приоритет: G1 (пайплайн-изменения).
+> Архитектура: [ARCHITECTURE_V2.md — Приложение D, §D.4, D.6](ARCHITECTURE_V2.md#appendix-d-qa-evolution)
+
+**Подмодули:**
+
+#### 3.10a: Architect пишет тесты (TDD, подход B)
+
+```
+Architect → тесты-контракты → Developer пишет код → CI проверяет
+```
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Изменить | `graphs/dev_team/prompts/architect.yaml` | Генерация тестов-контрактов |
+| Изменить | `graphs/dev_team/graph.py` | Architect output включает тесты |
+| Изменить | `graphs/dev_team/state.py` | `architect_tests: NotRequired[list[CodeFile]]` |
+
+> **Примечание:** Это пример вариативности агентов (см. [ARCHITECTURE_V2 §7.4](ARCHITECTURE_V2.md#7-4-agent-variability)). TDD-подход может быть реализован как отдельный граф с вариантом `developer_tdd`, где Developer получает тесты от Architect'а и не имеет права их изменять.
+
+#### 3.10b: Multi-pass testing
+
+```
+QA разведка → QA таргет → QA edge cases (3 прохода)
+```
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Изменить | `graphs/dev_team/agents/qa.py` | Multi-pass logic (3 прохода) |
+| Изменить | `graphs/dev_team/prompts/qa.yaml` | Промпты для каждого прохода |
+
+#### 3.10c: QA-CLI-агент (граф)
+
+| Действие | Файл | Что делать |
+|----------|------|-----------|
+| Создать | Новый граф или узел | QA-CLI-агент для сложных проектов |
+| Зависимость | Модуль 3.6 (CLI Runner) | CLI Runner API должен быть готов |
+
+**Зависимости:** Модуль 3.6 (CLI Agents), Модуль 3.9 (обновлённые промпты)
+
+**Тестирование:**
+- Unit: TDD-пайплайн (architect → developer с тестами)
+- Unit: multi-pass QA logic
+- Integration: QA-CLI-агент с реальным CLI Runner
+
+**Критерии приёмки:**
+- [ ] Architect генерирует тесты-контракты (3.10a)
+- [ ] Developer реализует код, проходящий тесты Architect'а
+- [ ] Multi-pass QA: 3 прохода с разным фокусом (3.10b)
+- [ ] QA-CLI-агент работает через CLI Runner (3.10c)
+
+**Сложность: 5/10 | 5-10 дней (все подмодули)**
+
+---
+
 ## 4. Стратегия тестирования {#4-тестирование}
 
 ### 4.1 Уровни тестирования
@@ -1723,6 +1934,31 @@ jobs:
 - [ ] `USE_AUTONOMOUS_TESTING` env var (default: false)
 - [ ] Unit + Integration тесты
 
+#### Sandbox инфраструктура (Module 3.7) `[NOT STARTED]`
+- [ ] PostgreSQL контейнер для sandbox-проектов (P0)
+- [ ] pip-audit в sandbox browser-python образе (P0)
+- [ ] Lighthouse + axe-core в browser-node образе (P0)
+- [ ] Redis контейнер для sandbox-проектов (P2)
+- [ ] Nexus proxy — кэш pip/npm пакетов (P2)
+- [ ] Visual regression — pixelmatch (P2)
+
+#### CI/CD интеграция (Module 3.8) `[NOT STARTED]`
+- [ ] tools/github_actions.py: trigger_ci, wait_for_ci, get_ci_logs
+- [ ] graph.py: CI-луп роутинг (CI FAIL → Developer, CI PASS → QA)
+- [ ] state.py: ci_status, ci_log
+- [ ] developer.yaml: генерация CI-конфига в промпте
+
+#### QA промпт-инжиниринг (Module 3.9) `[NOT STARTED]`
+- [ ] developer.yaml: генерация тестов + CI-конфиг + Dockerfile (G0 #10)
+- [ ] reviewer.yaml: проверка покрытия тестов, поиск подгонки (G0 #13)
+- [ ] qa.yaml: security pen-testing (SQL injection, XSS, auth bypass) (G0 #11)
+- [ ] qa.yaml: code-aware exploration (G0 #12)
+
+#### Пайплайн-изменения графов (Module 3.10) `[NOT STARTED]`
+- [ ] Architect пишет тесты-контракты — TDD подход B (G1 #14)
+- [ ] Multi-pass testing — 3 прохода QA (G1 #15)
+- [ ] QA-CLI-агент граф для сложных проектов (G1 #16)
+
 #### Остальные модули (не начаты)
 - [ ] DevOps Agent: Dockerfile, CI/CD, secrets, branch protection
 - [ ] CLI Agents: CLI Runner API, node в графе, route_to_executor
@@ -1769,8 +2005,13 @@ jobs:
 3.2  Switch-Agent       │ 2.6, 2.5             │ ничего
 3.3  Sandbox            │ —                     │ 3.4, 3.5 (опционально)
 3.4  Security Agent     │ 3.3 (опционально)    │ ничего
-3.5  DevOps Agent       │ 3.1                   │ ничего
-3.6  CLI Agents         │ 3.1, VPS             │ ничего
+3.5  DevOps Agent       │ 3.1                   │ 3.8 (CI-конфиг)
+3.6  CLI Agents         │ 3.1, VPS             │ 3.10c (QA-CLI)
+────────────────────────┼───────────────────────┼─────────────────────
+3.7  Sandbox инфра      │ 3.3 (Sandbox)         │ ничего
+3.8  CI/CD интеграция   │ 3.1 (Git), 3.5 (DevOps)│ ничего
+3.9  QA промпты         │ —                     │ 3.10 (пайплайн)
+3.10 Пайплайн QA        │ 3.6 (CLI), 3.9 (промпты)│ ничего
 ```
 
 ### Рекомендуемый порядок реализации Волны 1
@@ -1796,8 +2037,10 @@ jobs:
 ### Рекомендуемый порядок реализации Волны 2
 
 ```
-3.1 Git-based ─────────→ 3.5 DevOps Agent
-                    ├──→ 3.6 CLI Agents
-3.3 Sandbox ───────────→ 3.4 Security Agent
+3.1 Git-based ─────────→ 3.5 DevOps Agent ──→ 3.8 CI/CD интеграция
+                    ├──→ 3.6 CLI Agents ───→ 3.10c QA-CLI граф
+3.3 Sandbox ──┬────────→ 3.4 Security Agent
+              └────────→ 3.7 Sandbox инфра (PG, Redis, инструменты)
 3.2 Switch-Agent (независимо, когда второй граф готов)
+3.9 QA промпты (независимо, 0 кода) → 3.10a TDD, 3.10b Multi-pass
 ```
