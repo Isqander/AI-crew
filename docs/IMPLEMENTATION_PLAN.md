@@ -1700,12 +1700,18 @@ jobs:
 - [x] 51 unit-тест (tests/test_visual_qa.py): модели, executor, runner, QA agent, node, state
 - [x] Все 449 тестов проходят (0 failures)
 
-**Фаза 2: Guided Exploration (Batch)** `[PLANNED]`
-- [ ] `tools/exploration_runner.py`: batch exploration runner
-- [ ] `agents/qa.py`: `test_explore()`, `_generate_exploration_plan()`
-- [ ] `prompts/qa.yaml`: `generate_exploration_plan`, `analyse_exploration`
-- [ ] `USE_BROWSER_EXPLORATION` env var (default: false)
-- [ ] Unit + Integration тесты
+**Фаза 2: Guided Exploration (Batch)** `[DONE]`
+- [x] `tools/exploration_runner.py`: batch exploration runner (template + validation + report extraction)
+- [x] `agents/qa.py`: `test_explore()`, `_generate_exploration_plan()`, `_analyse_exploration()`, `_extract_json()`
+- [x] `prompts/qa.yaml`: `generate_exploration_plan`, `analyse_exploration`
+- [x] `USE_BROWSER_EXPLORATION` env var (default: false)
+- [x] `BROWSER_EXPLORATION_MAX_STEPS` env var (default: 30)
+- [x] Exploration plan JSON validation (`validate_exploration_plan()`)
+- [x] Report extraction from sandbox stdout (`extract_exploration_report()`)
+- [x] `qa_agent()` node: Phase 0 → Phase 1 → Phase 2 pipeline
+- [x] 53 unit-тестов (tests/test_qa_exploration.py)
+- [x] Все 104 Visual QA теста проходят (51 Phase 1 + 53 Phase 2)
+- [ ] Integration тесты с реальным sandbox
 
 **Фаза 3: Autonomous Loop (Experimental)** `[DEFERRED — отложено на неопределённый срок]`
 > Решение: Фаза 3 отложена в долгосрочный бэклог. Scripted E2E (Фаза 1) + Guided Exploration (Фаза 2)

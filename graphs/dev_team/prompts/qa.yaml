@@ -150,3 +150,154 @@ analyse_browser_results: |
   
   ## Recommendations
   - [what the developer should fix, prioritised]
+
+# ---------------------------------------------------------------------------
+# Visual QA — Phase 2: Guided Exploration (Batch)
+# ---------------------------------------------------------------------------
+
+generate_exploration_plan: |
+  You need to generate an exploration plan for a web application.
+  The plan will be executed step-by-step by a Playwright runner inside an isolated
+  sandbox container. Each step is an action (navigate, click, fill_form, type,
+  select, scroll, hover, wait, screenshot_only) with optional assertions.
+
+  This is a BATCH exploration — the plan is executed in one pass without
+  intermediate LLM calls, so the plan must be self-contained and deterministic.
+
+  Task: {task}
+
+  User Stories:
+  {user_stories}
+
+  Tech Stack: {tech_stack}
+
+  Code Structure:
+  {code_structure}
+
+  Generate a JSON exploration plan that covers the MOST IMPORTANT user flows.
+  Focus on exploratory testing — go beyond scripted E2E, test edge cases,
+  verify that the UI responds correctly to user actions.
+
+  CRITICAL — Selectors:
+  - Use ONLY element IDs, classes, tag names, and text content that you can
+    see in the Code Structure above
+  - NEVER invent or guess selectors — only use what actually exists in the code
+  - Prefer text-based selectors: "text=Submit", "placeholder=Email",
+    "label=Password", "role=button[name=Submit]"
+  - If you cannot determine the exact selector, use generic selectors:
+    "button", "input", "a"
+
+  Plan format (return ONLY valid JSON, no markdown fences):
+  {{
+    "name": "Exploration: <brief description>",
+    "base_url": "http://localhost:{app_port}",
+    "steps": [
+      {{
+        "id": "step_1",
+        "description": "Human-readable description of this step",
+        "action": "navigate",
+        "url": "/",
+        "screenshot": true,
+        "assertions": ["page loads without errors"]
+      }},
+      {{
+        "id": "step_2",
+        "description": "Click the main CTA button",
+        "action": "click",
+        "selector": "text=Get Started",
+        "screenshot": true,
+        "wait_after": 1,
+        "assertions": ["new page or modal appears"]
+      }},
+      {{
+        "id": "step_3",
+        "description": "Fill the registration form",
+        "action": "fill_form",
+        "fields": [
+          {{"selector": "placeholder=Email", "value": "test@example.com"}},
+          {{"selector": "placeholder=Password", "value": "Test123!@#"}}
+        ],
+        "screenshot": false
+      }},
+      {{
+        "id": "step_4",
+        "description": "Submit the form",
+        "action": "click",
+        "selector": "role=button[name=Submit]",
+        "screenshot": true,
+        "wait_after": 2,
+        "assertions": ["success message or redirect"]
+      }}
+    ]
+  }}
+
+  Rules:
+  - Maximum 15 steps (10-12 ideal)
+  - Start with "navigate" to the home page
+  - Take screenshots at key moments (after navigation, after form submission, on error states)
+  - Include realistic test data for forms (emails, passwords, names)
+  - Test at least 2-3 different user flows if the app supports them
+  - Add meaningful assertions (they are logged, not enforced — help the LLM analyser later)
+  - Use "wait_after" (seconds) when the UI needs time to update after an action
+  - Each step must have a unique "id" (e.g. "step_1", "step_2", ...)
+  - Supported actions: navigate, click, fill_form, type, select, scroll, hover, wait, screenshot_only
+  - For "fill_form": provide a "fields" array with selector + value pairs
+  - For "navigate": provide "url" (can be relative like "/about")
+  - For "select": provide "selector" and "value" (option value)
+  - For "scroll": optionally provide "direction" ("down"/"up") and "amount" (pixels)
+  - For "wait": provide "duration" (seconds)
+
+  Return ONLY the JSON object. No explanation, no markdown fences.
+
+analyse_exploration: |
+  Analyse the results of a batch exploration of a web application.
+  A Playwright runner executed a step-by-step exploration plan and collected
+  screenshots, console logs, and network errors.
+
+  Task: {task}
+
+  Exploration Plan: {plan_name}
+  Total steps: {total_steps}
+  Executed: {executed_steps}
+  Successful: {successful_steps}
+  Failed: {failed_steps}
+
+  Step-by-step results:
+  {step_results}
+
+  All browser console messages:
+  ```
+  {console_logs}
+  ```
+
+  All network errors:
+  ```
+  {network_errors}
+  ```
+
+  Total duration: {total_duration}s
+
+  Provide your analysis in this EXACT format:
+
+  ## Verdict: [PASS or FAIL]
+
+  ## Exploration Summary
+  [What was explored, what user flows were tested, overall impression — 3-5 sentences]
+
+  ## Step Results
+  [For each failed step or step with notable findings, describe what happened]
+
+  ## Visual Issues
+  - [visual issue with step reference, e.g. "step_3: Button overlaps text"] (or "None")
+
+  ## Functional Issues
+  - [functional issue, e.g. "step_5: Form submission did not redirect"] (or "None")
+
+  ## Console/Network Issues
+  - [browser console errors or failed network requests] (or "None")
+
+  ## Assertions Review
+  [Review the planned assertions vs actual results. Which assertions likely passed/failed?]
+
+  ## Recommendations
+  - [prioritised list of what the developer should fix]

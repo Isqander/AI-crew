@@ -22,6 +22,7 @@ Note:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 
@@ -32,11 +33,21 @@ from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_
 from ..state import DevTeamState
 from ..tools.sandbox import SandboxClient, get_sandbox_client
 from ..tools.browser_runner import build_runner_script, detect_framework_defaults
+from ..tools.exploration_runner import (
+    build_exploration_runner,
+    validate_exploration_plan,
+    extract_exploration_report,
+)
 
 logger = structlog.get_logger()
 
 # Feature flags
 USE_BROWSER_TESTING = os.getenv("USE_BROWSER_TESTING", "true").lower() in ("true", "1", "yes")
+USE_BROWSER_EXPLORATION = os.getenv("USE_BROWSER_EXPLORATION", "false").lower() in ("true", "1", "yes")
+
+# Limits for exploration
+EXPLORATION_MAX_STEPS = int(os.getenv("BROWSER_EXPLORATION_MAX_STEPS", "30"))
+EXPLORATION_MAX_SCREENSHOTS = int(os.getenv("BROWSER_MAX_SCREENSHOTS", "20"))
 
 # UI framework indicators (lowercase)
 UI_INDICATORS: set[str] = {
@@ -365,7 +376,389 @@ class QAAgent(BaseAgent):
         return merged
 
     # ------------------------------------------------------------------
-    # Visual QA: internal helpers
+    # Visual QA Phase 2: Guided Exploration (Batch)
+    # ------------------------------------------------------------------
+
+    def test_explore(self, state: DevTeamState, config=None) -> dict:
+        """Generate and run a batch exploration plan for UI projects.
+
+        This is the Phase 2 mode of Visual QA.  The flow is:
+
+          1. LLM generates a JSON exploration plan (list of steps)
+          2. Validate the plan structure
+          3. Build the exploration runner script
+          4. Execute the full plan in browser-sandbox (one pass)
+          5. Parse the structured report from stdout
+          6. LLM analyses the report + screenshots in batch
+          7. Return exploration results + verdict
+
+        Returns a dict with ``browser_test_results`` and ``issues_found``.
+        """
+        code_files = state.get("code_files", [])
+        task = state.get("task", "")
+        tech_stack = state.get("tech_stack", [])
+
+        logger.info(
+            "qa.test_explore.start",
+            files=len(code_files),
+            tech_stack=tech_stack[:5],
+        )
+
+        # ── 1. Generate exploration plan ───────────────────────────
+        plan = self._generate_exploration_plan(state, config)
+
+        if not plan:
+            logger.warning("qa.test_explore.skip", reason="empty_plan")
+            return self._make_explore_skip_result("LLM failed to generate exploration plan")
+
+        # ── 2. Validate plan ───────────────────────────────────────
+        validation_errors = validate_exploration_plan(plan)
+        if validation_errors:
+            logger.warning(
+                "qa.test_explore.invalid_plan",
+                errors=validation_errors[:5],
+            )
+            return self._make_explore_skip_result(
+                f"Invalid exploration plan: {'; '.join(validation_errors[:3])}"
+            )
+
+        # Enforce step limit
+        steps = plan.get("steps", [])
+        if len(steps) > EXPLORATION_MAX_STEPS:
+            logger.info(
+                "qa.test_explore.truncate_steps",
+                original=len(steps),
+                limit=EXPLORATION_MAX_STEPS,
+            )
+            plan["steps"] = steps[:EXPLORATION_MAX_STEPS]
+
+        # ── 3. Build runner + prepare sandbox files ────────────────
+        sandbox_timeout = 300  # Exploration needs more time
+        defaults = detect_framework_defaults(tech_stack)
+
+        runner_script = build_exploration_runner(
+            app_command=defaults["start"],
+            app_port=defaults["port"],
+            app_ready_timeout=30,
+            install_command=defaults["install"],
+            max_step_timeout=15,
+            stop_on_error=False,
+        )
+
+        sandbox_files = [
+            {"path": f["path"], "content": f["content"]}
+            for f in code_files
+            if f.get("path") and f.get("content")
+        ]
+        sandbox_files.append({
+            "path": "exploration_runner.py",
+            "content": runner_script,
+        })
+        sandbox_files.append({
+            "path": "exploration_plan.json",
+            "content": json.dumps(plan, indent=2, ensure_ascii=False),
+        })
+
+        # ── 4. Execute in browser sandbox ──────────────────────────
+        logger.info(
+            "qa.test_explore.execute",
+            sandbox_files=len(sandbox_files),
+            plan_steps=len(plan.get("steps", [])),
+        )
+
+        sandbox_result = self.sandbox.execute(
+            language="python",
+            code_files=sandbox_files,
+            commands=["python exploration_runner.py"],
+            timeout=sandbox_timeout,
+            memory_limit="512m",
+            network=False,
+            browser=True,
+            collect_screenshots=True,
+            app_ready_timeout=30,
+        )
+
+        explore_exit_code = sandbox_result.get("exit_code")
+        logger.info(
+            "qa.test_explore.sandbox_done",
+            exit_code=explore_exit_code,
+            screenshots=len(sandbox_result.get("screenshots", [])),
+            duration=sandbox_result.get("duration_seconds"),
+        )
+
+        # Log on failure
+        if explore_exit_code != 0:
+            stdout_preview = sandbox_result.get("stdout", "")[:2000]
+            stderr_preview = sandbox_result.get("stderr", "")[:2000]
+            if stdout_preview:
+                logger.warning("qa.test_explore.stdout", output=stdout_preview)
+            if stderr_preview:
+                logger.warning("qa.test_explore.stderr", output=stderr_preview)
+
+        # ── 5. Parse exploration report from stdout ────────────────
+        report = extract_exploration_report(sandbox_result.get("stdout", ""))
+
+        if not report:
+            logger.warning("qa.test_explore.no_report", reason="report_not_found_in_stdout")
+            # Fallback: create minimal report from sandbox output
+            report = {
+                "plan_name": plan.get("name", "Unknown"),
+                "total_steps": len(plan.get("steps", [])),
+                "executed_steps": 0,
+                "successful_steps": 0,
+                "failed_steps": 0,
+                "steps": [],
+                "all_console_messages": [],
+                "all_network_errors": [],
+                "total_duration_seconds": sandbox_result.get("duration_seconds", 0),
+            }
+
+        # ── 6. LLM analyses exploration results ───────────────────
+        verdict = self._analyse_exploration(
+            task=task,
+            report=report,
+            sandbox_result=sandbox_result,
+            config=config,
+        )
+
+        # ── 7. Build result ────────────────────────────────────────
+        browser_results = {
+            "mode": "guided_exploration",
+            "screenshots": [
+                {"name": s.get("name", ""), "step": ""}
+                for s in sandbox_result.get("screenshots", [])
+            ],
+            "console_logs": "\n".join(report.get("all_console_messages", []))[:3000],
+            "network_errors": report.get("all_network_errors", []),
+            "test_status": "pass" if verdict["approved"] else "fail",
+            "steps_executed": report.get("executed_steps", 0),
+            "successful_steps": report.get("successful_steps", 0),
+            "failed_steps": report.get("failed_steps", 0),
+            "urls_visited": list({
+                s.get("current_url", "")
+                for s in report.get("steps", [])
+                if s.get("current_url")
+            }),
+            "defects_found": verdict.get("defects", []),
+            "duration_seconds": report.get("total_duration_seconds", 0),
+        }
+
+        logger.info(
+            "qa.test_explore.verdict",
+            approved=verdict["approved"],
+            executed=report.get("executed_steps", 0),
+            successful=report.get("successful_steps", 0),
+            failed=report.get("failed_steps", 0),
+            defects=len(verdict.get("defects", [])),
+        )
+
+        return {
+            "browser_test_results": browser_results,
+            "issues_found": verdict.get("issues", []),
+        }
+
+    def _generate_exploration_plan(self, state: DevTeamState, config=None) -> dict | None:
+        """Use LLM to generate an exploration plan as a JSON dict.
+
+        Returns the parsed plan dict, or ``None`` on failure.
+        """
+        prompt = create_prompt_template(
+            self.system_prompt,
+            self.prompts["generate_exploration_plan"],
+        )
+        chain = prompt | self.llm
+
+        user_stories = state.get("user_stories", [])
+        stories_text = "\n".join(
+            f"- {s.get('title', '')}: {s.get('description', '')}"
+            for s in user_stories[:5]
+        ) if user_stories else "No user stories available"
+
+        tech_stack = state.get("tech_stack", [])
+        tech_stack_str = ", ".join(tech_stack) or "Unknown"
+        code_structure = self._summarize_code_files(state.get("code_files", []))
+
+        # Detect default port for the plan template
+        defaults = detect_framework_defaults(tech_stack)
+        app_port = defaults.get("port", 3000)
+
+        try:
+            response = self._invoke_chain(chain, {
+                "task": state.get("task", ""),
+                "user_stories": stories_text,
+                "tech_stack": tech_stack_str,
+                "code_structure": code_structure,
+                "app_port": str(app_port),
+            }, config=config)
+
+            plan = self._extract_json(response.content)
+            if plan is None:
+                logger.warning(
+                    "qa.generate_exploration_plan.parse_failed",
+                    content_preview=response.content[:300],
+                )
+            return plan
+        except Exception as exc:
+            logger.error("qa.generate_exploration_plan.failed", error=str(exc)[:300])
+            return None
+
+    def _analyse_exploration(
+        self,
+        task: str,
+        report: dict,
+        sandbox_result: dict,
+        config=None,
+    ) -> dict:
+        """Use LLM to analyse the exploration report in batch.
+
+        Returns ``{"approved": bool, "issues": list[str], "defects": list[dict]}``.
+        """
+        prompt = create_prompt_template(
+            self.system_prompt,
+            self.prompts["analyse_exploration"],
+        )
+        chain = prompt | self.llm
+
+        # Format step results for the prompt
+        step_lines = []
+        for s in report.get("steps", [])[:EXPLORATION_MAX_STEPS]:
+            status = s.get("status", "unknown")
+            icon = "PASS" if status == "success" else "FAIL"
+            desc = s.get("description", "")
+            step_id = s.get("id", "?")
+            error = s.get("error", "")
+            url = s.get("current_url", "")
+            assertions = ", ".join(s.get("assertions", []))
+
+            line = f"  [{icon}] {step_id}: {desc}"
+            if url:
+                line += f" (url: {url})"
+            if error:
+                line += f"\n         Error: {error}"
+            if assertions:
+                line += f"\n         Planned assertions: {assertions}"
+            step_lines.append(line)
+
+        step_results_text = "\n".join(step_lines) or "(no steps executed)"
+
+        console_logs = "\n".join(
+            report.get("all_console_messages", [])[:50]
+        ) or "(none)"
+
+        network_errors = "\n".join(
+            report.get("all_network_errors", [])[:20]
+        ) or "(none)"
+
+        try:
+            response = self._invoke_chain(chain, {
+                "task": task,
+                "plan_name": report.get("plan_name", "Unknown"),
+                "total_steps": str(report.get("total_steps", 0)),
+                "executed_steps": str(report.get("executed_steps", 0)),
+                "successful_steps": str(report.get("successful_steps", 0)),
+                "failed_steps": str(report.get("failed_steps", 0)),
+                "step_results": step_results_text,
+                "console_logs": console_logs,
+                "network_errors": network_errors,
+                "total_duration": str(report.get("total_duration_seconds", 0)),
+            }, config=config)
+
+            content = response.content
+            approved = self._parse_verdict(content, sandbox_result.get("exit_code", -1))
+            issues = self._parse_issues(content)
+            defects = self._parse_defects(content)
+
+            return {
+                "approved": approved,
+                "issues": issues,
+                "defects": defects,
+                "explanation": content,
+            }
+        except Exception as exc:
+            logger.error("qa.analyse_exploration.failed", error=str(exc)[:300])
+            # Fallback: if most steps passed, consider it approved
+            successful = report.get("successful_steps", 0)
+            total = report.get("executed_steps", 1) or 1
+            fallback_approved = (successful / total) >= 0.7
+            return {
+                "approved": fallback_approved,
+                "issues": [f"Exploration analysis failed: {exc}"],
+                "defects": [],
+                "explanation": f"Analysis error: {exc}",
+            }
+
+    @staticmethod
+    def _extract_json(content: str) -> dict | None:
+        """Extract a JSON object from LLM output.
+
+        Tries several strategies:
+          1. Direct ``json.loads`` on the full content
+          2. Extract from ```json ... ``` fences
+          3. Find the first ``{ ... }`` block
+        """
+        content = content.strip()
+
+        # Strategy 1: direct parse
+        try:
+            obj = json.loads(content)
+            if isinstance(obj, dict):
+                return obj
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Strategy 2: fenced JSON
+        match = re.search(r"```(?:json)?\s*\n(.*?)```", content, re.DOTALL)
+        if match:
+            try:
+                obj = json.loads(match.group(1))
+                if isinstance(obj, dict):
+                    return obj
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Strategy 3: find outermost { ... }
+        brace_start = content.find("{")
+        if brace_start >= 0:
+            # Find the matching closing brace
+            depth = 0
+            for i in range(brace_start, len(content)):
+                if content[i] == "{":
+                    depth += 1
+                elif content[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            obj = json.loads(content[brace_start:i + 1])
+                            if isinstance(obj, dict):
+                                return obj
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                        break
+
+        return None
+
+    @staticmethod
+    def _make_explore_skip_result(reason: str) -> dict:
+        """Return a pass-through result when exploration is skipped."""
+        return {
+            "browser_test_results": {
+                "mode": "guided_exploration",
+                "test_status": "skip",
+                "screenshots": [],
+                "console_logs": "",
+                "network_errors": [],
+                "steps_executed": 0,
+                "successful_steps": 0,
+                "failed_steps": 0,
+                "urls_visited": [],
+                "defects_found": [],
+                "duration_seconds": 0,
+            },
+            "issues_found": [reason] if reason else [],
+        }
+
+    # ------------------------------------------------------------------
+    # Visual QA: internal helpers (shared Phase 1 + Phase 2)
     # ------------------------------------------------------------------
 
     def _generate_browser_test(self, state: DevTeamState, config=None) -> str:
@@ -778,8 +1171,17 @@ def get_qa_agent() -> QAAgent:
 def qa_agent(state: DevTeamState, config=None) -> dict:
     """QA agent node function for LangGraph.
 
-    Runs code tests (always), then browser E2E tests (if the project
-    has a UI component and ``USE_BROWSER_TESTING`` is enabled).
+    Runs code tests (always), then browser E2E tests (Phase 1), then
+    guided exploration (Phase 2) — each when the project has a UI
+    component and the corresponding feature flag is enabled.
+
+    Testing pipeline::
+
+        Phase 0: test_code()    — always (unit / integration / syntax)
+        Phase 1: test_ui()      — if USE_BROWSER_TESTING and has_ui()
+        Phase 2: test_explore() — if USE_BROWSER_EXPLORATION and has_ui()
+
+    All phases feed into ``merge_results()`` for a combined verdict.
     """
     agent = get_qa_agent()
 
@@ -787,8 +1189,10 @@ def qa_agent(state: DevTeamState, config=None) -> dict:
     logger.debug("qa.route", action="test_code")
     code_result = agent.test_code(state, config=config)
 
-    # Phase 1: Browser E2E tests (Visual QA)
-    if USE_BROWSER_TESTING and agent.has_ui(state):
+    has_ui = agent.has_ui(state)
+
+    # Phase 1: Browser E2E tests (Visual QA — Scripted)
+    if USE_BROWSER_TESTING and has_ui:
         logger.info("qa.route", action="test_ui", reason="ui_detected")
         try:
             browser_result = agent.test_ui(state, config=config)
@@ -800,7 +1204,22 @@ def qa_agent(state: DevTeamState, config=None) -> dict:
     else:
         if not USE_BROWSER_TESTING:
             logger.debug("qa.route", action="skip_test_ui", reason="disabled")
-        else:
+        elif not has_ui:
             logger.debug("qa.route", action="skip_test_ui", reason="no_ui")
+
+    # Phase 2: Guided Exploration (Batch)
+    if USE_BROWSER_EXPLORATION and has_ui:
+        logger.info("qa.route", action="test_explore", reason="exploration_enabled")
+        try:
+            explore_result = agent.test_explore(state, config=config)
+            code_result = agent.merge_results(code_result, explore_result)
+        except Exception as exc:
+            logger.error("qa.test_explore.error", error=str(exc)[:300])
+            # Don't fail the whole QA on exploration errors
+    else:
+        if not USE_BROWSER_EXPLORATION:
+            logger.debug("qa.route", action="skip_test_explore", reason="disabled")
+        elif not has_ui:
+            logger.debug("qa.route", action="skip_test_explore", reason="no_ui")
 
     return code_result

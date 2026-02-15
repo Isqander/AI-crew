@@ -416,20 +416,20 @@ class TestParseBrowserResults:
         from dev_team.agents.qa import QAAgent
 
         content = "## Verdict: PASS\nAll tests passed."
-        assert QAAgent._parse_browser_verdict(content, {"exit_code": 0}) is True
+        assert QAAgent._parse_verdict(content, 0) is True
 
     def test_parse_browser_verdict_fail(self):
         from dev_team.agents.qa import QAAgent
 
         content = "## Verdict: FAIL\nHomepage does not render."
-        assert QAAgent._parse_browser_verdict(content, {"exit_code": 1}) is False
+        assert QAAgent._parse_verdict(content, 1) is False
 
     def test_parse_browser_verdict_fallback_exit_code(self):
         from dev_team.agents.qa import QAAgent
 
         content = "Analysis complete."  # no explicit verdict
-        assert QAAgent._parse_browser_verdict(content, {"exit_code": 0}) is True
-        assert QAAgent._parse_browser_verdict(content, {"exit_code": 1}) is False
+        assert QAAgent._parse_verdict(content, 0) is True
+        assert QAAgent._parse_verdict(content, 1) is False
 
     def test_parse_defects_visual(self):
         from dev_team.agents.qa import QAAgent

@@ -475,6 +475,10 @@ QA node function обновляется минимально — всё чере
 
 **Цель:** LLM генерирует план обхода UI → Playwright выполняет весь план → LLM пакетно анализирует результаты.
 
+**Статус: РЕАЛИЗОВАНО (15 февраля 2026)**
+> Фаза 2 полностью реализована: exploration runner, JSON-план,
+> валидация, пакетный анализ, 53 unit-теста.
+
 **Предусловие:** Фаза 1 стабильна и в продакшне.
 
 ### 4.1 Ключевое отличие: Batch, не Loop
@@ -867,16 +871,21 @@ False positive      <5%            10-15%               15-30%
 - [ ] Unit-тесты: has_ui(), generate, analyse, merge
 - [ ] Integration-тесты: полный цикл с mock sandbox
 
-### Фаза 2 — Definition of Done
+### Фаза 2 — Definition of Done  ✅ Реализовано 15.02.2026
 
 #### Exploration
-- [ ] `tools/exploration_runner.py`: runner-скрипт для batch exploration
-- [ ] `agents/qa.py`: `test_explore()`, `_generate_exploration_plan()`, `_analyse_exploration()`
-- [ ] `prompts/qa.yaml`: `generate_exploration_plan`, `analyse_exploration`
-- [ ] `USE_BROWSER_EXPLORATION` env var (default: false)
-- [ ] Exploration plan JSON schema + validation
-- [ ] Unit-тесты: план, runner, анализ
-- [ ] Integration-тесты: полный цикл
+- [x] `tools/exploration_runner.py`: runner-скрипт для batch exploration
+- [x] `agents/qa.py`: `test_explore()`, `_generate_exploration_plan()`, `_analyse_exploration()`
+- [x] `agents/qa.py`: `_extract_json()` — парсинг JSON из LLM-ответа (3 стратегии)
+- [x] `agents/qa.py`: `_make_explore_skip_result()` — skip при ошибках
+- [x] `prompts/qa.yaml`: `generate_exploration_plan`, `analyse_exploration`
+- [x] `USE_BROWSER_EXPLORATION` env var (default: false)
+- [x] `BROWSER_EXPLORATION_MAX_STEPS` env var (default: 30)
+- [x] Exploration plan JSON schema + validation (`validate_exploration_plan()`)
+- [x] Report extraction from sandbox stdout (`extract_exploration_report()`)
+- [x] Интеграция в `qa_agent()` node function (Phase 0 → Phase 1 → Phase 2)
+- [x] 53 unit-теста (tests/test_qa_exploration.py)
+- [ ] Integration-тесты: полный цикл с реальным sandbox
 
 ### Фаза 3 — Definition of Done (Experimental)
 
