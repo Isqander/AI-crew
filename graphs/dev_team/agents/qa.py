@@ -434,7 +434,7 @@ class QAAgent(BaseAgent):
             }, config=config)
 
             content = response.content
-            approved = self._parse_browser_verdict(content, sandbox_result)
+            approved = self._parse_verdict(content, sandbox_result.get("exit_code", -1))
             issues = self._parse_issues(content)
             defects = self._parse_defects(content)
 
@@ -455,15 +455,25 @@ class QAAgent(BaseAgent):
             }
 
     @staticmethod
-    def _parse_browser_verdict(content: str, sandbox_result: dict) -> bool:
-        """Parse PASS/FAIL from browser analysis LLM response."""
+    def _parse_verdict(content: str, fallback_exit_code: int = -1) -> bool:
+        """Parse PASS/FAIL verdict from LLM response.
+
+        Looks for ``verdict: pass/fail`` (or ``approved/rejected``)
+        in the LLM output.  Falls back to *fallback_exit_code* when
+        no explicit verdict is found.
+        """
         content_lower = content.lower()
-        if "verdict: pass" in content_lower:
+
+        if "verdict: pass" in content_lower or "verdict: approved" in content_lower:
             return True
-        if "verdict: fail" in content_lower:
+        if "verdict: fail" in content_lower or "verdict: rejected" in content_lower:
             return False
-        # Fallback
-        return sandbox_result.get("exit_code", -1) == 0
+
+        # Fallback: exit_code == 0 and no "fail" keywords
+        if fallback_exit_code == 0 and "fail" not in content_lower:
+            return True
+
+        return False
 
     @staticmethod
     def _parse_defects(content: str) -> list[dict]:
@@ -589,7 +599,7 @@ class QAAgent(BaseAgent):
         content = response.content
 
         # Parse LLM verdict
-        approved = self._parse_approved(content, sandbox_results)
+        approved = self._parse_verdict(content, sandbox_results.get("exit_code", -1))
         issues = self._parse_issues(content)
 
         return {
@@ -598,23 +608,6 @@ class QAAgent(BaseAgent):
             "explanation": content,
         }
 
-    @staticmethod
-    def _parse_approved(content: str, sandbox_results: dict) -> bool:
-        """Determine approval from LLM response and sandbox exit code."""
-        content_lower = content.lower()
-
-        # Explicit verdicts from LLM
-        if "verdict: pass" in content_lower or "verdict: approved" in content_lower:
-            return True
-        if "verdict: fail" in content_lower or "verdict: rejected" in content_lower:
-            return False
-
-        # Fallback: exit_code == 0 and no "fail" keywords
-        exit_code = sandbox_results.get("exit_code", -1)
-        if exit_code == 0 and "fail" not in content_lower:
-            return True
-
-        return False
 
     @staticmethod
     def _parse_issues(content: str) -> list[str]:
@@ -661,10 +654,22 @@ class QAAgent(BaseAgent):
 
     @staticmethod
     def _build_commands(language: str, code_files: list[dict]) -> list[str]:
-        """Build sandbox commands based on language and file structure."""
+        """Build sandbox commands based on language and file structure.
+
+        For JS/TS projects: npm-based test runners (jest, vitest) are only
+        attempted when ``package.json`` is present, because the sandbox runs
+        with ``network=False`` and cannot download packages on the fly.
+        """
         lang = language.lower()
         filenames = [f["path"] for f in code_files if f.get("path")]
         commands: list[str] = []
+
+        has_package_json = any(f.endswith("package.json") for f in filenames)
+
+        # Reusable command fragments (avoid duplication)
+        jest_or_vitest = "npm install --ignore-scripts 2>/dev/null; npx jest --no-cache 2>&1 || npx vitest run 2>&1 || true"
+        def node_check(path: str) -> str:
+            return f"node --check {path} 2>&1"
 
         # Install dependencies if present
         if lang in ("python", "python3"):
@@ -682,7 +687,15 @@ class QAAgent(BaseAgent):
             if lang in ("python", "python3"):
                 commands.append("python -m pytest -v --tb=short 2>&1 || true")
             elif lang in ("javascript", "js", "node", "typescript", "ts"):
-                commands.append("npx jest --no-cache 2>&1 || npx vitest run 2>&1 || true")
+                if has_package_json:
+                    commands.append(jest_or_vitest)
+                else:
+                    # No package.json → no test runner available, do syntax check
+                    js_files = [f for f in filenames if f.endswith((".js", ".mjs"))]
+                    for jf in js_files[:3]:
+                        commands.append(node_check(jf))
+                    if not js_files:
+                        commands.append("echo 'JS test files found but no package.json — skipping (browser tests will cover UI)'")
             elif lang in ("go", "golang"):
                 commands.append("go test -v ./... 2>&1 || true")
             elif lang == "rust":
@@ -691,15 +704,19 @@ class QAAgent(BaseAgent):
                 # Fallback: detect runner from test file extensions
                 js_tests = [f for f in test_files if f.endswith((".js", ".ts", ".mjs"))]
                 py_tests = [f for f in test_files if f.endswith(".py")]
-                if js_tests:
-                    commands.append("npx jest --no-cache 2>&1 || npx vitest run 2>&1 || true")
+                if js_tests and has_package_json:
+                    commands.append(jest_or_vitest)
+                elif js_tests:
+                    # Syntax check only — no runner without package.json
+                    for jf in js_tests[:3]:
+                        commands.append(node_check(jf))
                 elif py_tests:
                     commands.append("python -m pytest -v --tb=short 2>&1 || true")
                 else:
-                    # HTML/CSS projects: validate files exist
+                    # HTML/CSS projects: validate main file
                     html_files = [f for f in filenames if f.endswith(".html")]
                     if html_files:
-                        commands.append(f"cat {html_files[0]} | head -5 && echo 'HTML files present'")
+                        commands.append(f"echo 'Static HTML project — browser tests will validate UI' && ls -la *.html *.css *.js 2>/dev/null || true")
                     else:
                         commands.append("ls -la")
         else:
@@ -711,15 +728,21 @@ class QAAgent(BaseAgent):
                 # Syntax check + try to run
                 commands.append(f"python -c \"import py_compile; py_compile.compile('{target}', doraise=True)\" 2>&1")
             elif lang in ("javascript", "js", "node"):
-                commands.append(f"node --check {target} 2>&1")
+                commands.append(node_check(target))
             elif lang in ("typescript", "ts"):
                 commands.append(f"npx tsc --noEmit {target} 2>&1 || true")
             elif lang in ("go", "golang"):
                 commands.append("go build ./... 2>&1")
             elif lang == "rust":
                 commands.append("rustc --edition 2021 -o /dev/null " + target + " 2>&1 || true")
-            else:
-                commands.append(f"cat {target}")
+            elif lang in ("html", "css"):
+                # Static web: syntax check JS files if present
+                js_files = [f for f in filenames if f.endswith((".js", ".mjs"))]
+                if js_files:
+                    for jf in js_files[:3]:
+                        commands.append(node_check(jf))
+                else:
+                    commands.append("echo 'Static HTML project — browser tests will validate UI' && ls -la")
 
         # Safety net: sandbox API requires at least one command
         if not commands:

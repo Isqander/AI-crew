@@ -166,71 +166,21 @@ class SandboxExecutor:
             # 1. Pull image if not available locally
             self._ensure_image(image)
 
-            # 2. Create container
-            #    Browser mode needs more memory and localhost network
-            effective_memory = memory_limit
-            if browser and memory_limit == "256m":
-                effective_memory = "512m"  # Chromium needs more RAM
-
-            container = self.client.containers.create(
+            # 2-3. Create container, copy files
+            container = self._create_and_start_container(
                 image=image,
-                command="sleep infinity",  # keep alive while we exec commands
-                working_dir=WORKDIR,
-                mem_limit=effective_memory,
-                network_mode="none" if (not network and not browser) else "bridge",
-                detach=True,
-                # Security: drop all capabilities, read-only root (except /sandbox, /tmp)
-                # Note: browser mode needs slightly relaxed security for Chromium
-                cap_drop=[] if browser else ["ALL"],
-                tmpfs={"/tmp": "size=128m"} if browser else {"/tmp": "size=64m"},
+                memory_limit=memory_limit,
+                network=network,
+                browser=browser,
+                code_files=code_files,
             )
-            container.start()
-
-            # 3. Create working directory & screenshot directory, copy files
-            container.exec_run(f"mkdir -p {WORKDIR}", user="root")
-            if browser:
-                container.exec_run("mkdir -p /screenshots", user="root")
-            if code_files:
-                tar_data = _create_tar_archive(
-                    [{"path": f["path"], "content": f["content"]} for f in code_files]
-                )
-                container.put_archive(WORKDIR, tar_data)
 
             # 4. Execute commands sequentially
-            all_stdout: list[str] = []
-            all_stderr: list[str] = []
-            last_exit_code = 0
-
-            for cmd in commands:
-                logger.debug("sandbox.execute.cmd", cmd=cmd[:100])
-                exec_result = container.exec_run(
-                    ["sh", "-c", cmd],
-                    workdir=WORKDIR,
-                    demux=True,  # separate stdout/stderr
-                    environment={"PYTHONDONTWRITEBYTECODE": "1"},
-                )
-                exit_code = exec_result.exit_code
-                stdout_bytes, stderr_bytes = exec_result.output or (b"", b"")
-
-                stdout_str = (stdout_bytes or b"").decode("utf-8", errors="replace")
-                stderr_str = (stderr_bytes or b"").decode("utf-8", errors="replace")
-
-                all_stdout.append(stdout_str)
-                all_stderr.append(stderr_str)
-                last_exit_code = exit_code
-
-                # Abort on non-zero exit (unless it's a test runner returning failures)
-                if exit_code != 0:
-                    logger.warning(
-                        "sandbox.execute.cmd_failed",
-                        cmd=cmd[:100],
-                        exit_code=exit_code,
-                    )
-                    break
+            last_exit_code, combined_stdout, combined_stderr = self._run_commands(
+                container, commands,
+            )
 
             duration = time.monotonic() - t0
-            combined_stdout = _truncate("\n".join(all_stdout))
-            combined_stderr = _truncate("\n".join(all_stderr))
 
             # 5. Detect test results
             tests_passed = _detect_test_result(combined_stdout, combined_stderr, last_exit_code)
@@ -312,6 +262,96 @@ class SandboxExecutor:
             return len(containers)
         except Exception:
             return 0
+
+    # ------------------------------------------------------------------
+    # Execution sub-steps
+    # ------------------------------------------------------------------
+
+    def _create_and_start_container(
+        self,
+        image: str,
+        memory_limit: str,
+        network: bool,
+        browser: bool,
+        code_files: list[dict[str, str]],
+    ) -> Any:
+        """Create a container, start it and copy *code_files* into it.
+
+        Returns the running container object.
+        """
+        effective_memory = memory_limit
+        if browser and memory_limit == "256m":
+            effective_memory = "512m"  # Chromium needs more RAM
+
+        container = self.client.containers.create(
+            image=image,
+            command="sleep infinity",  # keep alive while we exec commands
+            working_dir=WORKDIR,
+            mem_limit=effective_memory,
+            network_mode="none" if (not network and not browser) else "bridge",
+            detach=True,
+            # Security: drop all capabilities, read-only root (except /sandbox, /tmp)
+            # Note: browser mode needs slightly relaxed security for Chromium
+            cap_drop=[] if browser else ["ALL"],
+            tmpfs={"/tmp": "size=128m"} if browser else {"/tmp": "size=64m"},
+        )
+        container.start()
+
+        # Create working directory & screenshot directory, copy files
+        container.exec_run(f"mkdir -p {WORKDIR}", user="root")
+        if browser:
+            container.exec_run("mkdir -p /screenshots", user="root")
+        if code_files:
+            tar_data = _create_tar_archive(
+                [{"path": f["path"], "content": f["content"]} for f in code_files]
+            )
+            container.put_archive(WORKDIR, tar_data)
+
+        return container
+
+    @staticmethod
+    def _run_commands(
+        container: Any,
+        commands: list[str],
+    ) -> tuple[int, str, str]:
+        """Execute *commands* sequentially inside *container*.
+
+        Returns ``(last_exit_code, combined_stdout, combined_stderr)``.
+        """
+        all_stdout: list[str] = []
+        all_stderr: list[str] = []
+        last_exit_code = 0
+
+        for cmd in commands:
+            logger.debug("sandbox.execute.cmd", cmd=cmd[:100])
+            exec_result = container.exec_run(
+                ["sh", "-c", cmd],
+                workdir=WORKDIR,
+                demux=True,  # separate stdout/stderr
+                environment={"PYTHONDONTWRITEBYTECODE": "1"},
+            )
+            exit_code = exec_result.exit_code
+            stdout_bytes, stderr_bytes = exec_result.output or (b"", b"")
+
+            stdout_str = (stdout_bytes or b"").decode("utf-8", errors="replace")
+            stderr_str = (stderr_bytes or b"").decode("utf-8", errors="replace")
+
+            all_stdout.append(stdout_str)
+            all_stderr.append(stderr_str)
+            last_exit_code = exit_code
+
+            # Abort on non-zero exit (unless it's a test runner returning failures)
+            if exit_code != 0:
+                logger.warning(
+                    "sandbox.execute.cmd_failed",
+                    cmd=cmd[:100],
+                    exit_code=exit_code,
+                )
+                break
+
+        combined_stdout = _truncate("\n".join(all_stdout))
+        combined_stderr = _truncate("\n".join(all_stderr))
+        return last_exit_code, combined_stdout, combined_stderr
 
     # ------------------------------------------------------------------
     # Browser mode helpers

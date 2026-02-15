@@ -1632,8 +1632,12 @@ AI-crew/
 ## Приложение C: Архитектура Visual QA Testing {#appendix-c-visual-qa}
 
 > Расширение QA-агента для визуального тестирования UI через Playwright.
-> Реализуемые фазы: **Scripted E2E** (Фаза 1) → **Guided Exploration** (Фаза 2).
+> Фазы: **Scripted E2E** (Фаза 1) → **Guided Exploration** (Фаза 2).
 > Фаза 3 (Autonomous Loop) — **отложена на неопределённый срок** (см. [VISUAL_QA_PLAN.md §7](VISUAL_QA_PLAN.md#7-целесообразность)).
+>
+> **Текущий статус (2026-02-15):**
+> - Фаза 1 (Scripted E2E) — **реализована и проверена**. QA-агент генерирует Playwright E2E-тесты, запускает в sandbox-browser контейнере, собирает скриншоты и анализирует результаты через LLM.
+> - Фаза 2 (Guided Exploration) — не начата.
 >
 > Связанный документ: [VISUAL_QA_PLAN.md](VISUAL_QA_PLAN.md)
 
