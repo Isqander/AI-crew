@@ -49,17 +49,19 @@ DEFAULT_MODELS = {
     "pm": "gemini-claude-sonnet-4-5-thinking",
     "analyst": "gemini-claude-sonnet-4-5-thinking",
     "architect": "gemini-claude-opus-4-5-thinking",
-    "developer": "kimi-k2-thinking",
-    "qa": "kimi-k2-thinking",
+    "developer": "gemini-3-pro-preview",
+    "qa": "gemini-3-pro-preview",
 }
 
 # Available models (for reference)
 AVAILABLE_MODELS = [
     "gemini-claude-opus-4-5-thinking",
     "gemini-claude-sonnet-4-5-thinking",
+    "gemini-3-pro-preview",
     "gemini-3-pro-high",
     "gemini-3-flash-preview",
     "kimi-k2-thinking",
+    "iflow-rome-30ba3b",
 ]
 
 

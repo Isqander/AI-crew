@@ -41,14 +41,14 @@ agents:
     fallback_model: "gemini-claude-sonnet-4-5-thinking"
 
   developer:
-    model: "kimi-k2-thinking"
+    model: "gemini-3-pro-preview"
     temperature: 0.2
-    fallback_model: "gemini-claude-sonnet-4-5-thinking"
+    fallback_model: "iflow-rome-30ba3b"
 
   qa:
-    model: "kimi-k2-thinking"
+    model: "gemini-3-pro-preview"
     temperature: 0.3
-    fallback_model: "gemini-claude-sonnet-4-5-thinking"
+    fallback_model: "iflow-rome-30ba3b"
 
   # --- Wave 1: Switch-Agent router ---
   router:
