@@ -40,6 +40,7 @@ import socket
 APP_COMMAND = {app_command!r}
 APP_PORT = {app_port}
 APP_READY_TIMEOUT = {app_ready_timeout}
+TEST_TIMEOUT = {test_timeout}
 INSTALL_COMMAND = {install_command!r}
 BASE_URL = f"http://localhost:{{APP_PORT}}"
 
@@ -112,7 +113,7 @@ def main() -> None:
             "--tb=short",
         ],
         capture_output=True, text=True,
-        timeout=90,
+        timeout=TEST_TIMEOUT,
         env={{
             **os.environ,
             "BASE_URL": BASE_URL,
@@ -157,6 +158,7 @@ def build_runner_script(
     app_port: int = 3000,
     app_ready_timeout: int = 30,
     install_command: str | None = None,
+    test_timeout: int = 180,
 ) -> str:
     """Fill the runner template with concrete values.
 
@@ -170,6 +172,9 @@ def build_runner_script(
         Seconds to wait for the port to become available.
     install_command:
         Dependency install command (e.g. ``"npm install"``).
+    test_timeout:
+        Max seconds for the pytest subprocess (should be less than
+        the overall sandbox timeout to allow cleanup).
 
     Returns
     -------
@@ -182,6 +187,7 @@ def build_runner_script(
         app_port=app_port,
         app_ready_timeout=app_ready_timeout,
         install_command=install_command or "",
+        test_timeout=test_timeout,
     )
 
 

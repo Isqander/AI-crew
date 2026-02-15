@@ -45,6 +45,8 @@ LANGUAGE_IMAGES: dict[str, str] = {
     "go": "golang:1.22-alpine",
     "golang": "golang:1.22-alpine",
     "rust": "rust:1.77-slim",
+    "html": "node:20-slim",   # Web projects need Node.js for test runners
+    "css": "node:20-slim",
     "bash": "ubuntu:22.04",
     "shell": "ubuntu:22.04",
 }

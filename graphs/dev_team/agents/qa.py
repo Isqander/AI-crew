@@ -246,12 +246,14 @@ class QAAgent(BaseAgent):
             }
 
         # ── 2. Detect framework and build runner script ───────────
+        sandbox_timeout = 240  # Browser tests need more time than unit tests
         defaults = detect_framework_defaults(tech_stack)
         runner_script = build_runner_script(
             app_command=defaults["start"],
             app_port=defaults["port"],
             app_ready_timeout=30,
             install_command=defaults["install"],
+            test_timeout=sandbox_timeout - 50,  # Leave buffer for startup + cleanup
         )
 
         # ── 3. Prepare files for sandbox ──────────────────────────
@@ -271,7 +273,7 @@ class QAAgent(BaseAgent):
             language="python",
             code_files=sandbox_files,
             commands=["python browser_runner.py"],
-            timeout=120,
+            timeout=sandbox_timeout,
             memory_limit="512m",
             network=False,
             browser=True,
