@@ -83,6 +83,7 @@ services:
 
       # Visual QA (Browser Testing)
       USE_BROWSER_TESTING: ${USE_BROWSER_TESTING:-true}
+      USE_BROWSER_EXPLORATION: ${USE_BROWSER_EXPLORATION:-false}
 
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-DEBUG}

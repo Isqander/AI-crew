@@ -1054,7 +1054,8 @@ class QAAgent(BaseAgent):
         with ``network=False`` and cannot download packages on the fly.
         """
         lang = language.lower()
-        filenames = [f["path"] for f in code_files if f.get("path")]
+        # Strip leading '/' — files live under WORKDIR (/sandbox), not root
+        filenames = [f["path"].lstrip("/") for f in code_files if f.get("path")]
         commands: list[str] = []
 
         has_package_json = any(f.endswith("package.json") for f in filenames)
