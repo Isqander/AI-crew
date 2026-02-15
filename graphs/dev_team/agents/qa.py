@@ -111,12 +111,18 @@ class QAAgent(BaseAgent):
             if f.get("path") and f.get("content")
         ]
 
+        # Enable network when dependencies need to be installed
+        needs_network = any(
+            f.get("path", "").endswith(("package.json", "requirements.txt"))
+            for f in code_files
+        )
+
         sandbox_result = self.sandbox.execute(
             language=language,
             code_files=sandbox_files,
             commands=commands,
             timeout=120,
-            network=False,
+            network=needs_network,
         )
 
         sandbox_results = {
