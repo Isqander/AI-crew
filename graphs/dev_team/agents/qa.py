@@ -1193,22 +1193,23 @@ def qa_agent(state: DevTeamState, config=None) -> dict:
     has_ui = agent.has_ui(state)
 
     # Phase 1: Browser E2E tests (Visual QA — Scripted)
-    if USE_BROWSER_TESTING and has_ui:
+    # Skipped when Phase 2 is enabled — exploration supersedes scripted E2E
+    if USE_BROWSER_TESTING and has_ui and not USE_BROWSER_EXPLORATION:
         logger.info("qa.route", action="test_ui", reason="ui_detected")
         try:
             browser_result = agent.test_ui(state, config=config)
             code_result = agent.merge_results(code_result, browser_result)
         except Exception as exc:
             logger.error("qa.test_ui.error", error=str(exc)[:300])
-            # Don't fail the whole QA on browser test errors
-            # — code test results still apply
     else:
-        if not USE_BROWSER_TESTING:
+        if USE_BROWSER_EXPLORATION and has_ui:
+            logger.debug("qa.route", action="skip_test_ui", reason="superseded_by_exploration")
+        elif not USE_BROWSER_TESTING:
             logger.debug("qa.route", action="skip_test_ui", reason="disabled")
         elif not has_ui:
             logger.debug("qa.route", action="skip_test_ui", reason="no_ui")
 
-    # Phase 2: Guided Exploration (Batch)
+    # Phase 2: Guided Exploration (Batch) — supersedes Phase 1
     if USE_BROWSER_EXPLORATION and has_ui:
         logger.info("qa.route", action="test_explore", reason="exploration_enabled")
         try:
