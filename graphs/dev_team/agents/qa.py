@@ -517,18 +517,38 @@ class QAAgent(BaseAgent):
 
     @staticmethod
     def _summarize_code_files(code_files: list[dict]) -> str:
-        """Build a compact summary of code files for the LLM prompt."""
+        """Build a compact summary of code files for the LLM prompt.
+
+        For UI files (HTML, CSS, JS) the full content is included so the
+        LLM can see actual DOM selectors, class names, and element IDs
+        when generating Playwright tests.
+        """
         if not code_files:
             return "(no code files)"
+
+        # File extensions that should be included in full for accurate test generation
+        ui_extensions = (".html", ".css", ".js", ".jsx", ".tsx", ".vue", ".svelte")
+        # Max chars per file to prevent prompt overflow
+        max_full_content = 3000
+        max_preview = 500
 
         parts: list[str] = []
         for f in code_files[:15]:
             path = f.get("path", "unknown")
             content = f.get("content", "")
             lines = len(content.split("\n"))
-            # Include first few lines for context
-            preview = "\n".join(content.split("\n")[:5])
-            parts.append(f"  {path} ({lines} lines):\n    {preview[:200]}")
+
+            is_ui_file = any(path.lower().endswith(ext) for ext in ui_extensions)
+
+            if is_ui_file and len(content) <= max_full_content:
+                # Full content for UI files — LLM needs real selectors
+                parts.append(f"  {path} ({lines} lines):\n{content}")
+            else:
+                # Preview for large files or non-UI files
+                preview = content[:max_preview]
+                if len(content) > max_preview:
+                    preview += f"\n    ... [{lines} lines total]"
+                parts.append(f"  {path} ({lines} lines):\n    {preview}")
 
         if len(code_files) > 15:
             parts.append(f"  ... and {len(code_files) - 15} more files")

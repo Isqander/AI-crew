@@ -85,6 +85,12 @@ generate_browser_test: |
   5. Verifies that key elements are visible
   6. Tests responsive behaviour (if applicable)
   
+  CRITICAL — Selectors:
+  - Use ONLY element IDs, classes, and tag names that you can see in the Code Structure above
+  - NEVER invent or guess selectors — only use what actually exists in the HTML/JS code
+  - Prefer text-based selectors (page.get_by_text, page.get_by_role) over CSS ID selectors
+  - If you cannot determine the exact selector from the code, use generic selectors (e.g. page.locator("button"), page.locator("input"))
+
   Rules:
   - Use pytest-playwright fixtures (page, browser)
   - Read BASE_URL from the environment: BASE_URL = os.environ.get("BASE_URL", "http://localhost:3000")
@@ -97,7 +103,7 @@ generate_browser_test: |
   - If forms exist, test with realistic sample data
   - Add appropriate timeouts (page.wait_for_load_state, page.wait_for_selector)
   - Handle possible async page loads with expect(locator).to_be_visible()
-  
+
   Return ONLY the Python code, wrapped in ```python ... ```.
 
 analyse_browser_results: |
