@@ -195,11 +195,20 @@ services:
       SANDBOX_MAX_TIMEOUT: ${SANDBOX_MAX_TIMEOUT:-300}
       SANDBOX_DEFAULT_MEMORY: ${SANDBOX_DEFAULT_MEMORY:-256m}
       SANDBOX_BROWSER_IMAGE: ${SANDBOX_BROWSER_IMAGE:-aicrew-sandbox-browser:latest}
+      # Sandbox services — connection info passed to sandbox containers
+      SANDBOX_PG_HOST: sandbox-postgres
+      SANDBOX_PG_PORT: "5432"
+      SANDBOX_PG_USER: ${SANDBOX_PG_USER:-sandbox}
+      SANDBOX_PG_PASSWORD: ${SANDBOX_PG_PASSWORD:-sandbox_secret}
+      SANDBOX_PG_DB: ${SANDBOX_PG_DB:-sandbox_db}
+      SANDBOX_NETWORK: ${SANDBOX_NETWORK:-aicrew-network}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ENV_MODE: ${ENV_MODE:-LOCAL}
     depends_on:
       sandbox-browser:
         condition: service_completed_successfully
+      sandbox-postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8002/health"]
       interval: 60s
@@ -221,6 +230,32 @@ services:
     container_name: aicrew-sandbox-browser-build
     entrypoint: ["echo", "Browser sandbox image built successfully"]
     # Builds the image, prints success, exits. No profiles — always built.
+
+  # ===========================================
+  # Sandbox PostgreSQL (for sandbox projects)
+  # ===========================================
+  # Persistent PostgreSQL instance accessible from sandbox containers.
+  # Used by sandbox projects that need a real database (Django, FastAPI+SQLAlchemy, etc.).
+  # This is NOT the main AI-crew database — it is a separate instance for sandbox use.
+  sandbox-postgres:
+    image: postgres:16-alpine
+    container_name: aicrew-sandbox-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SANDBOX_PG_USER:-sandbox}
+      POSTGRES_PASSWORD: ${SANDBOX_PG_PASSWORD:-sandbox_secret}
+      POSTGRES_DB: ${SANDBOX_PG_DB:-sandbox_db}
+    expose:
+      - "5432"                            # Internal only — accessed by sandbox containers
+    volumes:
+      - sandbox_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SANDBOX_PG_USER:-sandbox}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
 
   # ===========================================
   # Telegram Bot
@@ -246,6 +281,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  sandbox_postgres_data:
     driver: local
 
 networks:

@@ -135,6 +135,8 @@ async def execute_code(request: SandboxExecuteRequest) -> SandboxExecuteResponse
         collect_screenshots=request.collect_screenshots,
         app_start_command=request.app_start_command,
         app_ready_timeout=request.app_ready_timeout,
+        enable_postgres=request.enable_postgres,
+        enable_network=request.enable_network,
     )
 
     return SandboxExecuteResponse(**result)

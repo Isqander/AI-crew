@@ -30,6 +30,14 @@ export function TaskDetail() {
   const clarificationQuestion = state?.clarification_question
   const clarificationContext = state?.clarification_context
 
+  // Build stage details from state for ProgressTracker
+  const stageDetails: Record<string, string> = {}
+  if (state?.requirements?.length) stageDetails.analyst = `${state.requirements.length} требований`
+  if (state?.architecture && Object.keys(state.architecture).length > 0) stageDetails.architect = 'Архитектура определена'
+  if (state?.code_files?.length) stageDetails.developer = `${state.code_files.length} файлов`
+  if (state?.issues_found?.length) stageDetails.qa = `${state.issues_found.length} проблем`
+  if (state?.pr_url) stageDetails.complete = 'PR создан'
+
   // Get graph_id from thread metadata (set by /api/run → _create_thread)
   const graphId = (thread?.metadata as Record<string, unknown>)?.graph_id as string | undefined
 
@@ -157,11 +165,7 @@ export function TaskDetail() {
           {/* Progress tracker */}
           <ProgressTracker
             currentAgent={currentAgent}
-            requirements={state?.requirements || []}
-            architecture={state?.architecture || {}}
-            codeFiles={state?.code_files || []}
-            issuesFound={state?.issues_found || []}
-            prUrl={state?.pr_url}
+            stageDetails={stageDetails}
             error={runError || state?.error || error?.message}
           />
 

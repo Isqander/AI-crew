@@ -492,6 +492,64 @@ class BaseAgent:
                           error=str(exc)[:300])
             raise
 
+    def _invoke_structured(self, prompt, inputs: dict, schema, config=None,
+                            fallback_parser=None):
+        """Invoke LLM with structured output, falling back to string parsing.
+
+        Tries ``llm.with_structured_output(schema)`` first.  If the
+        model doesn't support it or parsing fails, falls back to the
+        legacy string-based ``fallback_parser``.
+
+        Args:
+            prompt: ChatPromptTemplate to use.
+            inputs: Template variables.
+            schema: Pydantic model class for the expected output.
+            config: Optional LangGraph RunnableConfig.
+            fallback_parser: ``Callable[[str], schema]`` that parses
+                raw LLM text into the schema.  Required for models
+                that don't support tool calling.
+
+        Returns:
+            An instance of *schema*.
+        """
+        import time as _time
+        from pydantic import BaseModel
+
+        t0 = _time.monotonic()
+        logger.info("agent.structured_call_start", agent=self.name,
+                     schema=schema.__name__,
+                     input_keys=list(inputs.keys()))
+
+        # --- Try structured output first ---
+        try:
+            structured_llm = self.llm.with_structured_output(schema)
+            chain = prompt | structured_llm
+            result = invoke_with_retry(chain, inputs, config=config)
+            if isinstance(result, BaseModel):
+                elapsed_ms = (_time.monotonic() - t0) * 1000
+                logger.info("agent.structured_call_done", agent=self.name,
+                             mode="structured", elapsed_ms=round(elapsed_ms))
+                return result
+        except (NotImplementedError, TypeError, Exception) as exc:
+            logger.debug("agent.structured_fallback", agent=self.name,
+                          reason=str(exc)[:200])
+
+        # --- Fallback to plain text + parser ---
+        chain = prompt | self.llm
+        raw = invoke_with_retry(chain, inputs, config=config)
+        content = raw.content if hasattr(raw, "content") else str(raw)
+        elapsed_ms = (_time.monotonic() - t0) * 1000
+
+        if fallback_parser:
+            parsed = fallback_parser(content)
+            logger.info("agent.structured_call_done", agent=self.name,
+                         mode="fallback_parser", elapsed_ms=round(elapsed_ms))
+            return parsed
+
+        logger.warning("agent.structured_no_parser", agent=self.name,
+                        schema=schema.__name__)
+        return schema()
+
     # ------------------------------------------------------------------
 
     def invoke(self, state: dict, config=None) -> dict:

@@ -254,7 +254,7 @@ class TestSimpleDevGraph:
 
     def test_manifest_loads(self):
         """Manifest YAML loads correctly."""
-        manifest_path = Path(__file__).parent.parent / "graphs" / "simple_dev" / "manifest.yaml"
+        manifest_path = Path(__file__).parent.parent.parent / "graphs" / "simple_dev" / "manifest.yaml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         assert manifest["name"] == "simple_dev"
         assert manifest["display_name"] == "Quick Developer"
@@ -333,7 +333,7 @@ class TestStandardDevGraph:
 
     def test_manifest_loads(self):
         """Manifest YAML loads correctly."""
-        manifest_path = Path(__file__).parent.parent / "graphs" / "standard_dev" / "manifest.yaml"
+        manifest_path = Path(__file__).parent.parent.parent / "graphs" / "standard_dev" / "manifest.yaml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         assert manifest["name"] == "standard_dev"
         assert manifest["parameters"]["hitl_mode"] == "none"
@@ -407,7 +407,7 @@ class TestResearchGraph:
 
     def test_manifest_loads(self):
         """Manifest YAML loads correctly."""
-        manifest_path = Path(__file__).parent.parent / "graphs" / "research" / "manifest.yaml"
+        manifest_path = Path(__file__).parent.parent.parent / "graphs" / "research" / "manifest.yaml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         assert manifest["name"] == "research"
         assert manifest["parameters"]["hitl_mode"] == "none"
@@ -417,7 +417,7 @@ class TestResearchGraph:
 
     def test_researcher_prompts_load(self):
         """Researcher prompts YAML loads correctly."""
-        prompt_path = Path(__file__).parent.parent / "graphs" / "research" / "prompts" / "researcher.yaml"
+        prompt_path = Path(__file__).parent.parent.parent / "graphs" / "research" / "prompts" / "researcher.yaml"
         prompts = yaml.safe_load(prompt_path.read_text(encoding="utf-8"))
         assert "system" in prompts
         assert "synthesize" in prompts
@@ -471,7 +471,7 @@ class TestAegraRegistration:
     def test_aegra_json_has_all_graphs(self):
         """aegra.json registers all 4 graphs."""
         import json
-        aegra_path = Path(__file__).parent.parent / "aegra.json"
+        aegra_path = Path(__file__).parent.parent.parent / "aegra.json"
         config = json.loads(aegra_path.read_text(encoding="utf-8"))
         graphs = config["graphs"]
         assert "dev_team" in graphs
@@ -482,7 +482,7 @@ class TestAegraRegistration:
     def test_aegra_json_paths_valid(self):
         """All graph paths in aegra.json point to existing files."""
         import json
-        project_root = Path(__file__).parent.parent
+        project_root = Path(__file__).parent.parent.parent
         aegra_path = project_root / "aegra.json"
         config = json.loads(aegra_path.read_text(encoding="utf-8"))
 

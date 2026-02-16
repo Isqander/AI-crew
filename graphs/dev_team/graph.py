@@ -127,6 +127,9 @@ USE_SECURITY_AGENT = os.getenv("USE_SECURITY_AGENT", "true").lower() in ("true",
 # QA sandbox agent: enabled by env var (can be disabled when sandbox is unavailable)
 USE_QA_SANDBOX = os.getenv("USE_QA_SANDBOX", "true").lower() in ("true", "1", "yes")
 
+# CI/CD integration: enabled by env var (Module 3.8)
+USE_CI_INTEGRATION = os.getenv("USE_CI_INTEGRATION", "false").lower() in ("true", "1", "yes")
+
 
 def route_after_developer(
     state: DevTeamState,
@@ -287,6 +290,115 @@ def human_escalation_node(state: DevTeamState) -> dict:
 git_commit_node = make_git_commit_node("dev_team")
 
 
+def ci_check_node(state: DevTeamState, config=None) -> dict:
+    """CI/CD check node (Module 3.8).
+
+    After git_commit pushes code, this node monitors the GitHub Actions
+    CI workflow and reports the result.  When ``USE_CI_INTEGRATION``
+    is ``False``, the node is not added to the graph.
+
+    Workflow:
+      1. Find the latest CI run for the working branch.
+      2. Wait for it to complete (with timeout).
+      3. If it failed, fetch job/step logs so Developer knows what to fix.
+      4. Write ci_status / ci_log / ci_run_id / ci_run_url into state.
+    """
+    from dev_team.tools.github_actions import GitHubActionsClient
+
+    repo = state.get("working_repo", "")
+    branch = state.get("working_branch", "")
+
+    if not repo or not branch:
+        logger.warning("ci_check.skip", reason="no repo or branch in state")
+        return {
+            "ci_status": "skipped",
+            "ci_log": "CI check skipped: no repository or branch configured.",
+            "current_agent": "ci_check",
+        }
+
+    logger.info("ci_check.start", repo=repo, branch=branch)
+
+    try:
+        client = GitHubActionsClient()
+
+        # 1. Find latest run
+        latest = client.get_latest_workflow_run(repo, branch)
+        run_id = latest.get("run_id")
+
+        if run_id is None:
+            logger.info("ci_check.no_run_found", repo=repo, branch=branch)
+            return {
+                "ci_status": "not_found",
+                "ci_log": f"No CI workflow run found for branch '{branch}'.",
+                "current_agent": "ci_check",
+            }
+
+        # 2. Wait for completion
+        result = client.wait_for_completion(repo, run_id)
+        conclusion = result.get("conclusion", "unknown")
+        ci_log = f"CI {conclusion}: run #{run_id} ({result.get('elapsed_seconds', 0)}s)"
+
+        # 3. If failed, get detailed logs
+        if conclusion == "failure":
+            try:
+                logs = client.get_run_logs(repo, run_id)
+                failed_steps = []
+                for job in logs.get("jobs", []):
+                    if job.get("conclusion") != "success":
+                        for step in job.get("steps", []):
+                            if step.get("conclusion") != "success":
+                                failed_steps.append(
+                                    f"  [{job['name']}] Step {step['number']}: "
+                                    f"{step['name']} — {step.get('conclusion', 'unknown')}"
+                                )
+                if failed_steps:
+                    ci_log += "\n\nFailed steps:\n" + "\n".join(failed_steps)
+            except Exception as log_err:
+                logger.warning("ci_check.logs_error", error=str(log_err)[:200])
+
+        logger.info("ci_check.done", conclusion=conclusion, run_id=run_id)
+
+        return {
+            "ci_status": conclusion,
+            "ci_log": ci_log,
+            "ci_run_id": run_id,
+            "ci_run_url": result.get("html_url", ""),
+            "current_agent": "ci_check",
+        }
+
+    except Exception as exc:
+        logger.error("ci_check.error", error=str(exc)[:300])
+        return {
+            "ci_status": "error",
+            "ci_log": f"CI check error: {str(exc)[:300]}",
+            "current_agent": "ci_check",
+        }
+
+
+def route_after_ci(
+    state: DevTeamState,
+) -> Literal["developer", "pm_final"]:
+    """Router: After CI check, decide next step (Module 3.8).
+
+    CI PASS (success) → pm_final (done)
+    CI FAIL (failure/error/timeout) → developer (fix and retry)
+    """
+    ci_status = state.get("ci_status", "")
+
+    if ci_status == "success":
+        logger.info("router.after_ci", decision="pm_final", ci_status=ci_status)
+        return "pm_final"
+
+    if ci_status in ("skipped", "not_found"):
+        # No CI configured or no run found — proceed to end
+        logger.info("router.after_ci", decision="pm_final", ci_status=ci_status)
+        return "pm_final"
+
+    # failure, error, timeout, cancelled → developer must fix
+    logger.info("router.after_ci", decision="developer", ci_status=ci_status)
+    return "developer"
+
+
 def create_graph() -> StateGraph:
     """
     Create the development team graph.
@@ -410,8 +522,20 @@ def create_graph() -> StateGraph:
         }
     )
 
-    # Git commit -> END
-    builder.add_edge("git_commit", END)
+    # Git commit -> CI check (if enabled) or END
+    if USE_CI_INTEGRATION:
+        builder.add_node("ci_check", ci_check_node)
+        builder.add_edge("git_commit", "ci_check")
+        builder.add_conditional_edges(
+            "ci_check",
+            route_after_ci,
+            {
+                "developer": "developer",
+                "pm_final": "pm_final",
+            }
+        )
+    else:
+        builder.add_edge("git_commit", END)
 
     # PM final -> END
     builder.add_edge("pm_final", END)

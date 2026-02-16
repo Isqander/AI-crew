@@ -306,7 +306,7 @@ class TestSandboxExecutor:
                create_kwargs[1].get("network_mode") == "none"
 
     def test_network_mode_bridge(self):
-        """When network=True, container should use network_mode='bridge'."""
+        """When network=True, container should use named network (not 'none')."""
         mock_client = self._make_mock_docker_client()
         executor = self._make_executor(mock_client)
 
@@ -318,8 +318,8 @@ class TestSandboxExecutor:
         )
 
         create_kwargs = mock_client.containers.create.call_args
-        assert create_kwargs.kwargs.get("network_mode") == "bridge" or \
-               create_kwargs[1].get("network_mode") == "bridge"
+        network_mode = create_kwargs.kwargs.get("network_mode", "")
+        assert network_mode != "none", f"Expected non-'none' network mode, got {network_mode}"
 
 
 # ==================================================================

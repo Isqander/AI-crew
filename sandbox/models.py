@@ -71,6 +71,16 @@ class SandboxExecuteRequest(BaseModel):
         description="Seconds to wait for the app to become ready (port listening)",
     )
 
+    # === Sandbox services (Module 3.7) ===
+    enable_postgres: bool = Field(
+        default=False,
+        description="Inject DATABASE_URL pointing to sandbox PostgreSQL into the container",
+    )
+    enable_network: bool = Field(
+        default=False,
+        description="Connect sandbox container to Docker network for service access",
+    )
+
 
 class FileOutput(BaseModel):
     """A file produced by the sandbox execution."""

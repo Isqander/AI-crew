@@ -174,8 +174,8 @@ class TestExecutorBrowserMode:
         assert create_call.kwargs["image"] == BROWSER_IMAGE
         # Should auto-upgrade memory for browser
         assert create_call.kwargs["mem_limit"] == "512m"
-        # Should use bridge network (not none) for browser
-        assert create_call.kwargs["network_mode"] == "bridge"
+        # Should use named network (not none) for browser
+        assert create_call.kwargs["network_mode"] != "none"
         # Result should have browser fields
         assert "screenshots" in result
         assert "browser_console" in result

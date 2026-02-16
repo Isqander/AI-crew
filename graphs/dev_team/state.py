@@ -104,6 +104,12 @@ class DevTeamState(TypedDict):
     deploy_url: NotRequired[str]                 # "https://app.31.59.58.143.nip.io"
     infra_files: NotRequired[list[dict]]         # [{path, content}]
 
+    # === Wave 2: CI/CD (Module 3.8) ===
+    ci_status: NotRequired[str]                  # "pending", "running", "success", "failure", "timeout"
+    ci_log: NotRequired[str]                     # CI output / failure summary
+    ci_run_id: NotRequired[int]                  # GitHub Actions workflow run ID
+    ci_run_url: NotRequired[str]                 # URL to the CI run
+
     # === Wave 2: CLI ===
     cli_agent_output: NotRequired[str]
     cli_agent_role: NotRequired[str]             # "developer", "architect", etc.

@@ -40,7 +40,7 @@ import yaml
 # Helpers
 # ──────────────────────────────────────────────────────────────
 
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 GRAPHS_DIR = PROJECT_ROOT / "graphs" / "dev_team"
 GATEWAY_DIR = PROJECT_ROOT / "gateway"
 CONFIG_DIR = PROJECT_ROOT / "config"

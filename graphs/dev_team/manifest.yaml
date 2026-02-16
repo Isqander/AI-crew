@@ -47,10 +47,12 @@ features:
   - sandbox_testing
   - git_commit
   - security_check
+  - ci_integration             # Module 3.8: GitHub Actions CI/CD loop
 
 parameters:
   max_review_iterations: 3
   use_security_agent: true     # Enable security review after Developer
   use_qa_sandbox: true         # Enable QA sandbox testing after Reviewer
+  use_ci_integration: false    # Enable CI/CD loop (git_commit → CI check → developer if fail)
   deploy_after_commit: false
   hitl_mode: "optional"       # "required" | "optional" | "none"

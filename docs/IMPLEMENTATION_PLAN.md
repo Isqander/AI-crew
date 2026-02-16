@@ -1946,19 +1946,29 @@ jobs:
 - [ ] `USE_AUTONOMOUS_TESTING` env var (default: false)
 - [ ] Unit + Integration тесты
 
-#### Sandbox инфраструктура (Module 3.7) `[NOT STARTED]`
-- [ ] PostgreSQL контейнер для sandbox-проектов (P0)
-- [ ] pip-audit в sandbox browser-python образе (P0)
-- [ ] Lighthouse + axe-core в browser-node образе (P0)
+#### Sandbox инфраструктура (Module 3.7) `[P0 DONE]`
+- [x] PostgreSQL контейнер для sandbox-проектов (P0)
+- [x] pip-audit в sandbox browser-python образе (P0)
+- [x] Lighthouse + axe-core в browser-node образе (P0)
+- [x] docker-compose.yml: sandbox-postgres сервис + healthcheck + volume
+- [x] executor.py: DATABASE_URL + PG* env injection + named network mode
+- [x] models.py: enable_postgres, enable_network fields
+- [x] server.py + tools/sandbox.py: parameter forwarding
+- [x] 27 unit-тестов (tests/integration/test_sandbox_infra.py)
 - [ ] Redis контейнер для sandbox-проектов (P2)
 - [ ] Nexus proxy — кэш pip/npm пакетов (P2)
 - [ ] Visual regression — pixelmatch (P2)
 
-#### CI/CD интеграция (Module 3.8) `[NOT STARTED]`
-- [ ] tools/github_actions.py: trigger_ci, wait_for_ci, get_ci_logs
-- [ ] graph.py: CI-луп роутинг (CI FAIL → Developer, CI PASS → QA)
-- [ ] state.py: ci_status, ci_log
-- [ ] developer.yaml: генерация CI-конфига в промпте
+#### CI/CD интеграция (Module 3.8) `[DONE]`
+- [x] tools/github_actions.py: GitHubActionsClient + trigger_ci, wait_for_ci, get_ci_logs (@tool wrappers)
+- [x] graph.py: ci_check_node + route_after_ci (CI FAIL → Developer, CI PASS → pm_final)
+- [x] graph.py: USE_CI_INTEGRATION env var (default: false) — условное добавление ci_check в граф
+- [x] state.py: ci_status, ci_log, ci_run_id, ci_run_url
+- [x] developer.yaml: system + implementation промпт — генерация CI-конфига (.github/workflows/ci.yml)
+- [x] developer.yaml: fix_ci промпт — фикс CI ошибок
+- [x] manifest.yaml: ci_integration feature + use_ci_integration parameter
+- [x] tools/__init__.py: экспорт github_actions_tools, GitHubActionsClient, get_ci_client
+- [x] 40 unit-тестов (tests/tools/test_github_actions.py): client, tools, routing, node, state, manifest, prompts, graph
 
 #### QA промпт-инжиниринг (Module 3.9) `[NOT STARTED]`
 - [ ] developer.yaml: генерация тестов + CI-конфиг + Dockerfile (G0 #10)

@@ -14,6 +14,7 @@ import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .schemas import AnalystResponse
 from ..state import DevTeamState, UserStory
 
 logger = structlog.get_logger()
@@ -27,49 +28,63 @@ class AnalystAgent(BaseAgent):
         llm = get_llm_with_fallback(role="analyst", temperature=0.7)
         super().__init__(name="analyst", llm=llm, prompts=prompts)
     
+    @staticmethod
+    def _parse_analyst_fallback(content: str) -> AnalystResponse:
+        """Legacy string parser for models without structured output."""
+        needs_clarification = "clarification" in content.lower() and "?" in content
+        requirements: list[str] = []
+        for line in content.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("- ") or stripped.startswith("* "):
+                requirements.append(stripped[2:])
+        return AnalystResponse(
+            needs_clarification=needs_clarification,
+            clarification_question=content if needs_clarification else None,
+            requirements=requirements,
+        )
+
     def gather_requirements(self, state: DevTeamState, config=None) -> dict:
-        """
-        Analyze the task and extract requirements.
-        """
+        """Analyze the task and extract requirements."""
         logger.info("analyst.gather_requirements", task_len=len(state.get("task", "")))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["requirements_gathering"]
         )
-        
-        chain = prompt | self.llm
-        
-        response = self._invoke_chain(chain, {
+
+        inputs = {
             "task": state["task"],
             "context": state.get("context", "No additional context provided"),
-        }, config=config)
-        
-        # Parse requirements from response
-        # In a real implementation, this would be more sophisticated
-        content = response.content
-        
-        # Check if clarification is needed
-        needs_clarification = "clarification" in content.lower() and "?" in content
-        
-        if needs_clarification:
+        }
+
+        # Also get raw text for the chat message
+        chain = prompt | self.llm
+        raw_response = self._invoke_chain(chain, inputs, config=config)
+        content = raw_response.content
+
+        parsed = self._parse_analyst_fallback(content)
+
+        # Try structured output (best-effort upgrade)
+        try:
+            structured = self._invoke_structured(
+                prompt, inputs, AnalystResponse,
+                config=config,
+                fallback_parser=self._parse_analyst_fallback,
+            )
+            parsed = structured
+        except Exception:
+            pass
+
+        if parsed.needs_clarification:
             logger.info("analyst.clarification_requested")
-            # Extract the question for clarification
             return {
                 "messages": [AIMessage(content=content, name="analyst")],
                 "current_agent": "analyst",
                 "needs_clarification": True,
-                "clarification_question": content,
+                "clarification_question": parsed.clarification_question or content,
                 "clarification_context": "Requirements gathering phase",
             }
-        
-        # Extract requirements (simplified parsing)
-        requirements = []
-        lines = content.split("\n")
-        for line in lines:
-            line = line.strip()
-            if line.startswith("- ") or line.startswith("* "):
-                requirements.append(line[2:])
-        
+
+        requirements = parsed.requirements
         logger.debug("analyst.requirements_gathered", count=len(requirements))
         return {
             "messages": [AIMessage(content=content, name="analyst")],
@@ -80,41 +95,29 @@ class AnalystAgent(BaseAgent):
         }
     
     def process_clarification(self, state: DevTeamState, config=None) -> dict:
-        """
-        Process user's clarification response and continue.
-        """
+        """Process user's clarification response and continue."""
         logger.info("analyst.process_clarification")
         clarification = state.get("clarification_response", "")
-        
-        # Re-analyze with clarification
-        enhanced_context = f"""
-        Original context: {state.get('context', 'None')}
-        
-        User clarification: {clarification}
-        """
-        
+
+        enhanced_context = (
+            f"Original context: {state.get('context', 'None')}\n\n"
+            f"User clarification: {clarification}"
+        )
+
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["requirements_gathering"]
         )
-        
+
+        inputs = {"task": state["task"], "context": enhanced_context}
+
         chain = prompt | self.llm
-        
-        response = self._invoke_chain(chain, {
-            "task": state["task"],
-            "context": enhanced_context,
-        }, config=config)
-        
+        response = self._invoke_chain(chain, inputs, config=config)
         content = response.content
-        
-        # Extract requirements
-        requirements = []
-        lines = content.split("\n")
-        for line in lines:
-            line = line.strip()
-            if line.startswith("- ") or line.startswith("* "):
-                requirements.append(line[2:])
-        
+
+        parsed = self._parse_analyst_fallback(content)
+
+        requirements = parsed.requirements
         logger.debug("analyst.clarified_requirements", count=len(requirements))
         return {
             "messages": [AIMessage(content=content, name="analyst")],

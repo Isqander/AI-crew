@@ -20,6 +20,7 @@ import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .schemas import ReviewerResponse, ReviewerVerifyResponse
 from ..state import DevTeamState
 from common.utils import format_code_files
 
@@ -33,6 +34,30 @@ class ReviewerAgent(BaseAgent):
         prompts = load_prompts("reviewer")
         llm = get_llm_with_fallback(role="reviewer", temperature=0.3)
         super().__init__(name="reviewer", llm=llm, prompts=prompts)
+
+    @staticmethod
+    def _parse_review_fallback(content: str) -> ReviewerResponse:
+        """Legacy string parser for review results."""
+        issues_found: list[str] = []
+        review_comments: list[str] = []
+        approved = False
+        for line in content.split("\n"):
+            line_lower = line.lower()
+            if "critical" in line_lower or "major" in line_lower:
+                issues_found.append(line.strip())
+            if "approved" in line_lower and "not" not in line_lower:
+                approved = True
+            if line.strip().startswith("- "):
+                review_comments.append(line.strip()[2:])
+        return ReviewerResponse(
+            approved=approved, issues_found=issues_found,
+            review_comments=review_comments)
+
+    @staticmethod
+    def _parse_verify_fallback(content: str) -> ReviewerVerifyResponse:
+        """Legacy string parser for fix verification."""
+        all_fixed = "fixed" in content.lower() and "not fixed" not in content.lower()
+        return ReviewerVerifyResponse(all_fixed=all_fixed)
 
     def review_code(self, state: DevTeamState, config=None) -> dict:
         """
@@ -59,21 +84,25 @@ class ReviewerAgent(BaseAgent):
 
         content = response.content
 
-        # Parse review results
-        issues_found = []
-        review_comments = []
-        approved = False
+        parsed = self._parse_review_fallback(content)
 
-        # Simple parsing (in production, use structured output)
-        lines = content.split("\n")
-        for line in lines:
-            line_lower = line.lower()
-            if "critical" in line_lower or "major" in line_lower:
-                issues_found.append(line.strip())
-            if "approved" in line_lower and "not" not in line_lower:
-                approved = True
-            if line.strip().startswith("- "):
-                review_comments.append(line.strip()[2:])
+        # Try structured output
+        try:
+            parsed = self._invoke_structured(
+                prompt, {
+                    "task": state["task"],
+                    "requirements": "\n".join(f"- {r}" for r in requirements),
+                    "code_files": code_files_str,
+                }, ReviewerResponse,
+                config=config,
+                fallback_parser=self._parse_review_fallback,
+            )
+        except Exception:
+            pass
+
+        issues_found = parsed.issues_found
+        review_comments = parsed.review_comments
+        approved = parsed.approved
 
         # Determine next step
         if issues_found:
@@ -134,8 +163,8 @@ class ReviewerAgent(BaseAgent):
 
         content = response.content
 
-        # Check if all issues are fixed
-        all_fixed = "fixed" in content.lower() and "not fixed" not in content.lower()
+        parsed = self._parse_verify_fallback(content)
+        all_fixed = parsed.all_fixed
 
         logger.debug("reviewer.verify_fixes.done", all_fixed=all_fixed)
         return {

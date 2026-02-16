@@ -29,6 +29,7 @@ import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .schemas import SecurityReviewResponse
 from ..state import DevTeamState
 from common.utils import format_code_files
 
@@ -102,14 +103,14 @@ class SecurityAgent(BaseAgent):
 
         logger.info(
             "security.static_review.done",
-            risk_level=review["risk_level"],
-            critical=len(review["critical"]),
-            warnings=len(review["warnings"]),
-            info=len(review["info"]),
+            risk_level=review.risk_level,
+            critical=len(review.critical),
+            warnings=len(review.warnings),
+            info=len(review.info),
         )
 
         return {
-            "security_review": review,
+            "security_review": review.model_dump(),
             "current_agent": "security",
             "messages": [AIMessage(content=content, name="security")],
         }
@@ -163,13 +164,13 @@ class SecurityAgent(BaseAgent):
 
         logger.info(
             "security.runtime_check.done",
-            risk_level=review["risk_level"],
-            critical=len(review["critical"]),
-            warnings=len(review["warnings"]),
+            risk_level=review.risk_level,
+            critical=len(review.critical),
+            warnings=len(review.warnings),
         )
 
         return {
-            "security_review": review,
+            "security_review": review.model_dump(),
             "current_agent": "security",
             "messages": [AIMessage(content=content, name="security")],
         }
@@ -179,12 +180,12 @@ class SecurityAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_security_review(content: str) -> dict:
+    def _parse_security_review(content: str) -> SecurityReviewResponse:
         """Parse LLM response into structured security review.
 
         Extracts findings by severity level from the markdown-formatted response.
         """
-        review = {
+        review: dict = {
             "risk_level": "LOW",
             "critical": [],
             "warnings": [],
@@ -253,7 +254,7 @@ class SecurityAgent(BaseAgent):
                 f"{len(review['info'])} info."
             )
 
-        return review
+        return SecurityReviewResponse(**review)
 
     @staticmethod
     def _extract_dependencies(code_files: list) -> str:

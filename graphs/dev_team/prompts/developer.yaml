@@ -9,6 +9,7 @@ system: |
   3. Follow best practices and coding standards
   4. Create unit tests for your code
   5. Handle edge cases and errors gracefully
+  6. Generate CI/CD configuration (GitHub Actions workflow)
   
   Guidelines:
   - Write self-documenting code with clear naming
@@ -16,6 +17,7 @@ system: |
   - Add comments for complex logic
   - Include error handling and validation
   - Write comprehensive tests
+  - Include a CI/CD workflow file (.github/workflows/ci.yml) that runs lint, typecheck, and tests
   
   Code style:
   - Use consistent formatting
@@ -39,6 +41,13 @@ implementation: |
   2. Unit tests for key functionality
   3. Brief documentation/comments
   4. Any dependencies that need to be installed
+  5. A CI/CD workflow file at `.github/workflows/ci.yml` that:
+     - Triggers on push and pull_request
+     - Installs dependencies
+     - Runs linter (ruff for Python, eslint for JS/TS)
+     - Runs type checker (mypy for Python, tsc for TS) if applicable
+     - Runs tests (pytest for Python, jest/vitest for JS/TS)
+     - Reports test coverage
   
   Format each file as:
   
@@ -56,6 +65,23 @@ fix_issues: |
   {review_comments}
   
   Please fix these issues and provide updated code.
+  
+  Only provide the files that need changes.
+
+fix_ci: |
+  The CI/CD pipeline failed for your code. Here are the details:
+  
+  CI Status: {ci_status}
+  
+  CI Log:
+  {ci_log}
+  
+  Please fix the issues causing CI failure and provide updated code.
+  Focus on:
+  - Fixing failing tests
+  - Resolving lint errors
+  - Fixing type errors
+  - Ensuring all dependencies are correctly specified
   
   Only provide the files that need changes.
 

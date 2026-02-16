@@ -8,6 +8,9 @@ Task creation flow (two-step dialog):
 
 from __future__ import annotations
 
+import time
+from dataclasses import dataclass, field
+
 import structlog
 from aiogram import Router, types
 from aiogram.filters import Command
@@ -19,11 +22,47 @@ from telegram.gateway_client import GatewayClient
 logger = structlog.get_logger()
 router = Router()
 
-# Active tasks per chat: {chat_id: thread_id}
-_active_tasks: dict[int, str] = {}
+
+# ─────── Active tasks with TTL ───────────────────────────────
+
+@dataclass
+class _TaskEntry:
+    thread_id: str
+    created_at: float = field(default_factory=time.monotonic)
+
+
+class _ActiveTasks:
+    """Chat → task mapping with automatic TTL eviction (default 24h)."""
+
+    def __init__(self, ttl_seconds: float = 86400):
+        self._store: dict[int, _TaskEntry] = {}
+        self._ttl = ttl_seconds
+
+    def set(self, chat_id: int, thread_id: str) -> None:
+        self._evict()
+        self._store[chat_id] = _TaskEntry(thread_id=thread_id)
+
+    def get(self, chat_id: int) -> str | None:
+        self._evict()
+        entry = self._store.get(chat_id)
+        return entry.thread_id if entry else None
+
+    def _evict(self) -> None:
+        now = time.monotonic()
+        expired = [k for k, v in self._store.items()
+                   if now - v.created_at > self._ttl]
+        for k in expired:
+            del self._store[k]
+
+
+_active_tasks = _ActiveTasks()
 
 # Special value for "LLM chooses graph" option
 _LLM_AUTO = "__llm_auto__"
+
+# Retry config for task creation
+_CREATE_TASK_MAX_RETRIES = 2
+_CREATE_TASK_RETRY_DELAY = 1.5  # seconds
 
 
 # ─────── FSM States ─────────────────────────────────────────
@@ -201,7 +240,9 @@ async def _create_task(
     graph_id: str | None,
     gateway: GatewayClient | None = None,
 ):
-    """Create the task via Gateway and report back to the user."""
+    """Create the task via Gateway with automatic retry on transient errors."""
+    import asyncio
+
     await state.clear()  # Exit FSM
 
     if gateway is None:
@@ -211,10 +252,27 @@ async def _create_task(
         if graph_id is not None:
             kwargs["graph_id"] = graph_id
 
-        result = await gateway.create_run(task=task_text, **kwargs)
+        # Retry on transient Gateway errors
+        last_exc: Exception | None = None
+        result: dict | None = None
+        for attempt in range(1, _CREATE_TASK_MAX_RETRIES + 2):
+            try:
+                result = await gateway.create_run(task=task_text, **kwargs)
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt <= _CREATE_TASK_MAX_RETRIES:
+                    logger.warning("telegram.task_retry",
+                                   attempt=attempt, error=str(exc)[:200])
+                    await asyncio.sleep(_CREATE_TASK_RETRY_DELAY * attempt)
+                else:
+                    raise
+
+        if result is None:
+            raise last_exc or RuntimeError("Unknown error")
         thread_id = result.get("thread_id", "unknown")
         chosen_graph = result.get("graph_id", "auto")
-        _active_tasks[message.chat.id] = thread_id
+        _active_tasks.set(message.chat.id, thread_id)
 
         classification = result.get("classification")
         reasoning = ""

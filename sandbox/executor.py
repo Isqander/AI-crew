@@ -68,6 +68,14 @@ WORKDIR = "/sandbox"
 # Maximum output size (characters) to prevent memory issues
 MAX_OUTPUT_SIZE = 100_000  # 100KB
 
+# Sandbox services — connection info (from environment)
+SANDBOX_PG_HOST = os.getenv("SANDBOX_PG_HOST", "sandbox-postgres")
+SANDBOX_PG_PORT = os.getenv("SANDBOX_PG_PORT", "5432")
+SANDBOX_PG_USER = os.getenv("SANDBOX_PG_USER", "sandbox")
+SANDBOX_PG_PASSWORD = os.getenv("SANDBOX_PG_PASSWORD", "sandbox_secret")
+SANDBOX_PG_DB = os.getenv("SANDBOX_PG_DB", "sandbox_db")
+SANDBOX_NETWORK = os.getenv("SANDBOX_NETWORK", "aicrew-network")
+
 
 def get_image_for_language(language: str) -> str:
     """Resolve Docker image name for the given language."""
@@ -137,6 +145,8 @@ class SandboxExecutor:
         collect_screenshots: bool = False,
         app_start_command: str | None = None,
         app_ready_timeout: int = 30,
+        enable_postgres: bool = False,
+        enable_network: bool = False,
     ) -> dict:
         """Run *commands* inside an isolated container.
 
@@ -144,8 +154,14 @@ class SandboxExecutor:
 
         When *browser* is True, uses the Playwright browser image and
         optionally collects screenshots from ``/screenshots/``.
+
+        When *enable_postgres* is True, injects ``DATABASE_URL`` env var
+        pointing to the sandbox PostgreSQL service and connects the
+        container to the shared Docker network.
         """
         image = BROWSER_IMAGE if browser else get_image_for_language(language)
+        # If postgres or browser is needed, we must have network access
+        needs_network = network or browser or enable_postgres or enable_network
         container = None
         t0 = time.monotonic()
 
@@ -157,9 +173,10 @@ class SandboxExecutor:
             commands=len(commands),
             timeout=timeout,
             memory_limit=memory_limit,
-            network=network,
+            network=needs_network,
             browser=browser,
             collect_screenshots=collect_screenshots,
+            enable_postgres=enable_postgres,
         )
 
         try:
@@ -170,9 +187,10 @@ class SandboxExecutor:
             container = self._create_and_start_container(
                 image=image,
                 memory_limit=memory_limit,
-                network=network,
+                network=needs_network,
                 browser=browser,
                 code_files=code_files,
+                enable_postgres=enable_postgres,
             )
 
             # 4. Execute commands sequentially
@@ -274,21 +292,50 @@ class SandboxExecutor:
         network: bool,
         browser: bool,
         code_files: list[dict[str, str]],
+        enable_postgres: bool = False,
     ) -> Any:
         """Create a container, start it and copy *code_files* into it.
 
         Returns the running container object.
+
+        When *enable_postgres* is True, ``DATABASE_URL`` and individual
+        ``PGHOST`` / ``PGUSER`` / … environment variables are injected so
+        that the sandbox project can connect to the sandbox PostgreSQL
+        service.
         """
         effective_memory = memory_limit
         if browser and memory_limit == "256m":
             effective_memory = "512m"  # Chromium needs more RAM
+
+        # Build environment variables for the container
+        env_vars: dict[str, str] = {"PYTHONDONTWRITEBYTECODE": "1"}
+
+        if enable_postgres:
+            db_url = (
+                f"postgresql://{SANDBOX_PG_USER}:{SANDBOX_PG_PASSWORD}"
+                f"@{SANDBOX_PG_HOST}:{SANDBOX_PG_PORT}/{SANDBOX_PG_DB}"
+            )
+            env_vars.update({
+                "DATABASE_URL": db_url,
+                "PGHOST": SANDBOX_PG_HOST,
+                "PGPORT": SANDBOX_PG_PORT,
+                "PGUSER": SANDBOX_PG_USER,
+                "PGPASSWORD": SANDBOX_PG_PASSWORD,
+                "PGDATABASE": SANDBOX_PG_DB,
+            })
+            logger.info("sandbox.postgres.enabled", host=SANDBOX_PG_HOST)
+
+        # Determine network mode
+        needs_bridge = network or browser or enable_postgres
+        net_mode = "none" if not needs_bridge else SANDBOX_NETWORK
 
         container = self.client.containers.create(
             image=image,
             command="sleep infinity",  # keep alive while we exec commands
             working_dir=WORKDIR,
             mem_limit=effective_memory,
-            network_mode="none" if (not network and not browser) else "bridge",
+            network_mode=net_mode,
+            environment=env_vars,
             detach=True,
             # Security: drop all capabilities, read-only root (except /sandbox, /tmp)
             # Note: browser mode needs slightly relaxed security for Chromium
@@ -328,7 +375,6 @@ class SandboxExecutor:
                 ["sh", "-c", cmd],
                 workdir=WORKDIR,
                 demux=True,  # separate stdout/stderr
-                environment={"PYTHONDONTWRITEBYTECODE": "1"},
             )
             exit_code = exec_result.exit_code
             stdout_bytes, stderr_bytes = exec_result.output or (b"", b"")

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Bot, Mail, Lock, User, ArrowRight } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { FormInput } from '../components/FormInput'
 
 export function Register() {
   const [email, setEmail] = useState('')
@@ -55,71 +56,41 @@ export function Register() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && <ErrorBanner message={error} />}
 
-            <div>
-              <label
-                htmlFor="displayName"
-                className="block text-sm font-mono font-medium text-midnight-300 mb-2"
-              >
-                Отображаемое имя
-              </label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
-                <input
-                  id="displayName"
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  required
-                  autoComplete="name"
-                  className="w-full pl-12 pr-4 py-3 bg-midnight-800/80 border border-midnight-600 rounded-xl text-midnight-100 font-mono placeholder-midnight-500 focus:outline-none focus:ring-2 focus:ring-accent-cyan/50 focus:border-accent-cyan/50 transition-all"
-                  placeholder="Иван Иванов"
-                />
-              </div>
-            </div>
+            <FormInput
+              id="displayName"
+              label="Отображаемое имя"
+              type="text"
+              icon={<User />}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              required
+              autoComplete="name"
+              placeholder="Иван Иванов"
+            />
 
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-mono font-medium text-midnight-300 mb-2"
-              >
-                Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                  className="w-full pl-12 pr-4 py-3 bg-midnight-800/80 border border-midnight-600 rounded-xl text-midnight-100 font-mono placeholder-midnight-500 focus:outline-none focus:ring-2 focus:ring-accent-cyan/50 focus:border-accent-cyan/50 transition-all"
-                  placeholder="you@example.com"
-                />
-              </div>
-            </div>
+            <FormInput
+              id="email"
+              label="Email"
+              type="email"
+              icon={<Mail />}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              placeholder="you@example.com"
+            />
 
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-mono font-medium text-midnight-300 mb-2"
-              >
-                Пароль
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-midnight-500" />
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoComplete="new-password"
-                  className="w-full pl-12 pr-4 py-3 bg-midnight-800/80 border border-midnight-600 rounded-xl text-midnight-100 font-mono placeholder-midnight-500 focus:outline-none focus:ring-2 focus:ring-accent-cyan/50 focus:border-accent-cyan/50 transition-all"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
+            <FormInput
+              id="password"
+              label="Пароль"
+              type="password"
+              icon={<Lock />}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              placeholder="••••••••"
+            />
 
             <button
               type="submit"

@@ -57,12 +57,18 @@ class SandboxClient:
         collect_screenshots: bool = False,
         app_start_command: str | None = None,
         app_ready_timeout: int = 30,
+        enable_postgres: bool = False,
+        enable_network: bool = False,
     ) -> dict[str, Any]:
         """Send an execution request to the sandbox.
 
         Returns the full response dict (stdout, stderr, exit_code, etc.).
         When *browser* is True, the response may also contain
         ``screenshots``, ``browser_console``, and ``network_errors``.
+
+        When *enable_postgres* is True, the sandbox container gets
+        ``DATABASE_URL`` injected and is connected to the Docker network
+        so it can reach the sandbox PostgreSQL service.
 
         Raises ``httpx.HTTPError`` on transport-level failures.
         """
@@ -82,6 +88,12 @@ class SandboxClient:
             if app_start_command:
                 payload["app_start_command"] = app_start_command
             payload["app_ready_timeout"] = app_ready_timeout
+
+        # Sandbox services (Module 3.7)
+        if enable_postgres:
+            payload["enable_postgres"] = True
+        if enable_network:
+            payload["enable_network"] = True
 
         logger.info(
             "sandbox.client.execute",

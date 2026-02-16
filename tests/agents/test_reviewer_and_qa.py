@@ -523,7 +523,7 @@ class TestReviewerPrompts:
     """Test that reviewer prompts load correctly."""
 
     def test_prompts_file_exists(self):
-        prompts_path = Path(__file__).parent.parent / "graphs" / "dev_team" / "prompts" / "reviewer.yaml"
+        prompts_path = Path(__file__).parent.parent.parent / "graphs" / "dev_team" / "prompts" / "reviewer.yaml"
         assert prompts_path.exists()
 
     def test_prompts_load(self):
@@ -546,7 +546,7 @@ class TestQAPrompts:
     """Test that QA prompts load correctly."""
 
     def test_prompts_file_exists(self):
-        prompts_path = Path(__file__).parent.parent / "graphs" / "dev_team" / "prompts" / "qa.yaml"
+        prompts_path = Path(__file__).parent.parent.parent / "graphs" / "dev_team" / "prompts" / "qa.yaml"
         assert prompts_path.exists()
 
     def test_prompts_load(self):
@@ -596,7 +596,7 @@ class TestGraphWithReviewerAndQA:
         assert "qa" in topology_str
 
     def test_manifest_includes_both_agents(self):
-        manifest_path = Path(__file__).parent.parent / "graphs" / "dev_team" / "manifest.yaml"
+        manifest_path = Path(__file__).parent.parent.parent / "graphs" / "dev_team" / "manifest.yaml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         agent_ids = [a["id"] for a in manifest["agents"]]
         assert "reviewer" in agent_ids

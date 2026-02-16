@@ -15,6 +15,7 @@ import structlog
 from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .schemas import ArchitectDesignResponse, ArchitectReviewResponse
 from ..state import DevTeamState
 from common.utils import format_code_files
 
@@ -29,6 +30,36 @@ class ArchitectAgent(BaseAgent):
         llm = get_llm_with_fallback(role="architect", temperature=0.7)
         super().__init__(name="architect", llm=llm, prompts=prompts)
     
+    @staticmethod
+    def _parse_design_fallback(content: str) -> ArchitectDesignResponse:
+        """Legacy parser: extract tech stack from free-form text."""
+        tech_stack: list[str] = []
+        lower = content.lower()
+        for tech, kw in [("Python", "python"), ("React", "react"),
+                         ("TypeScript", "typescript"), ("FastAPI", "fastapi"),
+                         ("PostgreSQL", "postgresql"), ("PostgreSQL", "postgres")]:
+            if kw in lower and tech not in tech_stack:
+                tech_stack.append(tech)
+        return ArchitectDesignResponse(design=content, tech_stack=tech_stack)
+
+    @staticmethod
+    def _parse_review_fallback(content: str) -> ArchitectReviewResponse:
+        """Legacy parser: extract verdict and critical issues."""
+        approved = "approve_with_notes" in content.lower()
+        critical_issues: list[str] = []
+        in_critical = False
+        for line in content.split("\n"):
+            if "critical issues" in line.lower() and "must fix" in line.lower():
+                in_critical = True
+                continue
+            if in_critical and line.strip().startswith("- "):
+                issue = line.strip()[2:].strip()
+                if issue.lower() != "none":
+                    critical_issues.append(issue)
+            if in_critical and line.strip().startswith("##"):
+                in_critical = False
+        return ArchitectReviewResponse(approved=approved, critical_issues=critical_issues)
+
     def design_architecture(self, state: DevTeamState, config=None) -> dict:
         """
         Design the system architecture based on requirements.
@@ -51,34 +82,25 @@ class ArchitectAgent(BaseAgent):
         }, config=config)
         
         content = response.content
-        
-        # Check if approval is needed
-        # For MVP, we'll auto-approve, but this could trigger HITL
-        needs_approval = False  # Set to True to enable HITL for architecture
-        
-        if needs_approval:
-            logger.info("architect.clarification_requested")
-            return {
-                "messages": [AIMessage(content=content, name="architect")],
-                "current_agent": "architect",
-                "needs_clarification": True,
-                "clarification_question": f"Please review the proposed architecture:\n\n{content}\n\nDo you approve? (yes/no with feedback)",
-                "clarification_context": "Architecture review",
-            }
-        
-        # Extract tech stack (simplified)
-        tech_stack = []
-        if "python" in content.lower():
-            tech_stack.append("Python")
-        if "react" in content.lower():
-            tech_stack.append("React")
-        if "typescript" in content.lower():
-            tech_stack.append("TypeScript")
-        if "fastapi" in content.lower():
-            tech_stack.append("FastAPI")
-        if "postgresql" in content.lower() or "postgres" in content.lower():
-            tech_stack.append("PostgreSQL")
-        
+
+        parsed = self._parse_design_fallback(content)
+
+        # Try structured output
+        try:
+            parsed = self._invoke_structured(
+                prompt, {
+                    "task": state["task"],
+                    "requirements": "\n".join(f"- {r}" for r in requirements),
+                    "user_stories": "\n".join(str(s) for s in user_stories) if user_stories else "None provided",
+                }, ArchitectDesignResponse,
+                config=config,
+                fallback_parser=self._parse_design_fallback,
+            )
+        except Exception:
+            pass
+
+        tech_stack = parsed.tech_stack
+
         logger.debug("architect.design_done", tech_stack=tech_stack or ["Python"])
         return {
             "messages": [AIMessage(content=content, name="architect")],
@@ -119,14 +141,13 @@ class ArchitectAgent(BaseAgent):
 
         content = response.content
 
-        # Parse verdict
-        approved = "approve_with_notes" in content.lower()
+        parsed = self._parse_review_fallback(content)
 
-        if approved:
+        if parsed.approved:
             logger.info("architect.escalation_verdict", verdict="approve_with_notes")
             return {
                 "messages": [AIMessage(content=content, name="architect")],
-                "issues_found": [],  # Clear issues — architect waived them
+                "issues_found": [],
                 "test_results": {
                     **state.get("test_results", {}),
                     "approved": True,
@@ -134,32 +155,18 @@ class ArchitectAgent(BaseAgent):
                 },
                 "current_agent": "architect",
                 "next_agent": "git_commit",
-                # Reset counter for any future cycles
                 "review_iteration_count": 0,
                 "architect_escalated": True,
             }
         else:
             logger.info("architect.escalation_verdict", verdict="fix_required")
-            # Parse only the truly critical issues from architect's response
-            critical_issues = []
-            in_critical = False
-            for line in content.split("\n"):
-                if "critical issues" in line.lower() and "must fix" in line.lower():
-                    in_critical = True
-                    continue
-                if in_critical and line.strip().startswith("- "):
-                    issue = line.strip()[2:].strip()
-                    if issue.lower() != "none":
-                        critical_issues.append(issue)
-                if in_critical and line.strip().startswith("##"):
-                    in_critical = False
+            critical_issues = parsed.critical_issues
 
             return {
                 "messages": [AIMessage(content=content, name="architect")],
                 "issues_found": critical_issues if critical_issues else state.get("issues_found", []),
                 "current_agent": "architect",
                 "next_agent": "developer",
-                # Reset counter for the new round of 3
                 "review_iteration_count": 0,
                 "architect_escalated": True,
             }

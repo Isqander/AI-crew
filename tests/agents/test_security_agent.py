@@ -256,11 +256,11 @@ class TestSecurityReviewParsing:
 """
         review = SecurityAgent._parse_security_review(content)
 
-        assert review["risk_level"] == "HIGH"
-        assert len(review["critical"]) == 2
-        assert "SQL injection" in review["critical"][0]
-        assert len(review["warnings"]) == 2
-        assert len(review["info"]) == 1
+        assert review.risk_level == "HIGH"
+        assert len(review.critical) == 2
+        assert "SQL injection" in review.critical[0]
+        assert len(review.warnings) == 2
+        assert len(review.info) == 1
 
     def test_parse_low_risk(self):
         from dev_team.agents.security import SecurityAgent
@@ -280,10 +280,10 @@ class TestSecurityReviewParsing:
 """
         review = SecurityAgent._parse_security_review(content)
 
-        assert review["risk_level"] == "LOW"
-        assert len(review["critical"]) == 0
-        assert len(review["warnings"]) == 0
-        assert len(review["info"]) == 0
+        assert review.risk_level == "LOW"
+        assert len(review.critical) == 0
+        assert len(review.warnings) == 0
+        assert len(review.info) == 0
 
     def test_parse_critical_risk(self):
         from dev_team.agents.security import SecurityAgent
@@ -304,8 +304,8 @@ class TestSecurityReviewParsing:
 """
         review = SecurityAgent._parse_security_review(content)
 
-        assert review["risk_level"] == "CRITICAL"
-        assert len(review["critical"]) == 3
+        assert review.risk_level == "CRITICAL"
+        assert len(review.critical) == 3
 
     def test_parse_medium_risk(self):
         from dev_team.agents.security import SecurityAgent
@@ -325,10 +325,10 @@ class TestSecurityReviewParsing:
 """
         review = SecurityAgent._parse_security_review(content)
 
-        assert review["risk_level"] == "MEDIUM"
-        assert len(review["critical"]) == 0
-        assert len(review["warnings"]) == 2
-        assert len(review["info"]) == 1
+        assert review.risk_level == "MEDIUM"
+        assert len(review.critical) == 0
+        assert len(review.warnings) == 2
+        assert len(review.info) == 1
 
     def test_parse_auto_summary(self):
         """When no explicit summary section, auto-generate one."""
@@ -347,15 +347,15 @@ class TestSecurityReviewParsing:
 - None found
 """
         review = SecurityAgent._parse_security_review(content)
-        assert "LOW risk" in review["summary"]
-        assert "0 critical" in review["summary"]
+        assert "LOW risk" in review.summary
+        assert "0 critical" in review.summary
 
     def test_parse_empty_content(self):
         from dev_team.agents.security import SecurityAgent
 
         review = SecurityAgent._parse_security_review("")
-        assert review["risk_level"] == "LOW"
-        assert len(review["critical"]) == 0
+        assert review.risk_level == "LOW"
+        assert len(review.critical) == 0
 
     def test_parse_malformed_content(self):
         """Gracefully handle unexpected LLM output."""
@@ -365,8 +365,8 @@ class TestSecurityReviewParsing:
         review = SecurityAgent._parse_security_review(content)
 
         # Should not crash, returns defaults
-        assert review["risk_level"] == "LOW"
-        assert isinstance(review["critical"], list)
+        assert review.risk_level == "LOW"
+        assert isinstance(review.critical, list)
 
 
 # ==================================================================
@@ -535,7 +535,7 @@ class TestSecurityPrompts:
     """Test that security prompts load correctly."""
 
     def test_prompts_file_exists(self):
-        prompts_path = Path(__file__).parent.parent / "graphs" / "dev_team" / "prompts" / "security.yaml"
+        prompts_path = Path(__file__).parent.parent.parent / "graphs" / "dev_team" / "prompts" / "security.yaml"
         assert prompts_path.exists(), f"Security prompts not found at {prompts_path}"
 
     def test_prompts_load(self):

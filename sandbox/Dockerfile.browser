@@ -18,8 +18,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Python test dependencies + ensure browser binaries match installed playwright version
-RUN pip install --no-cache-dir pytest pytest-playwright && \
+# pip-audit — CVE scanning for Python dependencies (Module 3.7)
+RUN pip install --no-cache-dir pytest pytest-playwright pip-audit && \
     playwright install --with-deps chromium
+
+# Lighthouse + axe-core — performance & accessibility auditing (Module 3.7)
+# Installed globally via npm so sandbox commands can invoke them directly.
+RUN npm install -g lighthouse @axe-core/cli
 
 # Directory for collected screenshots
 RUN mkdir -p /screenshots
