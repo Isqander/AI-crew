@@ -253,6 +253,80 @@ class TestBrowserRunner:
         assert "http.server" in defaults["start"]
         assert defaults["port"] == 8080
 
+    # --- Code-content detection (Pass 2) ---
+
+    def test_detect_fastapi_from_code_content(self):
+        """FastAPI detected from Python file imports, even with generic tech_stack."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "main.py", "content": "from fastapi import FastAPI\napp = FastAPI()\n"},
+        ]
+        defaults = detect_framework_defaults(["HTML", "CSS", "JavaScript"], code_files=code_files)
+        assert defaults["port"] == 8000
+        assert "uvicorn" in defaults["start"]
+        assert "main:app" in defaults["start"]
+        assert "pip install fastapi" in defaults["install"]
+
+    def test_detect_fastapi_with_requirements(self):
+        """FastAPI with requirements.txt uses pip install -r."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "app.py", "content": "from fastapi import FastAPI\napp = FastAPI()\n"},
+            {"path": "requirements.txt", "content": "fastapi\nuvicorn\n"},
+        ]
+        defaults = detect_framework_defaults(["Python"], code_files=code_files)
+        assert "pip install -r requirements.txt" in defaults["install"]
+        # app.py → default uvicorn app:app
+        assert "app:app" in defaults["start"]
+
+    def test_detect_flask_from_code_content(self):
+        """Flask detected from Python file imports."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "server.py", "content": "from flask import Flask\napp = Flask(__name__)\n"},
+        ]
+        defaults = detect_framework_defaults(["HTML", "JavaScript"], code_files=code_files)
+        assert defaults["port"] == 5000
+        assert "server.py" in defaults["start"]
+        assert "pip install flask" in defaults["install"]
+
+    def test_detect_express_from_code_content(self):
+        """Express.js detected from JS file requires."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "server.js", "content": 'const express = require("express");\nconst app = express();\n'},
+        ]
+        defaults = detect_framework_defaults(["JavaScript"], code_files=code_files)
+        assert defaults["port"] == 3000
+        assert "npm" in defaults["start"]
+
+    def test_detect_react_from_package_json(self):
+        """React detected from package.json dependencies."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "package.json", "content": '{"dependencies": {"react": "^18.0.0", "react-dom": "^18.0.0"}}'},
+        ]
+        defaults = detect_framework_defaults(["HTML", "CSS", "JavaScript"], code_files=code_files)
+        assert defaults["port"] == 5173  # vite/react default
+
+    def test_code_content_overrides_generic_html(self):
+        """Code content detection takes priority over generic html tech_stack match."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "main.py", "content": "import fastapi\napp = fastapi.FastAPI()\n"},
+            {"path": "index.html", "content": "<html><body>Hello</body></html>"},
+        ]
+        # tech_stack says html/css, but code has FastAPI → must detect FastAPI
+        defaults = detect_framework_defaults(["html", "css", "javascript"], code_files=code_files)
+        assert defaults["port"] == 8000
+        assert "uvicorn" in defaults["start"]
+
 
 # ==================================================================
 # 4. QA Agent — has_ui()

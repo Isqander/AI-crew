@@ -222,13 +222,16 @@ def detect_framework_defaults(
     tech_stack: list[str],
     code_files: list[dict] | None = None,
 ) -> dict:
-    """Detect install/start/port defaults from the tech stack.
+    """Detect install/start/port defaults from the tech stack and code files.
 
     Returns a dict with keys ``install``, ``start``, ``port``.
 
     Detection strategy:
       1. Check tech_stack for specific frameworks (skip generic html/css)
-      2. Check code_files for package.json → Node.js project
+      2. Analyse code_files contents:
+         a. package.json dependencies → specific Node.js framework
+         b. Python file imports → FastAPI / Flask / Django
+         c. JS/TS file imports → Express etc.
       3. Fall back to generic html/css match from tech_stack
       4. Default: Node.js (npm start on port 3000)
     """
@@ -250,13 +253,71 @@ def detect_framework_defaults(
             if fk in tech_lower:
                 return fv
 
-    # Pass 2: detect from code_files (package.json → Node.js project)
+    # Pass 2: detect from code_files
     if code_files:
-        has_package_json = any(
-            f.get("path", "").endswith("package.json") for f in code_files
-        )
-        if has_package_json:
-            return FRAMEWORK_DEFAULTS["node"]
+        # 2a: package.json → Node.js project (check deps for specific framework)
+        for f in code_files:
+            if f.get("path", "").endswith("package.json"):
+                content = f.get("content", "")
+                content_lower = content.lower()
+                for fw in ("react", "vue", "next", "nuxt", "angular", "svelte", "gatsby", "express", "vite"):
+                    if f'"{fw}' in content_lower:
+                        if fw in FRAMEWORK_DEFAULTS:
+                            return FRAMEWORK_DEFAULTS[fw]
+                # Generic Node.js
+                return FRAMEWORK_DEFAULTS["node"]
+
+        # 2b: Scan Python file contents for framework imports
+        _py_framework_patterns = {
+            "fastapi": ["from fastapi", "import fastapi", "FastAPI("],
+            "flask": ["from flask", "import flask", "Flask("],
+            "django": ["from django", "import django", "django.conf"],
+        }
+        for f in code_files:
+            path = f.get("path", "")
+            if not path.endswith(".py"):
+                continue
+            content = f.get("content", "")
+            for fw, patterns in _py_framework_patterns.items():
+                if any(p in content for p in patterns):
+                    defaults = FRAMEWORK_DEFAULTS[fw].copy()
+                    # Try to detect the actual module name for uvicorn
+                    if fw == "fastapi":
+                        # e.g. "main.py" → "uvicorn main:app ..."
+                        module = path.rsplit("/", 1)[-1].removesuffix(".py")
+                        if module != "app":
+                            defaults["start"] = (
+                                f"uvicorn {module}:app --host 0.0.0.0 --port {defaults['port']}"
+                            )
+                    elif fw == "flask":
+                        module = path.rsplit("/", 1)[-1].removesuffix(".py")
+                        defaults["start"] = f"python {module}.py"
+                    # Check if requirements.txt exists; if not, install inline
+                    has_requirements = any(
+                        cf.get("path", "").endswith("requirements.txt")
+                        for cf in code_files
+                    )
+                    if not has_requirements:
+                        if fw == "fastapi":
+                            defaults["install"] = "pip install fastapi uvicorn -q"
+                        elif fw == "flask":
+                            defaults["install"] = "pip install flask -q"
+                        elif fw == "django":
+                            defaults["install"] = "pip install django -q"
+                    return defaults
+
+        # 2c: Scan JS/TS file contents for framework requires/imports
+        _js_framework_patterns = {
+            "express": ["require('express')", 'require("express")', "from 'express'", 'from "express"'],
+        }
+        for f in code_files:
+            path = f.get("path", "")
+            if not any(path.endswith(ext) for ext in (".js", ".ts", ".mjs")):
+                continue
+            content = f.get("content", "")
+            for fw, patterns in _js_framework_patterns.items():
+                if any(p in content for p in patterns):
+                    return FRAMEWORK_DEFAULTS[fw]
 
     # Pass 3: generic match (html)
     for tech in tech_stack:

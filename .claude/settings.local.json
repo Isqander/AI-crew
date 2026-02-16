@@ -3,7 +3,15 @@
     "allow": [
       "Bash(npx tsc:*)",
       "Bash(python:*)",
-      "Bash(PYTHONPATH=\".:graphs\" python:*)"
+      "Bash(PYTHONPATH=\".:graphs\" python:*)",
+      "Bash(docker compose build:*)",
+      "Bash(cmd.exe /c \"C:\\\\Users\\\\aleksandr.cherkashin\\\\.bin\\\\docker.bat compose build sandbox\")",
+      "Bash(wsl docker compose build sandbox)",
+      "Bash(wsl docker-compose build:*)",
+      "Bash(wsl docker-compose up:*)",
+      "Bash(wsl docker network create:*)",
+      "Bash(wsl docker ps:*)",
+      "Bash(wsl docker logs:*)"
     ]
   }
 }
