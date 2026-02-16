@@ -1504,3 +1504,135 @@ class TestExplorationStepLimit:
         plan_file = next(f for f in sandbox_files if f["path"] == "exploration_plan.json")
         sent_plan = json.loads(plan_file["content"])
         assert len(sent_plan["steps"]) == 30  # truncated from 50
+
+
+# ==================================================================
+# 12. summarize_code_files — embedded HTML detection
+# ==================================================================
+
+
+class TestSummarizeCodeFiles:
+    """Test summarize_code_files() with embedded HTML detection."""
+
+    def test_empty_code_files(self):
+        """No files → returns placeholder text."""
+        from dev_team.agents.qa_helpers import summarize_code_files
+
+        result = summarize_code_files([])
+        assert "no code files" in result
+
+    def test_html_file_full_content(self):
+        """HTML files should be included in full (under limit)."""
+        from dev_team.agents.qa_helpers import summarize_code_files
+
+        html = '<html><body><input placeholder="Enter task"><button>Add</button></body></html>'
+        files = [{"path": "index.html", "content": html}]
+        result = summarize_code_files(files)
+        assert 'placeholder="Enter task"' in result
+        assert "<button>Add</button>" in result
+
+    def test_python_file_with_embedded_html(self):
+        """Python file with embedded HTML should be included in full."""
+        from dev_team.agents.qa_helpers import summarize_code_files
+
+        py_code = '''from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+
+app = FastAPI()
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head><title>To-Do</title></head>
+<body>
+    <h1>To-Do List</h1>
+    <form>
+        <input type="text" id="todoInput" placeholder="Add a new task...">
+        <button type="submit">Add Task</button>
+    </form>
+    <div id="task-list"></div>
+</body>
+</html>
+"""
+'''
+        files = [{"path": "main.py", "content": py_code}]
+        result = summarize_code_files(files)
+        # Full content should be included because it has embedded HTML
+        assert 'placeholder="Add a new task..."' in result
+        assert '<button type="submit">Add Task</button>' in result
+        assert "todoInput" in result
+
+    def test_python_file_without_html_is_truncated(self):
+        """Python file without HTML should use preview (500 chars)."""
+        from dev_team.agents.qa_helpers import summarize_code_files
+
+        py_code = "import os\n" * 200  # 2000 chars, no HTML
+        files = [{"path": "utils.py", "content": py_code}]
+        result = summarize_code_files(files)
+        # Should be truncated (preview) — won't have all 200 lines
+        assert "lines total" in result
+
+    def test_has_embedded_html_detection(self):
+        """_has_embedded_html should detect HTML in Python content."""
+        from dev_team.agents.qa_helpers import _has_embedded_html
+
+        assert _has_embedded_html('<html><body><form><input type="text"></form></body></html>') is True
+        assert _has_embedded_html('<div class="app"><button>Click</button></div>') is True
+        assert _has_embedded_html("import os\nprint('hello')") is False
+        assert _has_embedded_html("") is False
+
+    def test_single_html_marker_not_enough(self):
+        """A single HTML marker is not enough — need at least 2."""
+        from dev_team.agents.qa_helpers import _has_embedded_html
+
+        assert _has_embedded_html("data = '<html>just a string'") is False
+        assert _has_embedded_html("<form><input>two markers here</form>") is True
+
+
+# ==================================================================
+# 13. Template — fill/click fallback + element inventory
+# ==================================================================
+
+
+class TestTemplateFallbackFeatures:
+    """Verify the generated runner template includes fallback mechanisms."""
+
+    def test_template_has_fill_fallback(self):
+        """Template should include fill fallback for timeout recovery."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner(app_command="python main.py", app_port=8000)
+        assert "Fallback:" in script
+        assert "used visible text input" in script
+        # Fallback selector should filter out non-text inputs
+        assert "input:visible:not([type='checkbox'])" in script
+
+    def test_template_has_click_fallback(self):
+        """Template should include single-button click fallback."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner()
+        assert "clicked only visible button" in script
+        assert "button:visible" in script
+
+    def test_template_has_page_inventory(self):
+        """Template should include _page_element_inventory for diagnostics."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner()
+        assert "def _page_element_inventory" in script
+        assert "visible elements:" in script
+
+    def test_template_with_fallback_is_valid_python(self):
+        """Generated script with fallback should be valid Python syntax."""
+        import ast
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner(
+            app_command="uvicorn app.main:app --host 0.0.0.0 --port 8000",
+            app_port=8000,
+            install_command="pip install -r requirements.txt -q",
+            max_step_timeout=15,
+            stop_on_error=False,
+        )
+        ast.parse(script)

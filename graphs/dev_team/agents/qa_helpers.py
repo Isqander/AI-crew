@@ -147,17 +147,33 @@ def extract_json(content: str) -> dict | None:
     return None
 
 
+# HTML markers — if 2+ are found in a non-UI file, it contains embedded HTML
+# (common in FastAPI, Flask apps that return HTMLResponse inline).
+_HTML_MARKERS = ("<html", "<form", "<input", "<button", "<div ", "<!doctype")
+
+
+def _has_embedded_html(content: str) -> bool:
+    """Detect HTML content embedded in a non-UI file (e.g. Python)."""
+    lower = content.lower()
+    return sum(1 for m in _HTML_MARKERS if m in lower) >= 2
+
+
 def summarize_code_files(code_files: list[dict]) -> str:
     """Build a compact summary of code files for the LLM prompt.
 
     For UI files (HTML, CSS, JS) the full content is included so the
     LLM can see actual DOM selectors, class names, and element IDs.
+
+    Also detects HTML content embedded in non-UI files (e.g. FastAPI /
+    Flask Python files with inline HTML templates) and includes those
+    in full so the LLM can see actual placeholder text, button labels,
+    IDs, and other DOM attributes needed for accurate selector generation.
     """
     if not code_files:
         return "(no code files)"
 
     ui_extensions = (".html", ".css", ".js", ".jsx", ".tsx", ".vue", ".svelte")
-    max_full_content = 3000
+    max_full_content = 4000
     max_preview = 500
 
     parts: list[str] = []
@@ -167,6 +183,10 @@ def summarize_code_files(code_files: list[dict]) -> str:
         lines = len(content.split("\n"))
 
         is_ui_file = any(path.lower().endswith(ext) for ext in ui_extensions)
+
+        # Detect HTML embedded in Python/other files (FastAPI, Flask)
+        if not is_ui_file:
+            is_ui_file = _has_embedded_html(content)
 
         if is_ui_file and len(content) <= max_full_content:
             parts.append(f"  {path} ({lines} lines):\n{content}")

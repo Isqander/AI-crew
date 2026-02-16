@@ -114,7 +114,20 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
             selector = step.get("selector", "")
             if selector:
                 loc = _resolve_locator(page, selector)
-                loc.click(timeout=MAX_STEP_TIMEOUT * 1000)
+                try:
+                    loc.click(timeout=MAX_STEP_TIMEOUT * 1000)
+                except Exception as _ce:
+                    if "Timeout" not in type(_ce).__name__:
+                        raise
+                    _btns = page.locator(
+                        "button:visible,input[type='submit']:visible,"
+                        "[role='button']:visible"
+                    )
+                    if _btns.count() == 1:
+                        _btns.first.click(timeout=5000)
+                        print("[exploration]   Fallback: '" + selector + "' not found, clicked only visible button", file=sys.stderr)
+                    else:
+                        raise
             else:
                 error_msg = "click action requires a selector"
 
@@ -125,14 +138,34 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
                 val = field.get("value", "")
                 if sel and val is not None:
                     loc = _resolve_locator(page, sel, for_fill=True)
-                    loc.fill(str(val), timeout=MAX_STEP_TIMEOUT * 1000)
+                    try:
+                        loc.fill(str(val), timeout=MAX_STEP_TIMEOUT * 1000)
+                    except Exception as _fe:
+                        if "Timeout" not in type(_fe).__name__:
+                            raise
+                        _fb = page.locator(
+                            "input:visible:not([type='checkbox']):not([type='radio'])"
+                            ":not([type='hidden']):not([type='file']),textarea:visible"
+                        ).first
+                        _fb.fill(str(val), timeout=5000)
+                        print("[exploration]   Fallback: '" + sel + "' not found, used visible text input", file=sys.stderr)
 
         elif action == "type":
             selector = step.get("selector", "")
             value = step.get("value", "")
             if selector:
                 loc = _resolve_locator(page, selector, for_fill=True)
-                loc.fill(str(value), timeout=MAX_STEP_TIMEOUT * 1000)
+                try:
+                    loc.fill(str(value), timeout=MAX_STEP_TIMEOUT * 1000)
+                except Exception as _te:
+                    if "Timeout" not in type(_te).__name__:
+                        raise
+                    _fb = page.locator(
+                        "input:visible:not([type='checkbox']):not([type='radio'])"
+                        ":not([type='hidden']):not([type='file']),textarea:visible"
+                    ).first
+                    _fb.fill(str(value), timeout=5000)
+                    print("[exploration]   Fallback: '" + selector + "' not found, used visible text input", file=sys.stderr)
             else:
                 error_msg = "type action requires a selector"
 
@@ -170,7 +203,11 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
             error_msg = f"Unknown action: {{action}}"
 
     except Exception as exc:
-        error_msg = f"{{type(exc).__name__}}: {{str(exc)[:500]}}"
+        err_text = type(exc).__name__ + ": " + str(exc)[:500]
+        if "Timeout" in type(exc).__name__:
+            inv = _page_element_inventory(page)
+            err_text += " [visible elements: " + inv + "]"
+        error_msg = err_text
 
     # Optional wait after action
     wait_after = step.get("wait_after", 0)
@@ -320,6 +357,33 @@ def _resolve_locator(page, selector: str, *, for_fill: bool = False):
             pass
 
     return loc
+
+
+def _page_element_inventory(page):
+    """Inventory of visible interactive elements for timeout diagnostics."""
+    parts = []
+    for tag in ("input", "button", "textarea", "a"):
+        try:
+            els = page.locator(tag + ":visible")
+            n = els.count()
+            if n > 0:
+                descs = []
+                for i in range(min(n, 3)):
+                    el = els.nth(i)
+                    d = tag
+                    for attr in ("type", "id", "placeholder"):
+                        v = el.get_attribute(attr)
+                        if v:
+                            d += "[" + attr + "=" + v + "]"
+                    if tag in ("button", "a"):
+                        t = (el.text_content() or "")[:20].strip()
+                        if t:
+                            d += "[text=" + t + "]"
+                    descs.append(d)
+                parts.append(str(n) + "x " + ", ".join(descs))
+        except Exception:
+            pass
+    return "; ".join(parts) or "(none)"
 
 
 def main() -> None:
