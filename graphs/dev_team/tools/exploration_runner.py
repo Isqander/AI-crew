@@ -218,10 +218,52 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
     return step_report
 
 
+def _normalize_selector(selector: str) -> str:
+    """Normalize common LLM-generated selector mistakes into valid CSS/Playwright.
+
+    LLMs often produce selectors like ``id=foo`` or ``class=bar`` by analogy
+    with ``text=...`` / ``placeholder=...``.  These are NOT valid Playwright
+    selector engines and must be converted to CSS equivalents.
+
+    Conversions:
+      - ``id=foo``       → ``#foo``
+      - ``class=foo``    → ``.foo``
+      - ``name=foo``     → ``[name='foo']``  (HTML attribute)
+      - ``type=foo``     → ``[type='foo']``  (HTML attribute)
+      - ``data-testid=x`` → treated as ``testid=x`` (handled later by _resolve_locator)
+    """
+    sel = selector.strip()
+
+    # id=value → #value
+    if sel.startswith("id="):
+        return "#" + sel[3:].strip()
+
+    # class=value → .value  (also handle "class=foo bar" → ".foo.bar")
+    if sel.startswith("class="):
+        classes = sel[6:].strip().split()
+        return "." + ".".join(classes)
+
+    # name=value → [name='value']  (HTML attribute, NOT Playwright engine)
+    if sel.startswith("name="):
+        return "[name='" + sel[5:].strip() + "']"
+
+    # type=value → [type='value']
+    if sel.startswith("type="):
+        return "[type='" + sel[5:].strip() + "']"
+
+    # data-testid=value → testid=value  (Playwright semantic alias)
+    if sel.startswith("data-testid="):
+        return "testid=" + sel[12:].strip()
+
+    return sel
+
+
 def _resolve_locator(page, selector: str):
     """Resolve a selector string to a Playwright locator.
 
-    Supports several selector strategies:
+    First normalizes common LLM mistakes (``id=``, ``class=``), then
+    dispatches to the appropriate Playwright API:
+
       - ``text=...``     → page.get_by_text(...)
       - ``role=button[name=Submit]`` → page.get_by_role("button", name="Submit")
       - ``placeholder=...`` → page.get_by_placeholder(...)
@@ -229,7 +271,7 @@ def _resolve_locator(page, selector: str):
       - ``testid=...``   → page.get_by_test_id(...)
       - Everything else  → page.locator(selector)  (CSS / XPath)
     """
-    sel = selector.strip()
+    sel = _normalize_selector(selector)
 
     if sel.startswith("text="):
         return page.get_by_text(sel[5:])
@@ -439,6 +481,69 @@ def build_exploration_runner(
         max_step_timeout=max_step_timeout,
         stop_on_error=stop_on_error,
     )
+
+
+# ---------------------------------------------------------------------------
+# Selector Normalization (host-side, before sending to sandbox)
+# ---------------------------------------------------------------------------
+
+# Prefixes that are NOT valid Playwright selector engines but LLMs
+# commonly generate by analogy with ``text=`` / ``placeholder=``.
+_INVALID_ENGINE_PREFIXES = {
+    "id=": lambda v: "#" + v,
+    "class=": lambda v: "." + ".".join(v.split()),
+    "name=": lambda v: f"[name='{v}']",
+    "type=": lambda v: f"[type='{v}']",
+    "data-testid=": lambda v: "testid=" + v,
+}
+
+
+def normalize_selector(selector: str) -> str:
+    """Normalize a single selector string.
+
+    Converts common LLM mistakes into valid CSS / Playwright selectors:
+
+      - ``id=foo``        → ``#foo``
+      - ``class=foo``     → ``.foo``
+      - ``class=foo bar`` → ``.foo.bar``
+      - ``name=foo``      → ``[name='foo']``
+      - ``type=submit``   → ``[type='submit']``
+      - ``data-testid=x`` → ``testid=x``
+
+    Valid selectors (``text=``, ``placeholder=``, ``label=``, ``testid=``,
+    ``role=``, CSS, XPath) pass through unchanged.
+    """
+    sel = selector.strip()
+    for prefix, transform in _INVALID_ENGINE_PREFIXES.items():
+        if sel.startswith(prefix):
+            return transform(sel[len(prefix):].strip())
+    return sel
+
+
+def normalize_plan_selectors(plan: dict) -> int:
+    """Normalize all selectors in an exploration plan **in-place**.
+
+    Returns the number of selectors that were changed.
+    """
+    fixed = 0
+    for step in plan.get("steps", []):
+        # Direct selector
+        sel = step.get("selector")
+        if sel:
+            new_sel = normalize_selector(sel)
+            if new_sel != sel:
+                step["selector"] = new_sel
+                fixed += 1
+
+        # fill_form fields
+        for field in step.get("fields", []):
+            sel = field.get("selector")
+            if sel:
+                new_sel = normalize_selector(sel)
+                if new_sel != sel:
+                    field["selector"] = new_sel
+                    fixed += 1
+    return fixed
 
 
 # ---------------------------------------------------------------------------

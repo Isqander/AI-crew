@@ -25,6 +25,7 @@ from ..tools.browser_runner import detect_framework_defaults
 from ..tools.exploration_runner import (
     build_exploration_runner,
     validate_exploration_plan,
+    normalize_plan_selectors,
     extract_exploration_report,
 )
 
@@ -229,6 +230,14 @@ def run_exploration_tests(agent: QAAgent, state: DevTeamState, config=None) -> d
             correct_url=correct_base_url,
         )
         plan["base_url"] = correct_base_url
+
+    # ── 1b. Normalize selectors (fix common LLM mistakes like id=, class=) ──
+    fixed_selectors = normalize_plan_selectors(plan)
+    if fixed_selectors:
+        logger.info(
+            "qa.test_explore.selectors_normalized",
+            fixed_count=fixed_selectors,
+        )
 
     # ── 2. Validate plan ──
     validation_errors = validate_exploration_plan(plan)

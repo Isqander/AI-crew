@@ -235,6 +235,188 @@ class TestExplorationPlanValidation:
 
 
 # ==================================================================
+# 2b. Selector Normalization
+# ==================================================================
+
+
+class TestNormalizeSelector:
+    """Test normalize_selector() — converts invalid LLM selectors to valid CSS."""
+
+    def test_id_selector(self):
+        """id=foo → #foo."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("id=my-input") == "#my-input"
+
+    def test_id_selector_with_spaces(self):
+        """id= with surrounding spaces should be trimmed."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("  id=my-input  ") == "#my-input"
+
+    def test_class_selector(self):
+        """class=foo → .foo."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("class=task-checkbox") == ".task-checkbox"
+
+    def test_class_selector_multiple(self):
+        """class=foo bar → .foo.bar."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("class=btn btn-primary") == ".btn.btn-primary"
+
+    def test_name_selector(self):
+        """name=foo → [name='foo']."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("name=email") == "[name='email']"
+
+    def test_type_selector(self):
+        """type=submit → [type='submit']."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("type=submit") == "[type='submit']"
+
+    def test_data_testid_selector(self):
+        """data-testid=x → testid=x."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("data-testid=submit-btn") == "testid=submit-btn"
+
+    def test_valid_css_passthrough(self):
+        """Valid CSS selectors pass through unchanged."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("#my-id") == "#my-id"
+        assert normalize_selector(".my-class") == ".my-class"
+        assert normalize_selector("button") == "button"
+        assert normalize_selector("input[type='text']") == "input[type='text']"
+        assert normalize_selector("form > button") == "form > button"
+
+    def test_valid_playwright_passthrough(self):
+        """Valid Playwright selectors pass through unchanged."""
+        from dev_team.tools.exploration_runner import normalize_selector
+
+        assert normalize_selector("text=Submit") == "text=Submit"
+        assert normalize_selector("placeholder=Email") == "placeholder=Email"
+        assert normalize_selector("label=Password") == "label=Password"
+        assert normalize_selector("testid=submit") == "testid=submit"
+        assert normalize_selector("role=button[name=OK]") == "role=button[name=OK]"
+
+
+class TestNormalizePlanSelectors:
+    """Test normalize_plan_selectors() — in-place plan normalization."""
+
+    def test_normalize_click_selector(self):
+        """Click step with id= selector should be normalized."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        plan = {
+            "steps": [
+                {"id": "s1", "action": "click", "selector": "id=add-task-btn"},
+            ]
+        }
+        fixed = normalize_plan_selectors(plan)
+        assert fixed == 1
+        assert plan["steps"][0]["selector"] == "#add-task-btn"
+
+    def test_normalize_fill_form_fields(self):
+        """fill_form fields with class= selectors should be normalized."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        plan = {
+            "steps": [
+                {
+                    "id": "s1",
+                    "action": "fill_form",
+                    "fields": [
+                        {"selector": "id=new-task-input", "value": "Buy milk"},
+                        {"selector": "class=date-picker", "value": "2026-01-01"},
+                    ],
+                },
+            ]
+        }
+        fixed = normalize_plan_selectors(plan)
+        assert fixed == 2
+        assert plan["steps"][0]["fields"][0]["selector"] == "#new-task-input"
+        assert plan["steps"][0]["fields"][1]["selector"] == ".date-picker"
+
+    def test_no_changes_for_valid_selectors(self):
+        """Valid selectors should not be modified."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        plan = {
+            "steps": [
+                {"id": "s1", "action": "click", "selector": "text=Submit"},
+                {"id": "s2", "action": "click", "selector": "#my-btn"},
+                {"id": "s3", "action": "navigate", "url": "/"},
+            ]
+        }
+        fixed = normalize_plan_selectors(plan)
+        assert fixed == 0
+
+    def test_mixed_valid_and_invalid(self):
+        """Only invalid selectors should be fixed."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        plan = {
+            "steps": [
+                {"id": "s1", "action": "click", "selector": "text=OK"},
+                {"id": "s2", "action": "click", "selector": "class=delete-btn"},
+                {"id": "s3", "action": "type", "selector": "id=search", "value": "test"},
+            ]
+        }
+        fixed = normalize_plan_selectors(plan)
+        assert fixed == 2
+        assert plan["steps"][0]["selector"] == "text=OK"
+        assert plan["steps"][1]["selector"] == ".delete-btn"
+        assert plan["steps"][2]["selector"] == "#search"
+
+    def test_empty_plan(self):
+        """Empty plan should return 0 fixes."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        assert normalize_plan_selectors({"steps": []}) == 0
+        assert normalize_plan_selectors({}) == 0
+
+
+class TestRunnerTemplateContainsNormalizer:
+    """Verify that the generated runner script includes _normalize_selector."""
+
+    def test_template_has_normalize_selector(self):
+        """Runner template should include the _normalize_selector function."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner(app_command="python main.py", app_port=8000)
+        assert "def _normalize_selector" in script
+        assert "def _resolve_locator" in script
+        assert "_normalize_selector(selector)" in script
+
+    def test_template_normalizes_id_class(self):
+        """Runner template should handle id= and class= conversions."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner()
+        assert 'sel.startswith("id=")' in script
+        assert 'sel.startswith("class=")' in script
+
+    def test_template_is_valid_python(self):
+        """Generated script with new normalizer should be valid Python syntax."""
+        import ast
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner(
+            app_command="uvicorn main:app --host 0.0.0.0 --port 8000",
+            app_port=8000,
+            install_command="pip install -r requirements.txt",
+            max_step_timeout=15,
+            stop_on_error=False,
+        )
+        ast.parse(script)
+
+
+# ==================================================================
 # 3. Exploration Report Extraction
 # ==================================================================
 

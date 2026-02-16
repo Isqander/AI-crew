@@ -88,8 +88,13 @@ generate_browser_test: |
   CRITICAL — Selectors:
   - Use ONLY element IDs, classes, and tag names that you can see in the Code Structure above
   - NEVER invent or guess selectors — only use what actually exists in the HTML/JS code
-  - Prefer text-based selectors (page.get_by_text, page.get_by_role) over CSS ID selectors
-  - If you cannot determine the exact selector from the code, use generic selectors (e.g. page.locator("button"), page.locator("input"))
+  - Prefer Playwright semantic selectors:
+    page.get_by_text("Submit"), page.get_by_role("button", name="Submit"),
+    page.get_by_placeholder("Enter email"), page.get_by_label("Email")
+  - For CSS selectors use standard syntax: page.locator("#my-id"), page.locator(".my-class")
+  - NEVER use page.locator("id=...") or page.locator("class=...") — these are invalid!
+  - If you cannot determine the exact selector from the code, use generic selectors
+    (e.g. page.locator("button"), page.locator("input"))
 
   Rules:
   - Use pytest-playwright fixtures (page, browser)
@@ -182,10 +187,19 @@ generate_exploration_plan: |
   - Use ONLY element IDs, classes, tag names, and text content that you can
     see in the Code Structure above
   - NEVER invent or guess selectors — only use what actually exists in the code
-  - Prefer text-based selectors: "text=Submit", "placeholder=Email",
-    "label=Password", "role=button[name=Submit]"
-  - If you cannot determine the exact selector, use generic selectors:
-    "button", "input", "a"
+  - Supported selector formats (in order of preference):
+    1. Text-based:    "text=Submit", "text=Add Task"
+    2. Placeholder:   "placeholder=Enter task..."
+    3. Label:         "label=Email"
+    4. Role:          "role=button[name=Submit]", "role=textbox"
+    5. Test ID:       "testid=submit-btn"
+    6. CSS selectors: "#my-id", ".my-class", "button", "input[type='text']",
+                      "form > button", "ul li"
+  - NEVER use "id=..." or "class=..." as selectors! These are NOT valid.
+    Use CSS syntax instead: "#element-id" (not "id=element-id"),
+    ".css-class" (not "class=css-class")
+  - If you cannot determine the exact selector, use generic CSS selectors:
+    "button", "input", "a", "form", "h1"
 
   IMPORTANT: Do NOT include "base_url" in your plan — it is set automatically
   from the detected framework port ({app_port}). Only generate "name" and "steps".
