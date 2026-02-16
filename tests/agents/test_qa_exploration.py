@@ -415,6 +415,15 @@ class TestRunnerTemplateContainsNormalizer:
         )
         ast.parse(script)
 
+    def test_template_generates_report_on_startup_failure(self):
+        """Runner template should generate EXPLORATION_REPORT on app startup failure."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner(app_command="python main.py", app_port=8000)
+        assert "EXPLORATION_REPORT_START" in script
+        assert "startup_error" in script
+        assert "failure_report" in script
+
 
 # ==================================================================
 # 3. Exploration Report Extraction

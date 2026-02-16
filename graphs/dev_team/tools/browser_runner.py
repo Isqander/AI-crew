@@ -218,6 +218,17 @@ FRAMEWORK_DEFAULTS: dict[str, dict] = {
 }
 
 
+# Python frameworks whose start command depends on actual file paths
+# and must be refined through code analysis (Pass 2b).
+_PYTHON_FRAMEWORKS = {"fastapi", "flask", "django"}
+
+# Regex to detect the ASGI/WSGI app variable name.
+# Matches:  app = FastAPI()  /  application = FastAPI(...)  /  server=FastAPI()
+import re as _re
+_FASTAPI_VAR_RE = _re.compile(r"(\w+)\s*=\s*(?:fastapi\.)?FastAPI\s*\(")
+_FLASK_VAR_RE = _re.compile(r"(\w+)\s*=\s*(?:flask\.)?Flask\s*\(")
+
+
 def detect_framework_defaults(
     tech_stack: list[str],
     code_files: list[dict] | None = None,
@@ -227,10 +238,12 @@ def detect_framework_defaults(
     Returns a dict with keys ``install``, ``start``, ``port``.
 
     Detection strategy:
-      1. Check tech_stack for specific frameworks (skip generic html/css)
+      1. Check tech_stack for specific frameworks (skip generic html/css).
+         For Python frameworks (FastAPI, Flask, Django), defer to Pass 2b
+         if code_files are available, so the actual file paths are used.
       2. Analyse code_files contents:
          a. package.json dependencies → specific Node.js framework
-         b. Python file imports → FastAPI / Flask / Django
+         b. Python file imports → FastAPI / Flask / Django (with real paths)
          c. JS/TS file imports → Express etc.
       3. Fall back to generic html/css match from tech_stack
       4. Default: Node.js (npm start on port 3000)
@@ -240,17 +253,27 @@ def detect_framework_defaults(
     def _normalize(tech: str) -> str:
         return tech.lower().replace(".", "").replace(".js", "").strip()
 
-    # Pass 1: specific frameworks (skip html/css)
+    # Pass 1: specific frameworks (skip html/css).
+    # For Python frameworks, remember the match but defer to Pass 2b
+    # to detect actual file paths (e.g. app/main.py → uvicorn app.main:app).
+    deferred_python_default: dict | None = None
+
     for tech in tech_stack:
         key = _normalize(tech)
         if key in generic_keys:
             continue
         if key in FRAMEWORK_DEFAULTS:
+            if key in _PYTHON_FRAMEWORKS and code_files:
+                deferred_python_default = FRAMEWORK_DEFAULTS[key]
+                continue  # defer to Pass 2b
             return FRAMEWORK_DEFAULTS[key]
         # Partial match
         tech_lower = tech.lower()
         for fk, fv in FRAMEWORK_DEFAULTS.items():
             if fk in tech_lower:
+                if fk in _PYTHON_FRAMEWORKS and code_files:
+                    deferred_python_default = fv
+                    break  # defer to Pass 2b
                 return fv
 
     # Pass 2: detect from code_files
@@ -281,15 +304,15 @@ def detect_framework_defaults(
             for fw, patterns in _py_framework_patterns.items():
                 if any(p in content for p in patterns):
                     defaults = FRAMEWORK_DEFAULTS[fw].copy()
-                    # Convert full file path to Python module / run path.
-                    # e.g. "backend/main.py" → "backend.main" (for uvicorn)
-                    # e.g. "main.py" → "main"
-                    # Normalise both / and \ separators.
                     norm_path = path.replace("\\", "/")
+
                     if fw == "fastapi":
                         module = norm_path.removesuffix(".py").replace("/", ".")
+                        # Detect app variable name (default: "app")
+                        var_match = _FASTAPI_VAR_RE.search(content)
+                        var_name = var_match.group(1) if var_match else "app"
                         defaults["start"] = (
-                            f"uvicorn {module}:app --host 0.0.0.0 --port {defaults['port']}"
+                            f"uvicorn {module}:{var_name} --host 0.0.0.0 --port {defaults['port']}"
                         )
                     elif fw == "flask":
                         defaults["start"] = f"python {norm_path}"
@@ -319,6 +342,10 @@ def detect_framework_defaults(
             for fw, patterns in _js_framework_patterns.items():
                 if any(p in content for p in patterns):
                     return FRAMEWORK_DEFAULTS[fw]
+
+    # Pass 2 didn't find anything — use deferred Python default if available
+    if deferred_python_default:
+        return deferred_python_default
 
     # Pass 3: generic match (html)
     for tech in tech_stack:

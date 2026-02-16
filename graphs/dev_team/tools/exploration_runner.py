@@ -323,7 +323,9 @@ def main() -> None:
     if APP_PORT:
         print(f"[exploration] Waiting for port {{APP_PORT}} (timeout={{APP_READY_TIMEOUT}}s)...")
         if not wait_for_port(APP_PORT, APP_READY_TIMEOUT):
-            print("[exploration] ERROR: Application did not start in time", file=sys.stderr)
+            app_error = "Application did not start in time"
+            print(f"[exploration] ERROR: {{app_error}}", file=sys.stderr)
+            app_stderr_text = ""
             if app_proc:
                 app_proc.terminate()
                 try:
@@ -331,9 +333,37 @@ def main() -> None:
                     if out:
                         print(f"[exploration] App stdout: {{out.decode(errors='replace')[:3000]}}")
                     if err:
-                        print(f"[exploration] App stderr: {{err.decode(errors='replace')[:3000]}}", file=sys.stderr)
+                        app_stderr_text = err.decode(errors="replace")[:3000]
+                        print(f"[exploration] App stderr: {{app_stderr_text}}", file=sys.stderr)
                 except subprocess.TimeoutExpired:
                     app_proc.kill()
+            # Generate a failure report so QA can still analyse what went wrong
+            failure_report = {{
+                "plan_name": "Unknown",
+                "base_url": f"http://localhost:{{APP_PORT}}",
+                "total_steps": 0,
+                "executed_steps": 0,
+                "successful_steps": 0,
+                "failed_steps": 0,
+                "screenshots_collected": 0,
+                "total_duration_seconds": 0,
+                "steps": [],
+                "all_console_messages": [],
+                "all_network_errors": [],
+                "startup_error": f"{{app_error}}: {{app_stderr_text[:1000]}}",
+            }}
+            # Try to read plan name from exploration_plan.json
+            try:
+                if os.path.exists(PLAN_FILE):
+                    with open(PLAN_FILE, "r") as f:
+                        plan_data = json.load(f)
+                    failure_report["plan_name"] = plan_data.get("name", "Unknown")
+                    failure_report["total_steps"] = len(plan_data.get("steps", []))
+            except Exception:
+                pass
+            print("===EXPLORATION_REPORT_START===")
+            print(json.dumps(failure_report, indent=2, ensure_ascii=False))
+            print("===EXPLORATION_REPORT_END===")
             sys.exit(1)
         print(f"[exploration] App ready on port {{APP_PORT}}")
 

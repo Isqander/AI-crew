@@ -327,6 +327,65 @@ class TestBrowserRunner:
         assert defaults["port"] == 8000
         assert "uvicorn" in defaults["start"]
 
+    # --- Deferred Python framework detection (Pass 1 → 2b) ---
+
+    def test_fastapi_in_tech_stack_defers_to_code_analysis(self):
+        """When FastAPI is in tech_stack AND code_files exist, Pass 2b refines the path."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "app/main.py", "content": "from fastapi import FastAPI\napp = FastAPI()\n"},
+            {"path": "requirements.txt", "content": "fastapi\nuvicorn\nsqlalchemy\n"},
+        ]
+        defaults = detect_framework_defaults(["FastAPI", "Python", "PostgreSQL"], code_files=code_files)
+        assert defaults["port"] == 8000
+        assert "uvicorn" in defaults["start"]
+        # Must use dotted path from code analysis, not static "app:app"
+        assert "app.main:app" in defaults["start"]
+
+    def test_fastapi_in_tech_stack_no_code_files_uses_static_default(self):
+        """When FastAPI in tech_stack but no code_files, use static default."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        defaults = detect_framework_defaults(["FastAPI", "Python"])
+        assert defaults["port"] == 8000
+        assert "uvicorn" in defaults["start"]
+        # Without code_files, static default is used
+        assert "app:app" in defaults["start"]
+
+    def test_flask_in_tech_stack_defers_to_code_analysis(self):
+        """When Flask is in tech_stack AND code_files exist, Pass 2b refines the path."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "src/server.py", "content": "from flask import Flask\napp = Flask(__name__)\n"},
+        ]
+        defaults = detect_framework_defaults(["Flask", "Python"], code_files=code_files)
+        assert defaults["port"] == 5000
+        assert "python src/server.py" in defaults["start"]
+
+    # --- App variable detection ---
+
+    def test_detect_fastapi_custom_variable_name(self):
+        """Detect non-standard app variable (e.g. 'application', 'server')."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "main.py", "content": "from fastapi import FastAPI\nserver = FastAPI(title='My API')\n"},
+        ]
+        defaults = detect_framework_defaults(["Python"], code_files=code_files)
+        assert "main:server" in defaults["start"]
+
+    def test_detect_fastapi_standard_app_variable(self):
+        """Standard 'app = FastAPI()' should produce :app."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "api.py", "content": "from fastapi import FastAPI\napp = FastAPI()\n"},
+        ]
+        defaults = detect_framework_defaults(["Python"], code_files=code_files)
+        assert "api:app" in defaults["start"]
+
     def test_detect_fastapi_in_subdirectory(self):
         """FastAPI file in subdirectory generates correct uvicorn module path."""
         from dev_team.tools.browser_runner import detect_framework_defaults
