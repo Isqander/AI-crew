@@ -250,7 +250,7 @@ services:
     volumes:
       - sandbox_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${SANDBOX_PG_USER:-sandbox}"]
+      test: ["CMD-SHELL", "pg_isready -U ${SANDBOX_PG_USER:-sandbox} -d ${SANDBOX_PG_DB:-sandbox_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
