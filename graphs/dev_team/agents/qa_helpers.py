@@ -9,6 +9,11 @@ from __future__ import annotations
 import json
 import re
 
+try:
+    import yaml as _yaml  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover — optional dependency
+    _yaml = None
+
 
 def parse_verdict(content: str, fallback_exit_code: int = -1) -> bool:
     """Parse PASS/FAIL verdict from LLM response.
@@ -156,6 +161,110 @@ def _has_embedded_html(content: str) -> bool:
     """Detect HTML content embedded in a non-UI file (e.g. Python)."""
     lower = content.lower()
     return sum(1 for m in _HTML_MARKERS if m in lower) >= 2
+
+
+_QA_HINTS_FILENAMES = (".qa-hints.yaml", ".qa-hints.yml", "qa-hints.yaml", "qa-hints.yml")
+
+
+def extract_qa_hints(code_files: list[dict]) -> dict | None:
+    """Extract the QA hints contract from code_files (if present).
+
+    The Developer agent may generate a ``.qa-hints.yaml`` file that
+    contains explicit selectors and test flows for the QA agent.
+
+    Returns the parsed dict, or ``None`` if no hints file exists or
+    parsing fails.
+    """
+    for f in code_files:
+        path = (f.get("path") or "").lower()
+        basename = path.rsplit("/", 1)[-1]
+        if basename not in _QA_HINTS_FILENAMES:
+            continue
+
+        content = f.get("content", "")
+        if not content.strip():
+            continue
+
+        # Try YAML parser first (preferred)
+        if _yaml is not None:
+            try:
+                obj = _yaml.safe_load(content)
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                pass
+
+        # Fallback: try JSON (LLM may output JSON instead of YAML)
+        try:
+            obj = json.loads(content)
+            if isinstance(obj, dict):
+                return obj
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return None
+
+
+def format_qa_hints_for_prompt(hints: dict) -> str:
+    """Format QA hints into a human-readable text block for the LLM prompt.
+
+    Produces a compact summary of selectors and test flows that helps
+    the LLM build an accurate exploration plan.
+    """
+    if not hints:
+        return ""
+
+    parts: list[str] = []
+
+    # --- Selectors ---
+    selectors = hints.get("selectors")
+    if isinstance(selectors, dict) and selectors:
+        parts.append("## Available UI Selectors (from Developer):")
+        for name, info in selectors.items():
+            if isinstance(info, dict):
+                css = info.get("css", "")
+                el_type = info.get("type", "")
+                text = info.get("text", "")
+                placeholder = info.get("placeholder", "")
+                note = info.get("note", "")
+                item_css = info.get("item_css", "")
+
+                desc = f"  - {name}: css=\"{css}\""
+                if el_type:
+                    desc += f"  type={el_type}"
+                if text:
+                    desc += f'  text="{text}"'
+                if placeholder:
+                    desc += f'  placeholder="{placeholder}"'
+                if item_css:
+                    desc += f"  item_css=\"{item_css}\""
+                if note:
+                    desc += f"  ({note})"
+                parts.append(desc)
+            else:
+                parts.append(f"  - {name}: {info}")
+
+    # --- Test flows ---
+    test_flows = hints.get("test_flows")
+    if isinstance(test_flows, dict) and test_flows:
+        parts.append("")
+        parts.append("## Suggested Test Flows (from Developer):")
+        for flow_name, steps in test_flows.items():
+            parts.append(f"  {flow_name}:")
+            if isinstance(steps, list):
+                for step in steps:
+                    if isinstance(step, dict):
+                        action = step.get("action", "?")
+                        target = step.get("target", "")
+                        value = step.get("value", "")
+                        desc = f"    - {action}"
+                        if target:
+                            desc += f" → {target}"
+                        if value:
+                            desc += f' = "{value}"'
+                        parts.append(desc)
+
+    return "\n".join(parts)
 
 
 def summarize_code_files(code_files: list[dict]) -> str:

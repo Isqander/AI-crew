@@ -1648,3 +1648,205 @@ class TestTemplateFallbackFeatures:
         assert "loc.first.fill" in script
         assert "loc.first.hover" in script
         assert "loc.first.select_option" in script
+
+
+# ==================================================================
+# 14. UI Test Contract — QA Hints (extract + format)
+# ==================================================================
+
+
+class TestExtractQaHints:
+    """Test extract_qa_hints() — extracts .qa-hints.yaml from code_files."""
+
+    def test_no_hints_file(self):
+        """Returns None when no hints file present."""
+        from dev_team.agents.qa_helpers import extract_qa_hints
+
+        files = [
+            {"path": "main.py", "content": "print('hello')"},
+            {"path": "index.html", "content": "<html></html>"},
+        ]
+        assert extract_qa_hints(files) is None
+
+    def test_empty_hints_file(self):
+        """Returns None for an empty .qa-hints.yaml."""
+        from dev_team.agents.qa_helpers import extract_qa_hints
+
+        files = [{"path": ".qa-hints.yaml", "content": ""}]
+        assert extract_qa_hints(files) is None
+
+    def test_valid_yaml_hints(self):
+        """Parses a valid YAML hints file."""
+        from dev_team.agents.qa_helpers import extract_qa_hints
+
+        content = (
+            "selectors:\n"
+            "  main_input:\n"
+            '    css: "#todoInput"\n'
+            "    type: text\n"
+            "  add_button:\n"
+            '    css: "#addBtn"\n'
+            '    text: "Add"\n'
+            "test_flows:\n"
+            "  add_task:\n"
+            "    - action: fill\n"
+            "      target: main_input\n"
+            '      value: "Test"\n'
+        )
+        files = [{"path": ".qa-hints.yaml", "content": content}]
+        hints = extract_qa_hints(files)
+
+        assert hints is not None
+        assert "selectors" in hints
+        assert "main_input" in hints["selectors"]
+        assert hints["selectors"]["main_input"]["css"] == "#todoInput"
+        assert "test_flows" in hints
+        assert "add_task" in hints["test_flows"]
+
+    def test_json_hints_fallback(self):
+        """Falls back to JSON parsing if YAML fails or is unavailable."""
+        from dev_team.agents.qa_helpers import extract_qa_hints
+
+        content = json.dumps({
+            "selectors": {"btn": {"css": "#btn", "type": "button"}},
+            "test_flows": {},
+        })
+        files = [{"path": ".qa-hints.yaml", "content": content}]
+        hints = extract_qa_hints(files)
+
+        assert hints is not None
+        assert "selectors" in hints
+        assert hints["selectors"]["btn"]["css"] == "#btn"
+
+    def test_alternative_filenames(self):
+        """Recognizes .qa-hints.yml, qa-hints.yaml, qa-hints.yml."""
+        from dev_team.agents.qa_helpers import extract_qa_hints
+
+        content = '{"selectors": {"x": {"css": "#x"}}}'
+
+        for name in [".qa-hints.yml", "qa-hints.yaml", "qa-hints.yml"]:
+            files = [{"path": name, "content": content}]
+            hints = extract_qa_hints(files)
+            assert hints is not None, f"Failed for {name}"
+            assert "selectors" in hints
+
+    def test_hints_in_subdirectory(self):
+        """Recognizes .qa-hints.yaml even in a subdirectory path."""
+        from dev_team.agents.qa_helpers import extract_qa_hints
+
+        content = '{"selectors": {"x": {"css": "#x"}}}'
+        files = [{"path": "frontend/.qa-hints.yaml", "content": content}]
+        hints = extract_qa_hints(files)
+
+        assert hints is not None
+        assert "selectors" in hints
+
+    def test_invalid_content_returns_none(self):
+        """Returns None for unparseable content."""
+        from dev_team.agents.qa_helpers import extract_qa_hints
+
+        files = [{"path": ".qa-hints.yaml", "content": "this is not valid yaml [ {"}]
+        assert extract_qa_hints(files) is None
+
+
+class TestFormatQaHintsForPrompt:
+    """Test format_qa_hints_for_prompt() — formats hints for LLM prompt."""
+
+    def test_empty_hints(self):
+        """Empty dict produces empty string."""
+        from dev_team.agents.qa_helpers import format_qa_hints_for_prompt
+
+        assert format_qa_hints_for_prompt({}) == ""
+        assert format_qa_hints_for_prompt(None) == ""
+
+    def test_selectors_formatting(self):
+        """Selectors are formatted with CSS, type, text, placeholder."""
+        from dev_team.agents.qa_helpers import format_qa_hints_for_prompt
+
+        hints = {
+            "selectors": {
+                "main_input": {
+                    "css": "#todoInput",
+                    "type": "text",
+                    "placeholder": "Add a new task...",
+                },
+                "add_button": {
+                    "css": "#addBtn",
+                    "text": "Add Task",
+                    "type": "button",
+                },
+            }
+        }
+        result = format_qa_hints_for_prompt(hints)
+
+        assert "Available UI Selectors" in result
+        assert "main_input" in result
+        assert '#todoInput' in result
+        assert "placeholder=" in result
+        assert "Add a new task..." in result
+        assert "add_button" in result
+        assert '#addBtn' in result
+        assert 'text="Add Task"' in result
+
+    def test_test_flows_formatting(self):
+        """Test flows are formatted with action, target, value."""
+        from dev_team.agents.qa_helpers import format_qa_hints_for_prompt
+
+        hints = {
+            "test_flows": {
+                "add_task": [
+                    {"action": "fill", "target": "main_input", "value": "Buy milk"},
+                    {"action": "click", "target": "add_button"},
+                ],
+                "delete_task": [
+                    {"action": "click", "target": "li:first-child .delete-btn"},
+                ],
+            }
+        }
+        result = format_qa_hints_for_prompt(hints)
+
+        assert "Suggested Test Flows" in result
+        assert "add_task:" in result
+        assert "fill" in result
+        assert "main_input" in result
+        assert '"Buy milk"' in result
+        assert "click" in result
+        assert "add_button" in result
+        assert "delete_task:" in result
+
+    def test_combined_selectors_and_flows(self):
+        """Both selectors and flows are included in the output."""
+        from dev_team.agents.qa_helpers import format_qa_hints_for_prompt
+
+        hints = {
+            "selectors": {
+                "input": {"css": "#in", "type": "text"},
+            },
+            "test_flows": {
+                "flow1": [{"action": "fill", "target": "input", "value": "x"}],
+            },
+        }
+        result = format_qa_hints_for_prompt(hints)
+
+        assert "Available UI Selectors" in result
+        assert "Suggested Test Flows" in result
+
+    def test_note_and_item_css_included(self):
+        """note and item_css fields are included in selector output."""
+        from dev_team.agents.qa_helpers import format_qa_hints_for_prompt
+
+        hints = {
+            "selectors": {
+                "task_list": {
+                    "css": "#todoList",
+                    "type": "list",
+                    "item_css": "#todoList li",
+                    "note": "contains all tasks",
+                },
+            }
+        }
+        result = format_qa_hints_for_prompt(hints)
+
+        assert "item_css=" in result
+        assert "#todoList li" in result
+        assert "(contains all tasks)" in result

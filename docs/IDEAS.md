@@ -340,8 +340,16 @@ else:
 
 ---
 
-### 17b. UI Test Contract (Developer → QA Hints)
+### 17b. UI Test Contract (Developer → QA Hints) `[IMPLEMENTED]`
 **Описание:** Developer-агент после создания UI генерирует `.qa-hints.yaml` — структурированный контракт с селекторами, доступными элементами и возможными тест-сценариями. QA-агент читает этот файл вместо того, чтобы угадывать селекторы из code structure.
+
+**Реализация (февраль 2026):**
+- `developer.yaml`: промпт instruction для генерации `.qa-hints.yaml`
+- `qa_helpers.py`: `extract_qa_hints()` + `format_qa_hints_for_prompt()`
+- `qa_exploration.py`: извлечение hints и передача в промпт
+- `qa_browser.py`: аналогично для Phase 1 (scripted E2E)
+- `qa.yaml`: `generate_exploration_plan` и `generate_browser_test` промпты принимают `{qa_hints}`
+- 12 unit-тестов (658 всего)
 
 **Проблема:** Сейчас QA-агент генерирует exploration plan на основе code structure — сжатой сводки файлов. При этом LLM вынужден **угадывать** placeholder-текст, текст кнопок, CSS-классы. Это ведёт к неверным селекторам (TimeoutError, strict mode violations).
 

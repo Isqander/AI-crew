@@ -18,6 +18,8 @@ from .qa_helpers import (
     parse_defects,
     extract_code_block,
     summarize_code_files,
+    extract_qa_hints,
+    format_qa_hints_for_prompt,
 )
 from ..tools.browser_runner import build_runner_script, detect_framework_defaults
 
@@ -78,7 +80,15 @@ def _generate_browser_test(agent: QAAgent, state: DevTeamState, config=None) -> 
     ) if user_stories else "No user stories available"
 
     tech_stack = ", ".join(state.get("tech_stack", [])) or "Unknown"
-    code_structure = summarize_code_files(state.get("code_files", []))
+    code_files = state.get("code_files", [])
+    code_structure = summarize_code_files(code_files)
+
+    # Extract QA hints (UI Test Contract)
+    qa_hints = extract_qa_hints(code_files)
+    qa_hints_text = format_qa_hints_for_prompt(qa_hints) if qa_hints else ""
+    if qa_hints:
+        logger.info("qa.generate_browser_test.qa_hints_found",
+                     selectors=len(qa_hints.get("selectors", {})))
 
     try:
         response = agent._invoke_chain(chain, {
@@ -86,6 +96,7 @@ def _generate_browser_test(agent: QAAgent, state: DevTeamState, config=None) -> 
             "user_stories": stories_text,
             "tech_stack": tech_stack,
             "code_structure": code_structure,
+            "qa_hints": qa_hints_text,
         }, config=config)
 
         return extract_code_block(response.content)

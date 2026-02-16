@@ -77,6 +77,9 @@ generate_browser_test: |
   Code Structure:
   {code_structure}
   
+  QA Hints (UI Test Contract from Developer — use if available):
+  {qa_hints}
+  
   Generate a Python Playwright test file (pytest-playwright style) that:
   1. Tests the MOST CRITICAL user flows (navigation, forms, buttons)
   2. Takes screenshots at key steps:  page.screenshot(path="/screenshots/<name>.png")
@@ -183,9 +186,21 @@ generate_exploration_plan: |
   Code Structure:
   {code_structure}
 
+  QA Hints (UI Test Contract from Developer — use if available):
+  {qa_hints}
+
   Generate a JSON exploration plan that covers the MOST IMPORTANT user flows.
   Focus on exploratory testing — go beyond scripted E2E, test edge cases,
   verify that the UI responds correctly to user actions.
+
+  IMPORTANT — QA Hints:
+  If QA Hints are provided above, they contain EXACT selectors and test flows
+  created by the Developer who wrote the UI code. ALWAYS prefer these selectors
+  over guessing from the Code Structure. The "selectors" section maps logical
+  names to CSS selectors, element types, and labels. The "test_flows" section
+  suggests step sequences you should incorporate into your exploration plan.
+  If QA Hints are empty or not provided, derive selectors from Code Structure
+  as before.
 
   CRITICAL — Selectors:
   - Use ONLY element IDs, classes, tag names, and text content that you can

@@ -1970,6 +1970,14 @@ jobs:
 - [x] tools/__init__.py: экспорт github_actions_tools, GitHubActionsClient, get_ci_client
 - [x] 40 unit-тестов (tests/tools/test_github_actions.py): client, tools, routing, node, state, manifest, prompts, graph
 
+#### UI Test Contract (17b) `[DONE]`
+- [x] developer.yaml: промпт для генерации `.qa-hints.yaml` (селекторы + тест-флоу)
+- [x] qa_helpers.py: `extract_qa_hints()` + `format_qa_hints_for_prompt()`
+- [x] qa_exploration.py: извлечение hints и передача в промпт exploration plan
+- [x] qa_browser.py: аналогично для Phase 1 (scripted E2E)
+- [x] qa.yaml: `generate_exploration_plan` + `generate_browser_test` принимают `{qa_hints}`
+- [x] 12 unit-тестов (extract + format + edge cases)
+
 #### QA промпт-инжиниринг (Module 3.9) `[NOT STARTED]`
 - [ ] developer.yaml: генерация тестов + CI-конфиг + Dockerfile (G0 #10)
 - [ ] reviewer.yaml: проверка покрытия тестов, поиск подгонки (G0 #13)

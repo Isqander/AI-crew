@@ -48,6 +48,45 @@ implementation: |
      - Runs type checker (mypy for Python, tsc for TS) if applicable
      - Runs tests (pytest for Python, jest/vitest for JS/TS)
      - Reports test coverage
+  6. **QA Hints file** (`.qa-hints.yaml`) — a test contract for the QA agent:
+     - List every interactive UI element with its CSS selector, type, and
+       human-readable description (placeholder text, button label, etc.)
+     - Provide 2-4 short test flows (sequences of actions) that cover the
+       most important user scenarios
+     - The QA agent will use these hints to build precise Playwright tests
+       instead of guessing selectors from code
+
+     Example `.qa-hints.yaml`:
+     ```yaml
+     selectors:
+       main_input:
+         css: "#todoInput"
+         type: text
+         placeholder: "Add a new task..."
+       add_button:
+         css: "#addBtn"
+         text: "Add Task"
+         type: button
+       task_list:
+         css: "#todoList"
+         type: list
+         item_css: "#todoList li"
+       delete_button:
+         css: ".delete-btn"
+         text: "Delete"
+         note: "one per task — use li:first-child .delete-btn for the first"
+
+     test_flows:
+       add_task:
+         - action: fill
+           target: main_input
+           value: "Buy milk"
+         - action: click
+           target: add_button
+       delete_task:
+         - action: click
+           target: "li:first-child .delete-btn"
+     ```
   
   Format each file as:
   

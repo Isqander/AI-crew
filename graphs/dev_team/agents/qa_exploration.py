@@ -20,6 +20,8 @@ from .qa_helpers import (
     parse_defects,
     extract_json,
     summarize_code_files,
+    extract_qa_hints,
+    format_qa_hints_for_prompt,
 )
 from ..tools.browser_runner import detect_framework_defaults
 from ..tools.exploration_runner import (
@@ -63,12 +65,25 @@ def _generate_exploration_plan(
 
     tech_stack = state.get("tech_stack", [])
     tech_stack_str = ", ".join(tech_stack) or "Unknown"
-    code_structure = summarize_code_files(state.get("code_files", []))
+    code_files = state.get("code_files", [])
+    code_structure = summarize_code_files(code_files)
 
     # Detect default port for the plan template
-    code_files = state.get("code_files", [])
     defaults = detect_framework_defaults(tech_stack, code_files=code_files)
     app_port = defaults.get("port", 3000)
+
+    # Extract QA hints from .qa-hints.yaml (UI Test Contract)
+    qa_hints = extract_qa_hints(code_files)
+    qa_hints_text = ""
+    if qa_hints:
+        qa_hints_text = format_qa_hints_for_prompt(qa_hints)
+        logger.info(
+            "qa.generate_exploration_plan.qa_hints_found",
+            selectors=len(qa_hints.get("selectors", {})),
+            flows=len(qa_hints.get("test_flows", {})),
+        )
+    else:
+        logger.debug("qa.generate_exploration_plan.no_qa_hints")
 
     try:
         response = agent._invoke_chain(chain, {
@@ -77,6 +92,7 @@ def _generate_exploration_plan(
             "tech_stack": tech_stack_str,
             "code_structure": code_structure,
             "app_port": str(app_port),
+            "qa_hints": qa_hints_text,
         }, config=config)
 
         plan = extract_json(response.content)
