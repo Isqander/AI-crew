@@ -124,14 +124,14 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
                 sel = field.get("selector", "")
                 val = field.get("value", "")
                 if sel and val is not None:
-                    loc = _resolve_locator(page, sel)
+                    loc = _resolve_locator(page, sel, for_fill=True)
                     loc.fill(str(val), timeout=MAX_STEP_TIMEOUT * 1000)
 
         elif action == "type":
             selector = step.get("selector", "")
             value = step.get("value", "")
             if selector:
-                loc = _resolve_locator(page, selector)
+                loc = _resolve_locator(page, selector, for_fill=True)
                 loc.fill(str(value), timeout=MAX_STEP_TIMEOUT * 1000)
             else:
                 error_msg = "type action requires a selector"
@@ -258,7 +258,7 @@ def _normalize_selector(selector: str) -> str:
     return sel
 
 
-def _resolve_locator(page, selector: str):
+def _resolve_locator(page, selector: str, *, for_fill: bool = False):
     """Resolve a selector string to a Playwright locator.
 
     First normalizes common LLM mistakes (``id=``, ``class=``), then
@@ -270,6 +270,12 @@ def _resolve_locator(page, selector: str):
       - ``label=...``    → page.get_by_label(...)
       - ``testid=...``   → page.get_by_test_id(...)
       - Everything else  → page.locator(selector)  (CSS / XPath)
+
+    When *for_fill* is True (fill_form / type actions), the function
+    proactively checks whether the locator matches more than one element.
+    If so, it narrows the match to text-like inputs (excluding checkboxes,
+    radios, hidden fields, and file inputs) to prevent Playwright strict
+    mode violations.
     """
     sel = _normalize_selector(selector)
 
@@ -291,7 +297,29 @@ def _resolve_locator(page, selector: str):
                 return page.get_by_role(role_name, name=name)
             return page.get_by_role(role_name)
 
-    return page.locator(sel)
+    loc = page.locator(sel)
+
+    # Strict mode protection for fill/type actions — if the locator
+    # matches multiple elements, try to narrow to fillable inputs.
+    if for_fill:
+        try:
+            cnt = loc.count()
+            if cnt > 1:
+                narrowed = page.locator(
+                    sel + ":not([type='checkbox']):not([type='radio'])"
+                    ":not([type='hidden']):not([type='file'])"
+                )
+                nc = narrowed.count()
+                if nc == 1:
+                    return narrowed
+                if nc > 1:
+                    return narrowed.first
+                # Narrowing eliminated all matches — use first of original
+                return loc.first
+        except Exception:
+            pass
+
+    return loc
 
 
 def main() -> None:
@@ -550,26 +578,55 @@ def normalize_selector(selector: str) -> str:
     return sel
 
 
+def qualify_for_fill(selector: str) -> str:
+    """Qualify bare tag selectors that are ambiguous in fill/type contexts.
+
+    A bare ``input`` selector often matches multiple elements after DOM changes
+    (e.g. text input + checkbox), causing Playwright strict mode violations.
+
+    Conversions:
+      - ``input`` → ``input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='file'])``
+      - Other selectors pass through unchanged.
+    """
+    sel = selector.strip()
+    if sel.lower() == "input":
+        return (
+            "input:not([type='checkbox']):not([type='radio'])"
+            ":not([type='hidden']):not([type='file'])"
+        )
+    return sel
+
+
 def normalize_plan_selectors(plan: dict) -> int:
     """Normalize all selectors in an exploration plan **in-place**.
+
+    Applies two transformations:
+      1. ``normalize_selector`` — fix invalid engine prefixes (``id=``, ``class=``, etc.)
+      2. ``qualify_for_fill`` — qualify bare tag selectors in fill/type contexts
 
     Returns the number of selectors that were changed.
     """
     fixed = 0
     for step in plan.get("steps", []):
+        action = step.get("action", "")
+        is_fill = action in ("type", "fill_form")
+
         # Direct selector
         sel = step.get("selector")
         if sel:
             new_sel = normalize_selector(sel)
+            if is_fill:
+                new_sel = qualify_for_fill(new_sel)
             if new_sel != sel:
                 step["selector"] = new_sel
                 fixed += 1
 
-        # fill_form fields
+        # fill_form fields (always fill context)
         for field in step.get("fields", []):
             sel = field.get("selector")
             if sel:
                 new_sel = normalize_selector(sel)
+                new_sel = qualify_for_fill(new_sel)
                 if new_sel != sel:
                     field["selector"] = new_sel
                     fixed += 1

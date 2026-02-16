@@ -380,6 +380,72 @@ class TestNormalizePlanSelectors:
         assert normalize_plan_selectors({"steps": []}) == 0
         assert normalize_plan_selectors({}) == 0
 
+    def test_bare_input_qualified_in_fill_form(self):
+        """Bare 'input' in fill_form fields should be qualified."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        plan = {
+            "steps": [
+                {
+                    "id": "s1",
+                    "action": "fill_form",
+                    "fields": [
+                        {"selector": "input", "value": "Buy milk"},
+                    ],
+                },
+            ]
+        }
+        fixed = normalize_plan_selectors(plan)
+        assert fixed == 1
+        result_sel = plan["steps"][0]["fields"][0]["selector"]
+        assert "not([type='checkbox'])" in result_sel
+        assert result_sel.startswith("input:")
+
+    def test_bare_input_qualified_in_type_action(self):
+        """Bare 'input' in type action should be qualified."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        plan = {
+            "steps": [
+                {"id": "s1", "action": "type", "selector": "input", "value": "hello"},
+            ]
+        }
+        fixed = normalize_plan_selectors(plan)
+        assert fixed == 1
+        assert "not([type='checkbox'])" in plan["steps"][0]["selector"]
+
+    def test_bare_input_not_qualified_in_click(self):
+        """Bare 'input' in click action should NOT be qualified."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        plan = {
+            "steps": [
+                {"id": "s1", "action": "click", "selector": "input"},
+            ]
+        }
+        fixed = normalize_plan_selectors(plan)
+        assert fixed == 0
+        assert plan["steps"][0]["selector"] == "input"
+
+    def test_specific_input_not_qualified_in_fill(self):
+        """Already-specific '#todoInput' in fill_form should NOT be changed."""
+        from dev_team.tools.exploration_runner import normalize_plan_selectors
+
+        plan = {
+            "steps": [
+                {
+                    "id": "s1",
+                    "action": "fill_form",
+                    "fields": [
+                        {"selector": "#todoInput", "value": "task"},
+                    ],
+                },
+            ]
+        }
+        fixed = normalize_plan_selectors(plan)
+        assert fixed == 0
+        assert plan["steps"][0]["fields"][0]["selector"] == "#todoInput"
+
 
 class TestRunnerTemplateContainsNormalizer:
     """Verify that the generated runner script includes _normalize_selector."""
@@ -423,6 +489,98 @@ class TestRunnerTemplateContainsNormalizer:
         assert "EXPLORATION_REPORT_START" in script
         assert "startup_error" in script
         assert "failure_report" in script
+
+    def test_template_has_for_fill_parameter(self):
+        """Runner template _resolve_locator should accept for_fill parameter."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner(app_command="python main.py", app_port=8000)
+        assert "for_fill" in script
+        assert "for_fill=True" in script
+        # Strict mode narrowing logic
+        assert "not([type='checkbox'])" in script
+        assert "not([type='radio'])" in script
+
+    def test_template_fill_form_uses_for_fill(self):
+        """fill_form and type actions should call _resolve_locator with for_fill=True."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner()
+        # Both fill_form and type actions should use for_fill=True
+        assert "_resolve_locator(page, sel, for_fill=True)" in script
+        assert "_resolve_locator(page, selector, for_fill=True)" in script
+
+
+# ==================================================================
+# 2c. Qualify-for-fill (host-side bare selector qualification)
+# ==================================================================
+
+
+class TestQualifyForFill:
+    """Test qualify_for_fill() — makes bare selectors safe for fill/type."""
+
+    def test_bare_input_qualified(self):
+        """Bare 'input' should be qualified to exclude checkboxes/radios/hidden/file."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        result = qualify_for_fill("input")
+        assert "not([type='checkbox'])" in result
+        assert "not([type='radio'])" in result
+        assert "not([type='hidden'])" in result
+        assert "not([type='file'])" in result
+        assert result.startswith("input:")
+
+    def test_bare_input_case_insensitive(self):
+        """'INPUT', 'Input' should also be qualified."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        assert qualify_for_fill("INPUT").startswith("input:")
+        assert qualify_for_fill("Input").startswith("input:")
+
+    def test_bare_input_with_spaces(self):
+        """' input ' should be trimmed and qualified."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        result = qualify_for_fill("  input  ")
+        assert "not([type='checkbox'])" in result
+
+    def test_qualified_input_passthrough(self):
+        """Already-qualified 'input[type=text]' should pass through."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        assert qualify_for_fill("input[type='text']") == "input[type='text']"
+
+    def test_css_input_with_id_passthrough(self):
+        """'#todoInput' should pass through unchanged."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        assert qualify_for_fill("#todoInput") == "#todoInput"
+
+    def test_input_with_class_passthrough(self):
+        """'input.my-class' should pass through unchanged."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        assert qualify_for_fill("input.my-class") == "input.my-class"
+
+    def test_textarea_passthrough(self):
+        """'textarea' is always fillable, passes through unchanged."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        assert qualify_for_fill("textarea") == "textarea"
+
+    def test_button_passthrough(self):
+        """'button' should pass through unchanged (not a fill target)."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        assert qualify_for_fill("button") == "button"
+
+    def test_semantic_selector_passthrough(self):
+        """Playwright semantic selectors pass through unchanged."""
+        from dev_team.tools.exploration_runner import qualify_for_fill
+
+        assert qualify_for_fill("placeholder=Email") == "placeholder=Email"
+        assert qualify_for_fill("text=Submit") == "text=Submit"
+        assert qualify_for_fill("role=textbox") == "role=textbox"
 
 
 # ==================================================================

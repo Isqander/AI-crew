@@ -93,8 +93,12 @@ generate_browser_test: |
     page.get_by_placeholder("Enter email"), page.get_by_label("Email")
   - For CSS selectors use standard syntax: page.locator("#my-id"), page.locator(".my-class")
   - NEVER use page.locator("id=...") or page.locator("class=...") — these are invalid!
-  - If you cannot determine the exact selector from the code, use generic selectors
-    (e.g. page.locator("button"), page.locator("input"))
+  - NEVER use bare page.locator("input") for fill/type operations!
+    After DOM changes (e.g. checkboxes appear), bare "input" matches multiple elements
+    causing strict mode violations. Use specific selectors:
+    page.get_by_placeholder("..."), page.locator("#inputId"), page.locator("input[type='text']")
+  - If you cannot determine the exact selector from the code, prefer semantic selectors
+    (get_by_placeholder, get_by_label, get_by_role) over bare CSS tags
 
   Rules:
   - Use pytest-playwright fixtures (page, browser)
@@ -198,8 +202,13 @@ generate_exploration_plan: |
   - NEVER use "id=..." or "class=..." as selectors! These are NOT valid.
     Use CSS syntax instead: "#element-id" (not "id=element-id"),
     ".css-class" (not "class=css-class")
-  - If you cannot determine the exact selector, use generic CSS selectors:
-    "button", "input", "a", "form", "h1"
+  - NEVER use bare "input" or "textarea" as selectors for fill_form or type actions!
+    After interactions change the DOM (e.g. adding a checkbox), a bare "input" will
+    match MULTIPLE elements and cause a strict mode violation.
+    Always use a specific selector: "#todoInput", "placeholder=Enter task...",
+    "input[type='text']", or "role=textbox" instead of bare "input".
+  - If you cannot determine the exact selector, prefer semantic selectors
+    (placeholder=, label=, role=) over bare CSS tags
 
   IMPORTANT: Do NOT include "base_url" in your plan — it is set automatically
   from the detected framework port ({app_port}). Only generate "name" and "steps".
