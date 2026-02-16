@@ -217,6 +217,19 @@ def run_exploration_tests(agent: QAAgent, state: DevTeamState, config=None) -> d
         logger.warning("qa.test_explore.skip", reason="empty_plan")
         return make_explore_skip_result("LLM failed to generate exploration plan")
 
+    # Override base_url — never trust LLM-generated port.
+    # The exploration_runner also enforces APP_PORT, but we fix the plan
+    # here too so that validation and logging show the correct URL.
+    defaults = detect_framework_defaults(tech_stack, code_files=code_files)
+    correct_base_url = f"http://localhost:{defaults['port']}"
+    if plan.get("base_url") != correct_base_url:
+        logger.info(
+            "qa.test_explore.override_base_url",
+            llm_url=plan.get("base_url"),
+            correct_url=correct_base_url,
+        )
+        plan["base_url"] = correct_base_url
+
     # ── 2. Validate plan ──
     validation_errors = validate_exploration_plan(plan)
     if validation_errors:

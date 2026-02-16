@@ -965,7 +965,11 @@ class TestQANodeWithExploration:
     """Test the qa_agent() node function with exploration."""
 
     def test_qa_node_calls_explore_when_enabled(self):
-        """qa_agent should call test_explore when USE_BROWSER_EXPLORATION=True and has_ui."""
+        """qa_agent should call test_explore (not test_ui) when USE_BROWSER_EXPLORATION=True.
+
+        Phase 2 (exploration) supersedes Phase 1 (scripted E2E) — test_ui is
+        skipped when exploration is enabled (see qa.py: ``not USE_BROWSER_EXPLORATION``).
+        """
         with patch("dev_team.agents.qa.get_qa_agent") as mock_get, \
              patch("dev_team.agents.qa.USE_BROWSER_TESTING", True), \
              patch("dev_team.agents.qa.USE_BROWSER_EXPLORATION", True):
@@ -973,17 +977,14 @@ class TestQANodeWithExploration:
             mock_agent.has_ui.return_value = True
 
             code_result = {"test_results": {"approved": True}, "issues_found": [], "next_agent": "git_commit"}
-            browser_result = {"browser_test_results": {"test_status": "pass"}, "issues_found": []}
             explore_result = {"browser_test_results": {"test_status": "pass", "mode": "guided_exploration"}, "issues_found": []}
 
             mock_agent.test_code.return_value = code_result
-            mock_agent.test_ui.return_value = browser_result
             mock_agent.test_explore.return_value = explore_result
 
-            # merge_results called twice: once for browser, once for exploration
-            merged_after_browser = {**code_result, "browser_test_results": browser_result["browser_test_results"]}
-            merged_after_explore = {**merged_after_browser, "browser_test_results": explore_result["browser_test_results"]}
-            mock_agent.merge_results.side_effect = [merged_after_browser, merged_after_explore]
+            # merge_results called once: only for exploration (test_ui is skipped)
+            merged_after_explore = {**code_result, "browser_test_results": explore_result["browser_test_results"]}
+            mock_agent.merge_results.return_value = merged_after_explore
 
             mock_get.return_value = mock_agent
 
@@ -991,9 +992,9 @@ class TestQANodeWithExploration:
             result = qa_agent({"tech_stack": ["React"], "code_files": []})
 
             mock_agent.test_code.assert_called_once()
-            mock_agent.test_ui.assert_called_once()
+            mock_agent.test_ui.assert_not_called()  # Superseded by exploration
             mock_agent.test_explore.assert_called_once()
-            assert mock_agent.merge_results.call_count == 2
+            assert mock_agent.merge_results.call_count == 1
 
     def test_qa_node_skips_explore_when_disabled(self):
         """qa_agent should NOT call test_explore when USE_BROWSER_EXPLORATION=False."""

@@ -340,7 +340,19 @@ class TestQAAgentHelpers:
         commands = QAAgent._build_commands("python", files)
         assert any("py_compile" in cmd for cmd in commands)
 
-    def test_build_commands_javascript(self):
+    def test_build_commands_javascript_with_package_json(self):
+        from dev_team.agents.qa import QAAgent
+
+        files = [
+            {"path": "index.js", "content": "console.log(1)"},
+            {"path": "test.js", "content": "test('x', () => {})"},
+            {"path": "package.json", "content": '{"name": "test"}'},
+        ]
+        commands = QAAgent._build_commands("javascript", files)
+        assert any("jest" in cmd or "vitest" in cmd for cmd in commands)
+
+    def test_build_commands_javascript_no_package_json(self):
+        """Without package.json, JS test files get node --check (syntax check)."""
         from dev_team.agents.qa import QAAgent
 
         files = [
@@ -348,7 +360,7 @@ class TestQAAgentHelpers:
             {"path": "test.js", "content": "test('x', () => {})"},
         ]
         commands = QAAgent._build_commands("javascript", files)
-        assert any("jest" in cmd or "vitest" in cmd for cmd in commands)
+        assert any("node --check" in cmd for cmd in commands)
 
     def test_build_commands_go(self):
         from dev_team.agents.qa import QAAgent

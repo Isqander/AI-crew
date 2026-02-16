@@ -105,9 +105,9 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
     try:
         if action == "navigate":
             url = step.get("url", "/")
-            base_url = step.get("_base_url", "http://localhost:{app_port}")
+            nav_base = step.get("_base_url", f"http://localhost:{{APP_PORT}}")
             if url.startswith("/"):
-                url = base_url.rstrip("/") + url
+                url = nav_base.rstrip("/") + url
             page.goto(url, wait_until="domcontentloaded", timeout=MAX_STEP_TIMEOUT * 1000)
 
         elif action == "click":
@@ -305,9 +305,12 @@ def main() -> None:
 
     plan_name = plan.get("name", "Unnamed Exploration")
     steps = plan.get("steps", [])
-    base_url = plan.get("base_url", f"http://localhost:{{APP_PORT}}")
+    # base_url is ALWAYS derived from APP_PORT (set by QA agent from
+    # detect_framework_defaults).  The LLM-generated plan may contain a
+    # wrong base_url — we ignore it.
+    base_url = f"http://localhost:{{APP_PORT}}"
 
-    print(f"[exploration] Plan: {{plan_name}} ({{len(steps)}} steps)")
+    print(f"[exploration] Plan: {{plan_name}} ({{len(steps)}} steps, base_url={{base_url}})")
 
     # ── 5. Execute steps with Playwright ────────────────────────────
     from playwright.sync_api import sync_playwright

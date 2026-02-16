@@ -187,10 +187,12 @@ generate_exploration_plan: |
   - If you cannot determine the exact selector, use generic selectors:
     "button", "input", "a"
 
+  IMPORTANT: Do NOT include "base_url" in your plan — it is set automatically
+  from the detected framework port ({app_port}). Only generate "name" and "steps".
+
   Plan format (return ONLY valid JSON, no markdown fences):
   {{
     "name": "Exploration: <brief description>",
-    "base_url": "http://localhost:{app_port}",
     "steps": [
       {{
         "id": "step_1",
