@@ -34,7 +34,7 @@ class PipelineTestState(TypedDict):
     architecture: NotRequired[dict]
 
     # Lint
-    lint_status: NotRequired[str]       # "clean", "issues", "error", "skipped"
+    lint_status: NotRequired[str]       # "clean", "warnings", "issues", "error", "skipped"
     lint_log: NotRequired[str]
     lint_iteration_count: NotRequired[int]
 

@@ -105,8 +105,10 @@ class DevTeamState(TypedDict):
     infra_files: NotRequired[list[dict]]         # [{path, content}]
 
     # === Wave 2: Lint Check ===
-    lint_status: NotRequired[str]                # "clean", "issues", "error", "skipped"
+    lint_status: NotRequired[str]                # "clean", "warnings", "issues", "error", "skipped"
     lint_log: NotRequired[str]                   # Lint output (ruff/eslint/go vet)
+    lint_warnings: NotRequired[list[str]]        # Non-blocking lint findings
+    lint_errors: NotRequired[list[str]]          # Blocking lint findings
     lint_iteration_count: NotRequired[int]       # Dev↔Lint loop counter
 
     # === Wave 2: CI/CD (Module 3.8) ===

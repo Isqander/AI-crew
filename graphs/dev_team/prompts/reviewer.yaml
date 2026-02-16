@@ -40,6 +40,9 @@ code_review: |
   
   Code Files:
   {code_files}
+
+  Non-blocking Lint Warnings (context only; do not block release by themselves):
+  {lint_warnings}
   
   Please provide:
   1. Overall assessment (Approved / Needs Changes / Rejected)
@@ -47,6 +50,7 @@ code_review: |
   3. Suggestions for improvement
   4. Security concerns (if any)
   5. Missing test coverage
+  6. Whether non-blocking lint warnings hide real maintainability risks
   
   Format:
   

@@ -304,10 +304,18 @@ pytest tests/test_agents.py::TestDeveloperAgent -v
 ### Текущий флоу:
 
 ```
-START → PM → Analyst → Architect → Developer → QA → Git Commit → END
-                ↓          ↓                      ↓
-         Clarification  Clarification      back to Developer
+START → PM → Analyst → Architect → Developer → Lint → Security → QA Gate → Reviewer → Git Commit → END
+                ↓          ↓                                  ↓              ↓
+         Clarification  Clarification                    back to Developer  back to Developer
 ```
+
+`QA Gate` — это рантайм-проверка (sandbox/browser) перед code review:
+- PASS (green gate) → `Reviewer`
+- FAIL → `Developer`
+
+`Lint` поддерживает non-blocking режим:
+- `issues` (blocking) → назад в `Developer`
+- `warnings` (non-blocking) → не блокирует флоу, но передаётся в контекст `Reviewer`
 
 ### Пример: Добавить параллельную проверку
 

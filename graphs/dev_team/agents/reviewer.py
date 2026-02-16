@@ -73,13 +73,16 @@ class ReviewerAgent(BaseAgent):
 
         code_files = state.get("code_files", [])
         requirements = state.get("requirements", [])
+        lint_warnings = state.get("lint_warnings", [])
 
         code_files_str = format_code_files(code_files)
+        lint_warnings_str = "\n".join(f"- {w}" for w in lint_warnings[:30]) if lint_warnings else "None"
 
         response = self._invoke_chain(chain, {
             "task": state["task"],
             "requirements": "\n".join(f"- {r}" for r in requirements),
             "code_files": code_files_str,
+            "lint_warnings": lint_warnings_str,
         }, config=config)
 
         content = response.content
@@ -93,6 +96,7 @@ class ReviewerAgent(BaseAgent):
                     "task": state["task"],
                     "requirements": "\n".join(f"- {r}" for r in requirements),
                     "code_files": code_files_str,
+                    "lint_warnings": lint_warnings_str,
                 }, ReviewerResponse,
                 config=config,
                 fallback_parser=self._parse_review_fallback,

@@ -489,7 +489,7 @@ class TestRouteAfterReviewer:
         from dev_team.graph import route_after_reviewer
 
         state = {"issues_found": [], "test_results": {"approved": True}}
-        assert route_after_reviewer(state) == "qa"
+        assert route_after_reviewer(state) == "git_commit"
 
     def test_not_approved_to_pm(self):
         from dev_team.graph import route_after_reviewer
@@ -505,19 +505,19 @@ class TestRouteAfterQA:
         from dev_team.graph import route_after_qa
 
         state = {"test_results": {"approved": True}, "sandbox_results": {"exit_code": 0}}
-        assert route_after_qa(state) == "git_commit"
+        assert route_after_qa(state) == "reviewer"
 
     def test_skipped_to_git_commit(self):
         from dev_team.graph import route_after_qa
 
         state = {"test_results": {"approved": True, "skipped": True}}
-        assert route_after_qa(state) == "git_commit"
+        assert route_after_qa(state) == "reviewer"
 
     def test_exit_code_0_fallback(self):
         from dev_team.graph import route_after_qa
 
         state = {"test_results": {}, "sandbox_results": {"exit_code": 0}}
-        assert route_after_qa(state) == "git_commit"
+        assert route_after_qa(state) == "reviewer"
 
     def test_failed_to_developer(self):
         from dev_team.graph import route_after_qa

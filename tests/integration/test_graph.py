@@ -84,15 +84,15 @@ class TestGraphRouting:
 
         assert result == "developer"
 
-    def test_route_after_reviewer_to_qa(self):
-        """Test routing from Reviewer to QA sandbox when approved."""
+    def test_route_after_reviewer_to_git_commit(self):
+        """Test routing from Reviewer to git_commit when approved."""
         state = create_initial_state(task="Test")
         state["issues_found"] = []
         state["test_results"] = {"approved": True}
 
         result = route_after_reviewer(state)
 
-        assert result == "qa"
+        assert result == "git_commit"
 
     def test_route_after_reviewer_to_pm(self):
         """Test routing from Reviewer to PM for final review."""
@@ -104,14 +104,14 @@ class TestGraphRouting:
 
         assert result == "pm_final"
 
-    def test_route_after_qa_to_git_commit(self):
-        """Test routing from QA to git_commit when approved."""
+    def test_route_after_qa_to_reviewer(self):
+        """Test routing from QA to reviewer when approved."""
         state = create_initial_state(task="Test")
         state["test_results"] = {"approved": True}
 
         result = route_after_qa(state)
 
-        assert result == "git_commit"
+        assert result == "reviewer"
 
     def test_route_after_qa_to_developer(self):
         """Test routing from QA to developer when tests fail."""
@@ -130,7 +130,7 @@ class TestGraphRouting:
 
         result = route_after_qa(state)
 
-        assert result == "git_commit"
+        assert result == "reviewer"
 
 
 class TestGraphNodes:
@@ -307,11 +307,11 @@ class TestRouteAfterDeveloper:
 
     @patch("graphs.dev_team.graph.USE_LINT_CHECK", True)
     def test_reviewer_fix_loop_skips_lint(self):
-        """During reviewer fix loops (review_iteration_count > 0), skip lint."""
+        """Lint runs on every iteration, including reviewer fix loops."""
         state = create_initial_state(task="Test")
         state["review_iteration_count"] = 1
         result = route_after_developer(state)
-        assert result in ("security_review", "reviewer")
+        assert result == "lint_check"
 
     @patch("graphs.dev_team.graph.USE_LINT_CHECK", False)
     @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", True)
@@ -323,11 +323,11 @@ class TestRouteAfterDeveloper:
 
     @patch("graphs.dev_team.graph.USE_LINT_CHECK", False)
     @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
-    def test_lint_and_security_disabled_goes_to_reviewer(self):
-        """When both lint and security are disabled, goes to reviewer."""
+    def test_lint_and_security_disabled_goes_to_qa(self):
+        """When both lint and security are disabled, goes to QA gate."""
         state = create_initial_state(task="Test")
         result = route_after_developer(state)
-        assert result == "reviewer"
+        assert result == "qa"
 
 
 class TestRouteAfterLint:
@@ -343,11 +343,11 @@ class TestRouteAfterLint:
 
     @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
     def test_lint_clean_no_security_goes_to_reviewer(self):
-        """Clean lint, no security → reviewer."""
+        """Clean lint, no security → QA gate."""
         state = create_initial_state(task="Test")
         state["lint_status"] = "clean"
         result = route_after_lint(state)
-        assert result == "reviewer"
+        assert result == "qa"
 
     def test_lint_issues_goes_to_developer(self):
         """Lint issues → developer (to fix)."""
@@ -368,28 +368,28 @@ class TestRouteAfterLint:
 
     @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
     def test_lint_issues_max_iterations_no_security(self):
-        """After MAX_LINT_ITERATIONS with no security, goes to reviewer."""
+        """After MAX_LINT_ITERATIONS with no security, goes to QA gate."""
         state = create_initial_state(task="Test")
         state["lint_status"] = "issues"
         state["lint_iteration_count"] = MAX_LINT_ITERATIONS
         result = route_after_lint(state)
-        assert result == "reviewer"
+        assert result == "qa"
 
     @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
     def test_lint_skipped_goes_to_reviewer(self):
-        """Skipped lint → reviewer."""
+        """Skipped lint → QA gate."""
         state = create_initial_state(task="Test")
         state["lint_status"] = "skipped"
         result = route_after_lint(state)
-        assert result == "reviewer"
+        assert result == "qa"
 
     @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
     def test_lint_error_goes_to_reviewer(self):
-        """Lint error → reviewer (don't block on infra issues)."""
+        """Lint error → QA gate (don't block on infra issues)."""
         state = create_initial_state(task="Test")
         state["lint_status"] = "error"
         result = route_after_lint(state)
-        assert result == "reviewer"
+        assert result == "qa"
 
 
 # ==================================================================

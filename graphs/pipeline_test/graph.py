@@ -29,7 +29,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from pipeline_test.state import PipelineTestState
 from dev_team.agents.developer import developer_agent as _developer_agent
 from dev_team.agents.qa import qa_agent as _qa_agent
-from dev_team.graph import lint_check_node as _lint_check_node, _detect_language
+from dev_team.graph import lint_check_node as _lint_check_node
 from common.logging import configure_logging
 
 configure_logging()
@@ -118,7 +118,7 @@ def route_after_lint(
     lint_status = state.get("lint_status", "")
     lint_iter = state.get("lint_iteration_count", 0)
 
-    if lint_status in ("clean", "skipped", "error"):
+    if lint_status in ("clean", "warnings", "skipped", "error"):
         logger.info("pipeline_test.route_lint", decision="qa", lint_status=lint_status)
         return "qa"
 
@@ -202,6 +202,8 @@ def _build_report(state: PipelineTestState) -> str:
     sections.append(f"Итерации Dev↔Lint: {lint_iter}")
     if lint_status == "clean":
         sections.append("Результат: Код прошёл проверку линтером ✓")
+    elif lint_status == "warnings":
+        sections.append("Результат: Есть некритичные предупреждения линтера (non-blocking)")
     elif lint_status == "issues":
         sections.append(f"Результат: Lint issues остались после {lint_iter} попыток фикса")
     elif lint_status == "error":
