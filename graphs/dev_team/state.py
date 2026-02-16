@@ -104,6 +104,11 @@ class DevTeamState(TypedDict):
     deploy_url: NotRequired[str]                 # "https://app.31.59.58.143.nip.io"
     infra_files: NotRequired[list[dict]]         # [{path, content}]
 
+    # === Wave 2: Lint Check ===
+    lint_status: NotRequired[str]                # "clean", "issues", "error", "skipped"
+    lint_log: NotRequired[str]                   # Lint output (ruff/eslint/go vet)
+    lint_iteration_count: NotRequired[int]       # Dev↔Lint loop counter
+
     # === Wave 2: CI/CD (Module 3.8) ===
     ci_status: NotRequired[str]                  # "pending", "running", "success", "failure", "timeout"
     ci_log: NotRequired[str]                     # CI output / failure summary

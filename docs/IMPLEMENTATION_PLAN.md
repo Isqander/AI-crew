@@ -1978,6 +1978,18 @@ jobs:
 - [x] qa.yaml: `generate_exploration_plan` + `generate_browser_test` принимают `{qa_hints}`
 - [x] 12 unit-тестов (extract + format + edge cases)
 
+#### Lint Check Node + CI по-умолчанию `[DONE]`
+- [x] USE_CI_INTEGRATION: включён по-умолчанию (`true`)
+- [x] USE_LINT_CHECK: новый env var, включён по-умолчанию
+- [x] state.py: `lint_status`, `lint_log`, `lint_iteration_count`
+- [x] graph.py: `lint_check_node` — запуск ruff/eslint/go-vet в sandbox
+- [x] graph.py: `_detect_language()` — определение языка из tech_stack/code_files
+- [x] graph.py: `route_after_lint` — Dev↔Lint loop (max 3 итерации)
+- [x] graph.py: `route_after_developer` обновлён: Developer → lint → security/reviewer
+- [x] developer.yaml: `fix_lint` промпт
+- [x] developer.py: `fix_lint()`, `fix_ci()` методы + маршрутизация lint/CI/issues
+- [x] 36 unit-тестов (lint routing, CI routing, developer routing, language detection, node)
+
 #### QA промпт-инжиниринг (Module 3.9) `[NOT STARTED]`
 - [ ] developer.yaml: генерация тестов + CI-конфиг + Dockerfile (G0 #10)
 - [ ] reviewer.yaml: проверка покрытия тестов, поиск подгонки (G0 #13)

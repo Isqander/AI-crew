@@ -102,6 +102,69 @@ class DeveloperAgent(BaseAgent):
             "current_agent": "developer",
             "next_agent": "qa",
         }
+
+    def fix_ci(self, state: DevTeamState, config=None) -> dict:
+        """Fix CI/CD pipeline failures."""
+        ci_log = state.get("ci_log", "")
+        ci_status = state.get("ci_status", "")
+        logger.info("developer.fix_ci", ci_status=ci_status)
+
+        prompt = create_prompt_template(
+            self.system_prompt,
+            self.prompts["fix_ci"]
+        )
+        chain = prompt | self.llm
+
+        response = self._invoke_chain(chain, {
+            "ci_status": ci_status,
+            "ci_log": ci_log or "(no CI output)",
+        }, config=config)
+
+        content = response.content
+        code_files = self._parse_code_files(content)
+        logger.debug("developer.fix_ci.done", code_files=len(code_files))
+
+        existing_files = {f["path"]: f for f in state.get("code_files", [])}
+        for new_file in code_files:
+            existing_files[new_file["path"]] = new_file
+
+        return {
+            "messages": [AIMessage(content=content, name="developer")],
+            "code_files": list(existing_files.values()),
+            "ci_status": "",  # Clear CI status after attempting fix
+            "current_agent": "developer",
+        }
+
+    def fix_lint(self, state: DevTeamState, config=None) -> dict:
+        """Fix lint issues found by the lint_check node."""
+        lint_log = state.get("lint_log", "")
+        lint_iter = state.get("lint_iteration_count", 0)
+        logger.info("developer.fix_lint", lint_iteration=lint_iter)
+
+        prompt = create_prompt_template(
+            self.system_prompt,
+            self.prompts["fix_lint"]
+        )
+        chain = prompt | self.llm
+
+        response = self._invoke_chain(chain, {
+            "lint_status": state.get("lint_status", "issues"),
+            "lint_log": lint_log or "(no lint output)",
+        }, config=config)
+
+        content = response.content
+        code_files = self._parse_code_files(content)
+        logger.debug("developer.fix_lint.done", code_files=len(code_files))
+
+        existing_files = {f["path"]: f for f in state.get("code_files", [])}
+        for new_file in code_files:
+            existing_files[new_file["path"]] = new_file
+
+        return {
+            "messages": [AIMessage(content=content, name="developer")],
+            "code_files": list(existing_files.values()),
+            "current_agent": "developer",
+        }
     
     def _parse_code_files(self, content: str) -> list[CodeFile]:
         """
@@ -174,8 +237,20 @@ def developer_agent(state: DevTeamState, config=None) -> dict:
     Developer agent node function for LangGraph.
     """
     agent = get_developer_agent()
-    
-    # If there are issues to fix
+
+    # If lint issues need fixing (from lint_check node)
+    lint_status = state.get("lint_status", "")
+    if lint_status == "issues":
+        logger.debug("developer.route", action="fix_lint")
+        return agent.fix_lint(state, config=config)
+
+    # If CI failed — fix CI issues
+    ci_status = state.get("ci_status", "")
+    if ci_status in ("failure", "error"):
+        logger.debug("developer.route", action="fix_ci")
+        return agent.fix_ci(state, config=config)
+
+    # If there are issues to fix (from Reviewer/QA)
     if state.get("issues_found"):
         logger.debug("developer.route", action="fix_issues")
         return agent.fix_issues(state, config=config)

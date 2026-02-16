@@ -8,29 +8,38 @@ Graph flow::
 
     START -> PM -> Analyst -> Architect -> Developer
                      |            |              |
-                clarification  clarification   +------------------+
-                     |            |          security?        (fix loop)
-                     +--- user ---+             |                |
-                                          security_review    Reviewer
-                                                |          +----+----+
-                                             Reviewer  issues_found? approved?
-                                                          |         |
-                                                      Developer    QA (sandbox)
-                                                          |      +----+----+
-                                                    (after N)  pass?    fail?
-                                                  architect_esc  |       |
-                                                          |   git_commit Developer
-                                                    (still stuck)
-                                                  human_escalation -> Developer
+                clarification  clarification   lint_check
+                     |            |          +----+----+
+                     +--- user ---+       clean?    issues?
+                                            |          |
+                                   security/reviewer Developer (fix lint)
+                                            |
+                                         Reviewer
+                                       +----+----+
+                                  issues_found? approved?
+                                       |         |
+                                   Developer    QA (sandbox)
+                                       |      +----+----+
+                                 (after N)  pass?    fail?
+                               architect_esc  |       |
+                                       |   git_commit Developer
+                                 (still stuck)    |
+                               human_esc     ci_check (if enabled)
+                                  |         +----+----+
+                               Developer  pass?    fail?
+                                            |       |
+                                         pm_final Developer
 
 Nodes:
   pm, analyst, architect, developer, security_review — agent nodes
+  lint_check — runs linter in sandbox (Dev↔Lint loop until clean)
   reviewer — code review (was formerly "qa")
   qa — sandbox-based testing (runs code, checks results)
   clarification — HITL interrupt for user input
   architect_escalation — architect reviews repeated Reviewer failures
   human_escalation — HITL interrupt when both Dev<->Reviewer and Architect fail
   git_commit — pushes code to GitHub and creates a PR
+  ci_check — monitors GitHub Actions CI pipeline (Module 3.8)
   pm_final — PM's closing summary
 """
 
@@ -121,31 +130,194 @@ def route_after_clarification(state: DevTeamState) -> Literal["analyst", "archit
 MAX_REVIEW_ITERATIONS_BEFORE_ARCHITECT = 3
 MAX_REVIEW_ITERATIONS_BEFORE_HUMAN = 3  # After architect already escalated once
 
+# Maximum Dev<->Lint iterations before forcing through
+MAX_LINT_ITERATIONS = 3
+
 # Security agent: enabled by env var or manifest parameter
 USE_SECURITY_AGENT = os.getenv("USE_SECURITY_AGENT", "true").lower() in ("true", "1", "yes")
 
 # QA sandbox agent: enabled by env var (can be disabled when sandbox is unavailable)
 USE_QA_SANDBOX = os.getenv("USE_QA_SANDBOX", "true").lower() in ("true", "1", "yes")
 
-# CI/CD integration: enabled by env var (Module 3.8)
-USE_CI_INTEGRATION = os.getenv("USE_CI_INTEGRATION", "false").lower() in ("true", "1", "yes")
+# CI/CD integration: enabled by default (Module 3.8)
+USE_CI_INTEGRATION = os.getenv("USE_CI_INTEGRATION", "true").lower() in ("true", "1", "yes")
+
+# Lint check: enabled by env var (requires sandbox)
+USE_LINT_CHECK = os.getenv("USE_LINT_CHECK", "true").lower() in ("true", "1", "yes")
 
 
 def route_after_developer(
     state: DevTeamState,
-) -> Literal["security_review", "reviewer"]:
-    """Router: After developer, optionally run security review before Reviewer.
+) -> Literal["lint_check", "security_review", "reviewer"]:
+    """Router: After developer, run lint check (if enabled) before Reviewer.
 
-    Security review is enabled when ``USE_SECURITY_AGENT`` is True.
-    When the Dev<->Reviewer loop is iterating (review_iteration_count > 0),
-    security review is skipped to avoid redundant re-scans.
+    Flow: Developer → lint_check → (clean → security/reviewer, issues → developer).
+    Lint is skipped during Dev↔Reviewer fix loops (review_iteration_count > 0)
+    to avoid re-linting on reviewer feedback fixes.
     """
     review_iter = state.get("review_iteration_count", 0)
+
+    # Run lint on first pass and during lint fix loops
+    if USE_LINT_CHECK and review_iter == 0:
+        logger.info("router.after_developer", decision="lint_check")
+        return "lint_check"
+
+    # Skip lint during reviewer fix loops — go straight to security/reviewer
     if USE_SECURITY_AGENT and review_iter == 0:
         logger.info("router.after_developer", decision="security_review")
         return "security_review"
     logger.info("router.after_developer", decision="reviewer", review_iter=review_iter)
     return "reviewer"
+
+
+def _detect_language(state: DevTeamState) -> str:
+    """Detect primary language from tech_stack or code_files."""
+    tech_stack = state.get("tech_stack", [])
+    for t in tech_stack:
+        low = t.lower()
+        if "python" in low or "fastapi" in low or "flask" in low or "django" in low:
+            return "python"
+        if "node" in low or "express" in low or "next" in low or "react" in low:
+            return "javascript"
+        if "typescript" in low or "ts" in low:
+            return "typescript"
+        if "go" in low or "golang" in low:
+            return "go"
+        if "rust" in low:
+            return "rust"
+
+    # Fallback: check file extensions
+    for f in state.get("code_files", []):
+        path = (f.get("path") or "").lower()
+        if path.endswith(".py"):
+            return "python"
+        if path.endswith((".js", ".jsx")):
+            return "javascript"
+        if path.endswith((".ts", ".tsx")):
+            return "typescript"
+        if path.endswith(".go"):
+            return "go"
+        if path.endswith(".rs"):
+            return "rust"
+
+    return "python"
+
+
+def lint_check_node(state: DevTeamState, config=None) -> dict:
+    """Lint check node — runs linter in sandbox on generated code.
+
+    Uses ``run_lint`` tool under the hood (ruff for Python, eslint for JS/TS,
+    go vet for Go). Writes lint_status / lint_log into state.
+    """
+    from dev_team.tools.sandbox import SandboxClient, _auto_lint_command, _lint_install_commands
+
+    code_files = state.get("code_files", [])
+    if not code_files:
+        logger.info("lint_check.skip", reason="no code files")
+        return {
+            "lint_status": "skipped",
+            "lint_log": "Lint skipped: no code files.",
+            "current_agent": "lint_check",
+        }
+
+    language = _detect_language(state)
+    lint_command = _auto_lint_command(language)
+    install_cmds = _lint_install_commands(language)
+    commands = install_cmds + [f"{lint_command} 2>&1 || true"]
+
+    sandbox_files = [
+        {"path": f["path"], "content": f["content"]}
+        for f in code_files
+        if f.get("path") and f.get("content")
+    ]
+
+    logger.info("lint_check.start", language=language, files=len(sandbox_files),
+                lint_command=lint_command)
+
+    try:
+        client = SandboxClient()
+        result = client.execute(
+            language=language,
+            code_files=sandbox_files,
+            commands=commands,
+            timeout=60,
+            memory_limit="128m",
+        )
+
+        exit_code = result.get("exit_code", -1)
+        stdout = result.get("stdout", "").strip()
+        stderr = result.get("stderr", "").strip()
+        lint_output = stdout
+        if stderr:
+            lint_output += f"\n{stderr}" if lint_output else stderr
+
+        # Determine lint status
+        if result.get("error"):
+            # Sandbox infrastructure error (connection refused, timeout, etc.)
+            lint_status = "error"
+            lint_log = f"Lint check error: {result['error']}"
+        elif exit_code == 0:
+            lint_status = "clean"
+            lint_log = "Lint: CLEAN — no issues found."
+        else:
+            lint_status = "issues"
+            lint_log = f"Lint: ISSUES FOUND (exit_code={exit_code})\n\n{lint_output[:3000]}"
+
+        lint_iter = state.get("lint_iteration_count", 0) + 1
+        logger.info("lint_check.done", status=lint_status, exit_code=exit_code,
+                     lint_iteration=lint_iter)
+
+        return {
+            "lint_status": lint_status,
+            "lint_log": lint_log,
+            "lint_iteration_count": lint_iter,
+            "current_agent": "lint_check",
+        }
+
+    except Exception as exc:
+        logger.error("lint_check.error", error=str(exc)[:300])
+        return {
+            "lint_status": "error",
+            "lint_log": f"Lint check error: {str(exc)[:300]}",
+            "lint_iteration_count": state.get("lint_iteration_count", 0) + 1,
+            "current_agent": "lint_check",
+        }
+
+
+def route_after_lint(
+    state: DevTeamState,
+) -> Literal["developer", "security_review", "reviewer"]:
+    """Router: After lint check, decide next step.
+
+    Lint CLEAN → security_review (if enabled) or reviewer.
+    Lint ISSUES → developer (to fix lint errors).
+    After MAX_LINT_ITERATIONS → force through to reviewer (don't loop forever).
+    Lint skipped/error → proceed to reviewer.
+    """
+    lint_status = state.get("lint_status", "")
+    lint_iter = state.get("lint_iteration_count", 0)
+
+    # Clean — proceed to security/reviewer
+    if lint_status in ("clean", "skipped", "error"):
+        if USE_SECURITY_AGENT:
+            logger.info("router.after_lint", decision="security_review",
+                        lint_status=lint_status)
+            return "security_review"
+        logger.info("router.after_lint", decision="reviewer", lint_status=lint_status)
+        return "reviewer"
+
+    # Issues found — send back to developer, unless max iterations reached
+    if lint_iter >= MAX_LINT_ITERATIONS:
+        logger.warning("router.after_lint", decision="reviewer",
+                        lint_status=lint_status, lint_iter=lint_iter,
+                        reason="max_lint_iterations_reached")
+        if USE_SECURITY_AGENT:
+            return "security_review"
+        return "reviewer"
+
+    logger.info("router.after_lint", decision="developer",
+                lint_status=lint_status, lint_iter=lint_iter)
+    return "developer"
 
 
 def route_after_reviewer(
@@ -424,6 +596,8 @@ def create_graph() -> StateGraph:
     builder.add_node("analyst", analyst_agent)
     builder.add_node("architect", architect_agent)
     builder.add_node("developer", developer_agent)
+    if USE_LINT_CHECK:
+        builder.add_node("lint_check", lint_check_node)
     builder.add_node("security_review", security_agent)
     builder.add_node("reviewer", reviewer_agent)
     builder.add_node("qa", qa_agent)
@@ -461,16 +635,38 @@ def create_graph() -> StateGraph:
         }
     )
 
-    # Developer -> (security_review | reviewer)
-    # Security review runs on first pass; skipped during Dev<->Reviewer fix loops
-    builder.add_conditional_edges(
-        "developer",
-        route_after_developer,
-        {
-            "security_review": "security_review",
-            "reviewer": "reviewer",
-        }
-    )
+    # Developer -> (lint_check | security_review | reviewer)
+    # Lint check runs on first pass; skipped during Dev<->Reviewer fix loops
+    if USE_LINT_CHECK:
+        builder.add_conditional_edges(
+            "developer",
+            route_after_developer,
+            {
+                "lint_check": "lint_check",
+                "security_review": "security_review",
+                "reviewer": "reviewer",
+            }
+        )
+        # Lint check -> (developer | security_review | reviewer)
+        builder.add_conditional_edges(
+            "lint_check",
+            route_after_lint,
+            {
+                "developer": "developer",
+                "security_review": "security_review",
+                "reviewer": "reviewer",
+            }
+        )
+    else:
+        builder.add_conditional_edges(
+            "developer",
+            route_after_developer,
+            {
+                "lint_check": "security_review" if USE_SECURITY_AGENT else "reviewer",
+                "security_review": "security_review",
+                "reviewer": "reviewer",
+            }
+        )
 
     # Security review -> Reviewer (always)
     builder.add_edge("security_review", "reviewer")

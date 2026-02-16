@@ -11,10 +11,18 @@ from graphs.dev_team.graph import (
     should_clarify,
     route_after_analyst,
     route_after_architect,
+    route_after_developer,
     route_after_reviewer,
     route_after_qa,
+    route_after_lint,
+    route_after_ci,
     clarification_node,
     git_commit_node,
+    lint_check_node,
+    _detect_language,
+    USE_CI_INTEGRATION,
+    USE_LINT_CHECK,
+    MAX_LINT_ITERATIONS,
 )
 from graphs.dev_team.state import create_initial_state
 
@@ -263,3 +271,379 @@ class TestGraphCreation:
         # Graph should have required methods
         assert hasattr(graph, 'invoke')
         assert hasattr(graph, 'stream')
+
+
+# ==================================================================
+# CI Integration defaults
+# ==================================================================
+
+
+class TestCIIntegrationDefaults:
+    """Test that CI integration is enabled by default."""
+
+    def test_use_ci_integration_default_true(self):
+        """USE_CI_INTEGRATION should be True by default."""
+        assert USE_CI_INTEGRATION is True
+
+    def test_use_lint_check_default_true(self):
+        """USE_LINT_CHECK should be True by default."""
+        assert USE_LINT_CHECK is True
+
+
+# ==================================================================
+# Lint Check routing
+# ==================================================================
+
+
+class TestRouteAfterDeveloper:
+    """Test route_after_developer with lint check."""
+
+    @patch("graphs.dev_team.graph.USE_LINT_CHECK", True)
+    def test_first_pass_goes_to_lint(self):
+        """On first pass (review_iteration_count=0), route to lint_check."""
+        state = create_initial_state(task="Test")
+        result = route_after_developer(state)
+        assert result == "lint_check"
+
+    @patch("graphs.dev_team.graph.USE_LINT_CHECK", True)
+    def test_reviewer_fix_loop_skips_lint(self):
+        """During reviewer fix loops (review_iteration_count > 0), skip lint."""
+        state = create_initial_state(task="Test")
+        state["review_iteration_count"] = 1
+        result = route_after_developer(state)
+        assert result in ("security_review", "reviewer")
+
+    @patch("graphs.dev_team.graph.USE_LINT_CHECK", False)
+    @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", True)
+    def test_lint_disabled_goes_to_security(self):
+        """When lint is disabled, first pass goes to security_review."""
+        state = create_initial_state(task="Test")
+        result = route_after_developer(state)
+        assert result == "security_review"
+
+    @patch("graphs.dev_team.graph.USE_LINT_CHECK", False)
+    @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
+    def test_lint_and_security_disabled_goes_to_reviewer(self):
+        """When both lint and security are disabled, goes to reviewer."""
+        state = create_initial_state(task="Test")
+        result = route_after_developer(state)
+        assert result == "reviewer"
+
+
+class TestRouteAfterLint:
+    """Test route_after_lint routing logic."""
+
+    @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", True)
+    def test_lint_clean_goes_to_security(self):
+        """Clean lint → security_review."""
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "clean"
+        result = route_after_lint(state)
+        assert result == "security_review"
+
+    @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
+    def test_lint_clean_no_security_goes_to_reviewer(self):
+        """Clean lint, no security → reviewer."""
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "clean"
+        result = route_after_lint(state)
+        assert result == "reviewer"
+
+    def test_lint_issues_goes_to_developer(self):
+        """Lint issues → developer (to fix)."""
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "issues"
+        state["lint_iteration_count"] = 1
+        result = route_after_lint(state)
+        assert result == "developer"
+
+    @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", True)
+    def test_lint_issues_max_iterations_forces_through(self):
+        """After MAX_LINT_ITERATIONS, force through to security/reviewer."""
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "issues"
+        state["lint_iteration_count"] = MAX_LINT_ITERATIONS
+        result = route_after_lint(state)
+        assert result == "security_review"
+
+    @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
+    def test_lint_issues_max_iterations_no_security(self):
+        """After MAX_LINT_ITERATIONS with no security, goes to reviewer."""
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "issues"
+        state["lint_iteration_count"] = MAX_LINT_ITERATIONS
+        result = route_after_lint(state)
+        assert result == "reviewer"
+
+    @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
+    def test_lint_skipped_goes_to_reviewer(self):
+        """Skipped lint → reviewer."""
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "skipped"
+        result = route_after_lint(state)
+        assert result == "reviewer"
+
+    @patch("graphs.dev_team.graph.USE_SECURITY_AGENT", False)
+    def test_lint_error_goes_to_reviewer(self):
+        """Lint error → reviewer (don't block on infra issues)."""
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "error"
+        result = route_after_lint(state)
+        assert result == "reviewer"
+
+
+# ==================================================================
+# Lint check node
+# ==================================================================
+
+
+class TestLintCheckNode:
+    """Test lint_check_node function."""
+
+    def test_no_code_files_skipped(self):
+        """No code files → lint skipped."""
+        state = create_initial_state(task="Test")
+        state["code_files"] = []
+        result = lint_check_node(state)
+        assert result["lint_status"] == "skipped"
+
+    @patch("dev_team.tools.sandbox.SandboxClient")
+    def test_lint_clean(self, MockSandboxClient):
+        """Sandbox returns exit_code=0 → lint clean."""
+        mock_client = MockSandboxClient.return_value
+        mock_client.execute.return_value = {
+            "exit_code": 0,
+            "stdout": "All checks passed!",
+            "stderr": "",
+        }
+
+        state = create_initial_state(task="Test")
+        state["code_files"] = [{"path": "main.py", "content": "x = 1\n"}]
+        state["tech_stack"] = ["python"]
+
+        result = lint_check_node(state)
+        assert result["lint_status"] == "clean"
+        assert result["lint_iteration_count"] == 1
+
+    @patch("dev_team.tools.sandbox.SandboxClient")
+    def test_lint_issues(self, MockSandboxClient):
+        """Sandbox returns exit_code=1 → lint issues."""
+        mock_client = MockSandboxClient.return_value
+        mock_client.execute.return_value = {
+            "exit_code": 1,
+            "stdout": "main.py:1:1: E302 expected 2 blank lines",
+            "stderr": "",
+        }
+
+        state = create_initial_state(task="Test")
+        state["code_files"] = [{"path": "main.py", "content": "def f():pass\n"}]
+        state["tech_stack"] = ["python"]
+
+        result = lint_check_node(state)
+        assert result["lint_status"] == "issues"
+        assert "E302" in result["lint_log"]
+        assert result["lint_iteration_count"] == 1
+
+    @patch("dev_team.tools.sandbox.SandboxClient")
+    def test_lint_iteration_increments(self, MockSandboxClient):
+        """lint_iteration_count increments across calls."""
+        mock_client = MockSandboxClient.return_value
+        mock_client.execute.return_value = {"exit_code": 1, "stdout": "error", "stderr": ""}
+
+        state = create_initial_state(task="Test")
+        state["code_files"] = [{"path": "main.py", "content": "x=1"}]
+        state["tech_stack"] = ["python"]
+        state["lint_iteration_count"] = 2
+
+        result = lint_check_node(state)
+        assert result["lint_iteration_count"] == 3
+
+    @patch("dev_team.tools.sandbox.SandboxClient")
+    def test_lint_sandbox_error(self, MockSandboxClient):
+        """Sandbox raises exception → lint error status."""
+        MockSandboxClient.side_effect = Exception("Connection refused")
+
+        state = create_initial_state(task="Test")
+        state["code_files"] = [{"path": "main.py", "content": "x=1"}]
+        state["tech_stack"] = ["python"]
+
+        result = lint_check_node(state)
+        assert result["lint_status"] == "error"
+        assert "Connection refused" in result["lint_log"]
+
+
+# ==================================================================
+# Language detection
+# ==================================================================
+
+
+class TestDetectLanguage:
+    """Test _detect_language helper."""
+
+    def test_python_from_tech_stack(self):
+        state = create_initial_state(task="Test")
+        state["tech_stack"] = ["FastAPI", "PostgreSQL"]
+        assert _detect_language(state) == "python"
+
+    def test_javascript_from_tech_stack(self):
+        state = create_initial_state(task="Test")
+        state["tech_stack"] = ["Node.js", "Express"]
+        assert _detect_language(state) == "javascript"
+
+    def test_typescript_from_tech_stack(self):
+        state = create_initial_state(task="Test")
+        state["tech_stack"] = ["TypeScript", "Next.js"]
+        assert _detect_language(state) == "typescript"
+
+    def test_go_from_tech_stack(self):
+        state = create_initial_state(task="Test")
+        state["tech_stack"] = ["Go", "Gin"]
+        assert _detect_language(state) == "go"
+
+    def test_python_from_files_fallback(self):
+        state = create_initial_state(task="Test")
+        state["tech_stack"] = []
+        state["code_files"] = [{"path": "app/main.py", "content": "..."}]
+        assert _detect_language(state) == "python"
+
+    def test_js_from_files_fallback(self):
+        state = create_initial_state(task="Test")
+        state["tech_stack"] = []
+        state["code_files"] = [{"path": "server.js", "content": "..."}]
+        assert _detect_language(state) == "javascript"
+
+    def test_default_python(self):
+        state = create_initial_state(task="Test")
+        state["tech_stack"] = []
+        state["code_files"] = []
+        assert _detect_language(state) == "python"
+
+
+# ==================================================================
+# CI routing
+# ==================================================================
+
+
+class TestRouteAfterCI:
+    """Test route_after_ci routing logic."""
+
+    def test_ci_success_goes_to_pm(self):
+        """CI success → pm_final."""
+        state = create_initial_state(task="Test")
+        state["ci_status"] = "success"
+        result = route_after_ci(state)
+        assert result == "pm_final"
+
+    def test_ci_failure_goes_to_developer(self):
+        """CI failure → developer."""
+        state = create_initial_state(task="Test")
+        state["ci_status"] = "failure"
+        result = route_after_ci(state)
+        assert result == "developer"
+
+    def test_ci_skipped_goes_to_pm(self):
+        """CI skipped → pm_final."""
+        state = create_initial_state(task="Test")
+        state["ci_status"] = "skipped"
+        result = route_after_ci(state)
+        assert result == "pm_final"
+
+    def test_ci_not_found_goes_to_pm(self):
+        """CI not_found → pm_final."""
+        state = create_initial_state(task="Test")
+        state["ci_status"] = "not_found"
+        result = route_after_ci(state)
+        assert result == "pm_final"
+
+    def test_ci_error_goes_to_developer(self):
+        """CI error → developer."""
+        state = create_initial_state(task="Test")
+        state["ci_status"] = "error"
+        result = route_after_ci(state)
+        assert result == "developer"
+
+
+# ==================================================================
+# Developer agent routing (lint/CI/issues)
+# ==================================================================
+
+
+class TestDeveloperAgentRouting:
+    """Test developer_agent() node function routing."""
+
+    @patch("dev_team.agents.developer.get_developer_agent")
+    def test_routes_to_fix_lint(self, mock_get_agent):
+        """Developer routes to fix_lint when lint_status='issues'."""
+        from dev_team.agents.developer import developer_agent
+
+        mock_agent = Mock()
+        mock_agent.fix_lint.return_value = {"current_agent": "developer"}
+        mock_get_agent.return_value = mock_agent
+
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "issues"
+        state["lint_log"] = "E302 error"
+
+        developer_agent(state)
+        mock_agent.fix_lint.assert_called_once()
+
+    @patch("dev_team.agents.developer.get_developer_agent")
+    def test_routes_to_fix_ci(self, mock_get_agent):
+        """Developer routes to fix_ci when ci_status='failure'."""
+        from dev_team.agents.developer import developer_agent
+
+        mock_agent = Mock()
+        mock_agent.fix_ci.return_value = {"current_agent": "developer"}
+        mock_get_agent.return_value = mock_agent
+
+        state = create_initial_state(task="Test")
+        state["ci_status"] = "failure"
+        state["ci_log"] = "Tests failed"
+
+        developer_agent(state)
+        mock_agent.fix_ci.assert_called_once()
+
+    @patch("dev_team.agents.developer.get_developer_agent")
+    def test_routes_to_fix_issues(self, mock_get_agent):
+        """Developer routes to fix_issues when issues_found is non-empty."""
+        from dev_team.agents.developer import developer_agent
+
+        mock_agent = Mock()
+        mock_agent.fix_issues.return_value = {"current_agent": "developer"}
+        mock_get_agent.return_value = mock_agent
+
+        state = create_initial_state(task="Test")
+        state["issues_found"] = ["Bug in function X"]
+
+        developer_agent(state)
+        mock_agent.fix_issues.assert_called_once()
+
+    @patch("dev_team.agents.developer.get_developer_agent")
+    def test_routes_to_implement(self, mock_get_agent):
+        """Developer routes to implement when no issues."""
+        from dev_team.agents.developer import developer_agent
+
+        mock_agent = Mock()
+        mock_agent.implement.return_value = {"current_agent": "developer"}
+        mock_get_agent.return_value = mock_agent
+
+        state = create_initial_state(task="Test")
+        developer_agent(state)
+        mock_agent.implement.assert_called_once()
+
+    @patch("dev_team.agents.developer.get_developer_agent")
+    def test_lint_takes_priority_over_issues(self, mock_get_agent):
+        """Lint fix takes priority over reviewer issues."""
+        from dev_team.agents.developer import developer_agent
+
+        mock_agent = Mock()
+        mock_agent.fix_lint.return_value = {"current_agent": "developer"}
+        mock_get_agent.return_value = mock_agent
+
+        state = create_initial_state(task="Test")
+        state["lint_status"] = "issues"
+        state["issues_found"] = ["Some issue"]
+
+        developer_agent(state)
+        mock_agent.fix_lint.assert_called_once()
+        mock_agent.fix_issues.assert_not_called()

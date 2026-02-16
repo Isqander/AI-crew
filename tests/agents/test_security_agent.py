@@ -443,31 +443,44 @@ class TestDependencyExtraction:
 class TestRouteAfterDeveloper:
     """Test the route_after_developer conditional edge."""
 
-    def test_route_to_security_first_pass(self):
-        """On first pass (review_iteration_count=0), route to security_review."""
+    def test_route_to_lint_first_pass(self):
+        """On first pass (review_iteration_count=0) with lint enabled, route to lint_check."""
         from dev_team.graph import route_after_developer
 
         state = {"review_iteration_count": 0}
-        with patch("dev_team.graph.USE_SECURITY_AGENT", True):
+        with patch("dev_team.graph.USE_LINT_CHECK", True), \
+             patch("dev_team.graph.USE_SECURITY_AGENT", True):
+            result = route_after_developer(state)
+            assert result == "lint_check"
+
+    def test_route_to_security_lint_disabled(self):
+        """When lint is disabled, first pass goes to security_review."""
+        from dev_team.graph import route_after_developer
+
+        state = {"review_iteration_count": 0}
+        with patch("dev_team.graph.USE_LINT_CHECK", False), \
+             patch("dev_team.graph.USE_SECURITY_AGENT", True):
             result = route_after_developer(state)
             assert result == "security_review"
 
     def test_route_to_reviewer_fix_loop(self):
-        """During fix loops (review_iteration_count > 0), skip security."""
+        """During fix loops (review_iteration_count > 0), skip lint and security."""
         from dev_team.graph import route_after_developer
 
         state = {"review_iteration_count": 1}
-        # Even with security enabled, skip on fix loops
-        with patch("dev_team.graph.USE_SECURITY_AGENT", True):
+        # Even with lint and security enabled, skip on fix loops
+        with patch("dev_team.graph.USE_LINT_CHECK", True), \
+             patch("dev_team.graph.USE_SECURITY_AGENT", True):
             result = route_after_developer(state)
             assert result == "reviewer"
 
     def test_route_to_reviewer_security_disabled(self):
-        """When security agent is disabled, always route to reviewer."""
+        """When both lint and security are disabled, route to reviewer."""
         from dev_team.graph import route_after_developer
 
         state = {"review_iteration_count": 0}
-        with patch("dev_team.graph.USE_SECURITY_AGENT", False):
+        with patch("dev_team.graph.USE_LINT_CHECK", False), \
+             patch("dev_team.graph.USE_SECURITY_AGENT", False):
             result = route_after_developer(state)
             assert result == "reviewer"
 

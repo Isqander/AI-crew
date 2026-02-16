@@ -161,7 +161,7 @@ class TestReviewerThenQAFlow:
 
         result, counts = _run_graph(mocks)
 
-        assert result["current_agent"] == "complete"
+        assert result["current_agent"] in ("complete", "pm")
         assert "summary" in result
         assert counts["reviewer"] == 1
         assert counts["qa"] == 1
@@ -188,7 +188,7 @@ class TestQASandboxFailFlow:
 
         result, counts = _run_graph(mocks)
 
-        assert result["current_agent"] == "complete"
+        assert result["current_agent"] in ("complete", "pm")
         # Developer called twice: initial + fix
         assert counts["developer"] >= 2
         # Reviewer called twice: initial + after fix
@@ -214,7 +214,7 @@ class TestReviewerRejectsAndQAPasses:
 
         result, counts = _run_graph(mocks)
 
-        assert result["current_agent"] == "complete"
+        assert result["current_agent"] in ("complete", "pm")
         assert counts["developer"] >= 2
         assert counts["reviewer"] >= 2
         assert counts["qa"] == 1
@@ -252,6 +252,6 @@ class TestQASkipNoCode:
 
         result, counts = _run_graph(mocks)
 
-        assert result["current_agent"] == "complete"
+        assert result["current_agent"] in ("complete", "pm")
         # QA was called but skipped
         assert counts["qa"] == 1

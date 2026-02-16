@@ -107,6 +107,24 @@ fix_issues: |
   
   Only provide the files that need changes.
 
+fix_lint: |
+  The linter found issues in your code. Fix ALL lint errors before proceeding.
+  
+  Lint Status: {lint_status}
+  
+  Lint Output:
+  {lint_log}
+  
+  Please fix ALL lint issues and provide updated code.
+  Focus on:
+  - Fixing formatting issues (indentation, trailing whitespace, line length)
+  - Fixing import ordering
+  - Fixing unused imports or variables
+  - Fixing code style violations
+  - Ensuring all files pass lint cleanly
+  
+  Only provide the files that need changes.
+
 fix_ci: |
   The CI/CD pipeline failed for your code. Here are the details:
   
