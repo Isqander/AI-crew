@@ -4,7 +4,8 @@
     "simple_dev": "./graphs/simple_dev/graph.py:graph",
     "standard_dev": "./graphs/standard_dev/graph.py:graph",
     "research": "./graphs/research/graph.py:graph",
-    "qa_agent_test": "./graphs/qa_agent_test/graph.py:graph"
+    "qa_agent_test": "./graphs/qa_agent_test/graph.py:graph",
+    "pipeline_test": "./graphs/pipeline_test/graph.py:graph"
   },
   "dependencies": [
     "./graphs"

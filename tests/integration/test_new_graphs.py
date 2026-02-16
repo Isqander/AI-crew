@@ -469,7 +469,7 @@ class TestAegraRegistration:
     """Tests for aegra.json graph registration."""
 
     def test_aegra_json_has_all_graphs(self):
-        """aegra.json registers all 4 graphs."""
+        """aegra.json registers all expected graphs."""
         import json
         aegra_path = Path(__file__).parent.parent.parent / "aegra.json"
         config = json.loads(aegra_path.read_text(encoding="utf-8"))
@@ -478,6 +478,8 @@ class TestAegraRegistration:
         assert "simple_dev" in graphs
         assert "standard_dev" in graphs
         assert "research" in graphs
+        assert "qa_agent_test" in graphs
+        assert "pipeline_test" in graphs
 
     def test_aegra_json_paths_valid(self):
         """All graph paths in aegra.json point to existing files."""
@@ -586,11 +588,139 @@ class TestDevTeamGitCommitNode:
 # ═══════════════════════════════════════════════════════════════
 
 
+# ═══════════════════════════════════════════════════════════════
+# Section 7: pipeline_test graph
+# ═══════════════════════════════════════════════════════════════
+
+
+class TestPipelineTestGraph:
+    """Tests for the pipeline_test graph structure and routing."""
+
+    def test_graph_compiles(self):
+        """Graph compiles without errors."""
+        from pipeline_test.graph import graph
+        assert graph is not None
+
+    def test_graph_nodes(self):
+        """Graph has the expected nodes."""
+        from pipeline_test.graph import create_graph
+        builder = create_graph()
+        node_names = set(builder.nodes.keys())
+        assert "developer" in node_names
+        assert "lint_check" in node_names
+        assert "qa" in node_names
+        assert "report" in node_names
+
+    def test_state_definition(self):
+        """PipelineTestState has required fields."""
+        from pipeline_test.state import PipelineTestState
+        annotations = PipelineTestState.__annotations__
+        assert "task" in annotations
+        assert "code_files" in annotations
+        assert "lint_status" in annotations
+        assert "lint_log" in annotations
+        assert "lint_iteration_count" in annotations
+        assert "test_results" in annotations
+        assert "sandbox_results" in annotations
+        assert "browser_test_results" in annotations
+        assert "pipeline_report" in annotations
+
+    def test_manifest_loads(self):
+        """Manifest YAML loads correctly."""
+        manifest_path = Path(__file__).parent.parent.parent / "graphs" / "pipeline_test" / "manifest.yaml"
+        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        assert manifest["name"] == "pipeline_test"
+        assert manifest["display_name"] == "Pipeline Test"
+        assert "lint_check" in [a["id"] for a in manifest["agents"]]
+        assert "lint_checking" in manifest["features"]
+        assert "dev_lint_loop" in manifest["features"]
+        assert manifest["parameters"]["max_lint_iterations"] == 3
+
+    def test_route_after_lint_clean(self):
+        """Lint clean → route to QA."""
+        from pipeline_test.graph import route_after_lint
+        state = {"lint_status": "clean", "lint_iteration_count": 0}
+        assert route_after_lint(state) == "qa"
+
+    def test_route_after_lint_issues_loops(self):
+        """Lint issues, below max → back to developer."""
+        from pipeline_test.graph import route_after_lint
+        state = {"lint_status": "issues", "lint_iteration_count": 1}
+        assert route_after_lint(state) == "developer"
+
+    def test_route_after_lint_max_iterations(self):
+        """Lint issues, max iterations → forward to QA."""
+        from pipeline_test.graph import route_after_lint, MAX_LINT_ITERATIONS
+        state = {"lint_status": "issues", "lint_iteration_count": MAX_LINT_ITERATIONS}
+        assert route_after_lint(state) == "qa"
+
+    def test_route_after_lint_error(self):
+        """Lint error (sandbox down) → forward to QA."""
+        from pipeline_test.graph import route_after_lint
+        state = {"lint_status": "error", "lint_iteration_count": 0}
+        assert route_after_lint(state) == "qa"
+
+    def test_route_after_lint_skipped(self):
+        """Lint skipped → forward to QA."""
+        from pipeline_test.graph import route_after_lint
+        state = {"lint_status": "skipped", "lint_iteration_count": 0}
+        assert route_after_lint(state) == "qa"
+
+    def test_report_builds_all_sections(self):
+        """Report includes lint, sandbox, visual, and issues sections."""
+        from pipeline_test.graph import _build_report
+        state = {
+            "lint_status": "clean",
+            "lint_log": "",
+            "lint_iteration_count": 1,
+            "sandbox_results": {"exit_code": 0, "tests_passed": True, "duration_seconds": 5.2},
+            "browser_test_results": {
+                "test_status": "pass",
+                "screenshots": [{"name": "home.png"}],
+                "successful_steps": 3,
+                "failed_steps": 0,
+            },
+            "test_results": {"approved": True},
+            "issues_found": [],
+        }
+        report = _build_report(state)
+        assert "LINT CHECK" in report
+        assert "clean" in report
+        assert "SANDBOX TESTS" in report
+        assert "tests_passed=True" in report
+        assert "VISUAL QA" in report
+        assert "pass" in report
+        assert "PASS" in report
+
+    def test_report_with_lint_issues(self):
+        """Report shows lint issues when present."""
+        from pipeline_test.graph import _build_report
+        state = {
+            "lint_status": "issues",
+            "lint_log": "E302 expected 2 blank lines",
+            "lint_iteration_count": 3,
+            "sandbox_results": {},
+            "browser_test_results": {},
+            "test_results": {},
+            "issues_found": ["lint issues"],
+        }
+        report = _build_report(state)
+        assert "issues" in report
+        assert "3" in report
+        assert "E302" in report
+        assert "FAIL" in report
+
+
+# ═══════════════════════════════════════════════════════════════
+# Section 8: All manifests discoverable by router
+# ═══════════════════════════════════════════════════════════════
+
+
 class TestManifestDiscovery:
     """Test that all manifests are discoverable by the Switch-Agent router."""
 
     def test_all_manifests_found(self):
-        """load_manifests finds all 4 manifests."""
+        """load_manifests finds all expected manifests."""
         from gateway.graph_loader import load_manifests
 
         manifests = load_manifests()
@@ -600,6 +730,8 @@ class TestManifestDiscovery:
         assert "simple_dev" in names
         assert "standard_dev" in names
         assert "research" in names
+        assert "qa_agent_test" in names
+        assert "pipeline_test" in names
 
     def test_manifests_have_required_fields(self):
         """All manifests have fields needed for routing."""

@@ -1,0 +1,48 @@
+# ===========================================
+# pipeline_test Graph Manifest
+# ===========================================
+# Full pipeline validation: Developer → Lint (loop) → QA → Report.
+#
+# Tests:
+#   1. Developer generates code (with .qa-hints.yaml)
+#   2. Lint check in sandbox (ruff / eslint)
+#   3. Dev↔Lint fix loop (max 3 iterations)
+#   4. QA sandbox tests (pytest / jest)
+#   5. QA visual browser exploration (Playwright)
+#   6. Comprehensive report
+
+name: "pipeline_test"
+display_name: "Pipeline Test"
+description: >-
+  Full pipeline test: Developer generates code, lint check validates code style
+  (with Dev↔Lint fix loop), QA runs sandbox tests and visual browser exploration.
+  Report includes lint results, sandbox results, and visual QA results.
+version: "1.0.0"
+
+task_types:
+  - pipeline_test
+  - lint_test
+  - qa_test
+  - visual_qa
+
+agents:
+  - id: developer
+    display_name: "Developer"
+    role: developer
+  - id: lint_check
+    display_name: "Lint Check"
+    role: lint
+  - id: qa
+    display_name: "QA"
+    role: qa
+
+features:
+  - lint_checking
+  - sandbox_testing
+  - visual_qa_report
+  - dev_lint_loop
+
+parameters:
+  use_browser_testing: true
+  hitl_mode: "none"
+  max_lint_iterations: 3
