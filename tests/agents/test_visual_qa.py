@@ -327,6 +327,31 @@ class TestBrowserRunner:
         assert defaults["port"] == 8000
         assert "uvicorn" in defaults["start"]
 
+    def test_detect_fastapi_in_subdirectory(self):
+        """FastAPI file in subdirectory generates correct uvicorn module path."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "backend/main.py", "content": "from fastapi import FastAPI\napp = FastAPI()\n"},
+            {"path": "requirements.txt", "content": "fastapi\nuvicorn\n"},
+        ]
+        defaults = detect_framework_defaults(["html", "css"], code_files=code_files)
+        assert defaults["port"] == 8000
+        # Must use dotted module path: backend.main:app
+        assert "backend.main:app" in defaults["start"]
+        assert "uvicorn" in defaults["start"]
+
+    def test_detect_flask_in_subdirectory(self):
+        """Flask file in subdirectory uses full path for python command."""
+        from dev_team.tools.browser_runner import detect_framework_defaults
+
+        code_files = [
+            {"path": "src/server.py", "content": "from flask import Flask\napp = Flask(__name__)\n"},
+        ]
+        defaults = detect_framework_defaults(["Python"], code_files=code_files)
+        assert defaults["port"] == 5000
+        assert "python src/server.py" in defaults["start"]
+
 
 # ==================================================================
 # 4. QA Agent — has_ui()

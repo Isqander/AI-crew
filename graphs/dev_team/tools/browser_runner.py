@@ -281,17 +281,18 @@ def detect_framework_defaults(
             for fw, patterns in _py_framework_patterns.items():
                 if any(p in content for p in patterns):
                     defaults = FRAMEWORK_DEFAULTS[fw].copy()
-                    # Try to detect the actual module name for uvicorn
+                    # Convert full file path to Python module / run path.
+                    # e.g. "backend/main.py" → "backend.main" (for uvicorn)
+                    # e.g. "main.py" → "main"
+                    # Normalise both / and \ separators.
+                    norm_path = path.replace("\\", "/")
                     if fw == "fastapi":
-                        # e.g. "main.py" → "uvicorn main:app ..."
-                        module = path.rsplit("/", 1)[-1].removesuffix(".py")
-                        if module != "app":
-                            defaults["start"] = (
-                                f"uvicorn {module}:app --host 0.0.0.0 --port {defaults['port']}"
-                            )
+                        module = norm_path.removesuffix(".py").replace("/", ".")
+                        defaults["start"] = (
+                            f"uvicorn {module}:app --host 0.0.0.0 --port {defaults['port']}"
+                        )
                     elif fw == "flask":
-                        module = path.rsplit("/", 1)[-1].removesuffix(".py")
-                        defaults["start"] = f"python {module}.py"
+                        defaults["start"] = f"python {norm_path}"
                     # Check if requirements.txt exists; if not, install inline
                     has_requirements = any(
                         cf.get("path", "").endswith("requirements.txt")
