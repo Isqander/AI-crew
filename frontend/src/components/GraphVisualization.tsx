@@ -13,49 +13,46 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import dagre from 'dagre'
-import { useAuthStore } from '../store/authStore'
+import { aegraClient } from '../api/aegra'
+import type {
+  GraphTopology,
+  TopologyNode,
+  TopologyEdge,
+  AgentConfig,
+  PromptInfo,
+} from '../types'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081'
+// ── Props ──
 
-// Types from ARCHITECTURE_V2
-interface AgentConfig {
-  model: string
-  temperature: number
-  fallback_model: string | null
-  endpoint: string
-}
-
-interface PromptInfo {
-  system: string
-  templates: string[]
-}
-
-interface GraphTopology {
-  graph_id: string
-  topology: { nodes: any[]; edges: any[] }
-  agents: Record<string, AgentConfig>
-  prompts: Record<string, PromptInfo>
-  manifest: Record<string, any>
-}
-
-// Props
 interface Props {
   graphId: string
   currentAgent?: string
 }
 
-// Status helper
+// ── AgentNode data ──
+
+interface AgentNodeData {
+  label: string
+  model?: string
+  fallbackModel?: string | null
+  status: 'active' | 'completed' | 'pending'
+  systemPrompt?: string
+  templates?: string[]
+  [key: string]: unknown
+}
+
+// ── Status helper ──
+
 function getNodeStatus(
   nodeId: string,
   currentAgent?: string,
-  _completedAgents?: string[]
 ): 'active' | 'completed' | 'pending' {
   if (nodeId === currentAgent) return 'active'
-  // Simplified: mark as completed if agent order is before current
   return 'pending'
 }
 
-// Dagre layout
+// ── Dagre layout ──
+
 function layoutWithDagre(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
@@ -74,8 +71,9 @@ function layoutWithDagre(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: 
   return { nodes: layoutedNodes, edges }
 }
 
-// Custom Agent Node
-function AgentNode({ data }: { data: any }) {
+// ── Custom Agent Node ──
+
+function AgentNode({ data }: { data: AgentNodeData }) {
   const borderColor =
     data.status === 'active'
       ? 'border-cyan-500'
@@ -106,6 +104,8 @@ function AgentNode({ data }: { data: any }) {
 // Node types registration
 const nodeTypes = { agentNode: AgentNode }
 
+// ── Main Component ──
+
 export function GraphVisualization({ graphId, currentAgent }: Props) {
   const [topology, setTopology] = useState<GraphTopology | null>(null)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
@@ -116,15 +116,9 @@ export function GraphVisualization({ graphId, currentAgent }: Props) {
   // Fetch topology
   useEffect(() => {
     const fetchTopology = async () => {
-      const token = useAuthStore.getState().accessToken
       try {
-        const resp = await fetch(`${API_URL}/graph/topology/${graphId}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        })
-        if (resp.ok) {
-          const data = await resp.json()
-          setTopology(data)
-        }
+        const data = await aegraClient.getGraphTopology(graphId)
+        setTopology(data as GraphTopology)
       } catch (err) {
         console.error('Failed to fetch topology:', err)
       } finally {
@@ -140,10 +134,10 @@ export function GraphVisualization({ graphId, currentAgent }: Props) {
 
     const agents = topology.manifest?.agents || []
     const rfNodes: Node[] = (topology.topology?.nodes || [])
-      .filter((n: any) => n.id !== '__start__' && n.id !== '__end__')
-      .map((n: any) => {
-        const agentDef = agents.find((a: any) => a.id === n.id)
-        const config = topology.agents[n.id]
+      .filter((n: TopologyNode) => n.id !== '__start__' && n.id !== '__end__')
+      .map((n: TopologyNode) => {
+        const agentDef = agents.find((a) => a.id === n.id)
+        const config: AgentConfig | undefined = topology.agents[n.id]
         return {
           id: n.id,
           type: 'agentNode',
@@ -154,15 +148,15 @@ export function GraphVisualization({ graphId, currentAgent }: Props) {
             status: getNodeStatus(n.id, currentAgent),
             systemPrompt: topology.prompts[n.id]?.system,
             templates: topology.prompts[n.id]?.templates,
-          },
+          } satisfies AgentNodeData,
           position: { x: 0, y: 0 },
         }
       })
 
     const nodeIds = new Set(rfNodes.map((n) => n.id))
     const rfEdges: Edge[] = (topology.topology?.edges || [])
-      .filter((e: any) => nodeIds.has(e.source) && nodeIds.has(e.target))
-      .map((e: any, i: number) => ({
+      .filter((e: TopologyEdge) => nodeIds.has(e.source) && nodeIds.has(e.target))
+      .map((e: TopologyEdge, i: number) => ({
         id: `${e.source}-${e.target}-${i}`,
         source: e.source,
         target: e.target,
@@ -178,7 +172,7 @@ export function GraphVisualization({ graphId, currentAgent }: Props) {
   }, [topology, currentAgent, setNodes, setEdges])
 
   const onNodeClick = useCallback(
-    (_: any, node: Node) => {
+    (_: React.MouseEvent, node: Node) => {
       setSelectedNode(node.id === selectedNode ? null : node.id)
     },
     [selectedNode]
@@ -198,8 +192,8 @@ export function GraphVisualization({ graphId, currentAgent }: Props) {
     )
   }
 
-  const selectedAgent = selectedNode ? topology.agents[selectedNode] : null
-  const selectedPrompt = selectedNode ? topology.prompts[selectedNode] : null
+  const selectedAgent: AgentConfig | undefined = selectedNode ? topology.agents[selectedNode] : undefined
+  const selectedPrompt: PromptInfo | undefined = selectedNode ? topology.prompts[selectedNode] : undefined
 
   return (
     <div className="flex h-[500px] bg-slate-900 rounded-lg overflow-hidden border border-slate-700">

@@ -16,12 +16,8 @@ except ImportError:
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
 
-
-class CodeFile(TypedDict):
-    """Represents a generated code file."""
-    path: str
-    content: str
-    language: str
+# Import shared types from common module (single source of truth)
+from common.types import CodeFile
 
 
 class QAAgentTestState(TypedDict):

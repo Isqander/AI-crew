@@ -46,7 +46,8 @@ from langgraph.checkpoint.memory import MemorySaver
 # Relative imports (from .state, from .agents) would resolve against "graphs.*"
 # and fail. Use absolute imports based on sys.path (/app/graphs -> "dev_team.*").
 from dev_team.state import DevTeamState
-from dev_team.logging_config import configure_logging
+from common.logging import configure_logging
+from common.git import make_git_commit_node
 
 from dev_team.agents.pm import pm_agent
 from dev_team.agents.analyst import analyst_agent
@@ -55,7 +56,6 @@ from dev_team.agents.developer import developer_agent
 from dev_team.agents.reviewer import reviewer_agent
 from dev_team.agents.qa import qa_agent
 from dev_team.agents.security import security_agent
-from dev_team.tools.git_workspace import commit_and_create_pr
 
 
 configure_logging()
@@ -100,6 +100,21 @@ def route_after_architect(state: DevTeamState) -> Literal["clarification", "deve
     if needs:
         return "clarification"
     return "developer"
+
+
+def route_after_clarification(state: DevTeamState) -> Literal["analyst", "architect"]:
+    """
+    Router: After user provides clarification, route back to the requesting agent.
+
+    Uses ``clarification_context`` to determine who originally asked for input.
+    Defaults to analyst if context is ambiguous.
+    """
+    context = (state.get("clarification_context") or "").lower()
+    if "architect" in context:
+        logger.info("router.after_clarification", decision="architect", context=context)
+        return "architect"
+    logger.info("router.after_clarification", decision="analyst", context=context)
+    return "analyst"
 
 
 # Maximum Dev<->Reviewer iterations before escalation
@@ -281,104 +296,8 @@ def human_escalation_node(state: DevTeamState) -> dict:
     }
 
 
-def git_commit_node(state: DevTeamState) -> dict:
-    """
-    Commit generated code to GitHub via atomic Git tree API:
-      1. Create a feature branch (``ai/<slug>-<timestamp>``)
-      2. Batch-commit all code files in a single commit
-      3. Open a pull request
-
-    Uses ``commit_and_create_pr`` from ``git_workspace`` which provides:
-    - Atomic commits (Git tree API -- one commit for all files)
-    - Proper branch naming (``ai/<slug>-<timestamp>``)
-    - Structured logging
-
-    When no repository or GITHUB_TOKEN is configured the node
-    gracefully skips the commit and returns the generated code
-    in the summary so it is still visible in the chat.
-    """
-    import time as _time
-    t0 = _time.monotonic()
-    code_files = state.get("code_files", [])
-    repository = state.get("repository") or os.getenv("GITHUB_DEFAULT_REPO", "")
-    task = state.get("task", "AI-generated task")
-    github_token_set = bool(os.getenv("GITHUB_TOKEN"))
-    logger.info("node.git_commit.enter", repository=repository or "none",
-                files=len(code_files), github_token_set=github_token_set,
-                task_preview=task[:80])
-
-    # ------------------------------------------------------------------
-    # Guard: no repository -> return code in summary
-    # ------------------------------------------------------------------
-    if not repository:
-        elapsed_ms = (_time.monotonic() - t0) * 1000
-        logger.warning("node.git_commit.skip", reason="no_repository",
-                       elapsed_ms=round(elapsed_ms))
-        summary = _build_code_summary(code_files, task)
-        return {
-            "summary": summary,
-            "current_agent": "complete",
-        }
-
-    # ------------------------------------------------------------------
-    # Delegate to commit_and_create_pr (atomic commit + PR)
-    # ------------------------------------------------------------------
-    logger.info("node.git_commit.committing", repository=repository, files=len(code_files))
-    result = commit_and_create_pr(
-        repo_name=repository,
-        task=task,
-        code_files=code_files,
-    )
-
-    elapsed_ms = (_time.monotonic() - t0) * 1000
-
-    # Handle errors gracefully
-    if result.get("error") and result["files_committed"] == 0:
-        logger.error("node.git_commit.failed", error=result["error"],
-                     elapsed_ms=round(elapsed_ms))
-        summary = _build_code_summary(code_files, task)
-        return {
-            "summary": f"Warning: Git commit failed: {result['error']}\n\n{summary}",
-            "current_agent": "complete",
-            "error": result["error"],
-        }
-
-    pr_url = result.get("pr_url", "")
-    commit_sha = result.get("commit_sha", "")
-    branch = result.get("working_branch", "")
-    committed = result.get("files_committed", 0)
-
-    logger.info("node.git_commit.success", pr_url=pr_url, branch=branch,
-                commit_sha=commit_sha[:12] if commit_sha else "",
-                files_committed=committed, elapsed_ms=round(elapsed_ms))
-
-    return {
-        "pr_url": pr_url,
-        "commit_sha": commit_sha,
-        "working_branch": branch,
-        "working_repo": repository,
-        "summary": (
-            f"Created PR with {committed} file(s) on {repository}\n"
-            f"Branch: {branch}\n"
-            f"PR: {pr_url}"
-        ),
-        "current_agent": "complete",
-    }
-
-
-def _build_code_summary(code_files: list, task: str) -> str:
-    """Format generated code files into a readable summary for the chat."""
-    if not code_files:
-        return f"Task completed: {task}\nNo code files were generated."
-
-    parts = [f"Task completed: {task}", f"{len(code_files)} file(s) generated:\n"]
-    for cf in code_files:
-        path = cf.get("path", "unknown")
-        lang = cf.get("language", "")
-        content = cf.get("content", "")
-        parts.append(f"### {path}")
-        parts.append(f"```{lang}\n{content}\n```\n")
-    return "\n".join(parts)
+# git_commit_node created by shared factory from common.git
+git_commit_node = make_git_commit_node("dev_team")
 
 
 def create_graph() -> StateGraph:
@@ -494,9 +413,15 @@ def create_graph() -> StateGraph:
     # route to developer to apply the human's guidance.
     builder.add_edge("human_escalation", "developer")
 
-    # Clarification -> back to analyst
-    # (clarification_context could be used for smarter routing later)
-    builder.add_edge("clarification", "analyst")
+    # Clarification -> route back to requesting agent (analyst or architect)
+    builder.add_conditional_edges(
+        "clarification",
+        route_after_clarification,
+        {
+            "analyst": "analyst",
+            "architect": "architect",
+        }
+    )
 
     # Git commit -> END
     builder.add_edge("git_commit", END)

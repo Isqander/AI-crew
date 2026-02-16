@@ -5,7 +5,7 @@ Tests for Reviewer and QA (Sandbox) Agents
 Covers:
   - ReviewerAgent: initialization, review_code, verify_fixes, final_approval
   - QAAgent: initialization, test_code, _detect_language, _build_commands,
-    _parse_approved, _parse_issues, _analyse_results
+    _parse_verdict, _parse_issues, _analyse_results
   - Node functions: reviewer_agent, qa_agent
   - Graph routing: route_after_reviewer, route_after_qa
   - Prompts loading
@@ -13,18 +13,11 @@ Covers:
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 
 import pytest
 import yaml
-
-# Ensure graphs/ is on sys.path
-_PROJECT_ROOT = Path(__file__).parent.parent
-_GRAPHS_DIR = str(_PROJECT_ROOT / "graphs")
-if _GRAPHS_DIR not in sys.path:
-    sys.path.insert(0, _GRAPHS_DIR)
 
 
 # ==================================================================
@@ -375,29 +368,29 @@ class TestQAAgentHelpers:
         commands = QAAgent._build_commands("python", files)
         assert any("pip install" in cmd for cmd in commands)
 
-    def test_parse_approved_pass(self):
+    def test_parse_verdict_pass(self):
         from dev_team.agents.qa import QAAgent
 
         content = "## Verdict: PASS\nAll good."
-        assert QAAgent._parse_approved(content, {"exit_code": 0}) is True
+        assert QAAgent._parse_verdict(content, 0) is True
 
-    def test_parse_approved_fail(self):
+    def test_parse_verdict_fail(self):
         from dev_team.agents.qa import QAAgent
 
         content = "## Verdict: FAIL\nTests failed."
-        assert QAAgent._parse_approved(content, {"exit_code": 1}) is False
+        assert QAAgent._parse_verdict(content, 1) is False
 
-    def test_parse_approved_fallback_exit_code(self):
+    def test_parse_verdict_fallback_exit_code(self):
         from dev_team.agents.qa import QAAgent
 
         content = "Everything looks fine."
-        assert QAAgent._parse_approved(content, {"exit_code": 0}) is True
+        assert QAAgent._parse_verdict(content, 0) is True
 
-    def test_parse_approved_fallback_exit_code_nonzero(self):
+    def test_parse_verdict_fallback_exit_code_nonzero(self):
         from dev_team.agents.qa import QAAgent
 
         content = "Something went wrong."
-        assert QAAgent._parse_approved(content, {"exit_code": 1}) is False
+        assert QAAgent._parse_verdict(content, 1) is False
 
     def test_parse_issues(self):
         from dev_team.agents.qa import QAAgent
@@ -603,7 +596,7 @@ class TestGraphWithReviewerAndQA:
         assert "qa" in topology_str
 
     def test_manifest_includes_both_agents(self):
-        manifest_path = Path(_GRAPHS_DIR) / "dev_team" / "manifest.yaml"
+        manifest_path = Path(__file__).parent.parent / "graphs" / "dev_team" / "manifest.yaml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         agent_ids = [a["id"] for a in manifest["agents"]]
         assert "reviewer" in agent_ids

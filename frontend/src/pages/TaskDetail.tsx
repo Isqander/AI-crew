@@ -1,11 +1,12 @@
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, Copy, Check, AlertCircle, Network, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Copy, Check, Network, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
 import { Chat } from '../components/Chat'
 import { ProgressTracker } from '../components/ProgressTracker'
 import { ClarificationPanel } from '../components/ClarificationPanel'
 import { GraphVisualization } from '../components/GraphVisualization'
 import { useTask } from '../hooks/useTask'
+import { ErrorBanner } from '../components/ErrorBanner'
 import type { AgentName } from '../types'
 
 export function TaskDetail() {
@@ -116,20 +117,12 @@ export function TaskDetail() {
 
       {/* Error banner */}
       {(error || runError) && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2 text-red-400 font-mono text-sm">
-            <AlertCircle className="w-5 h-5" />
-            <span className="font-semibold">Ошибка выполнения</span>
-            {currentAgent && currentAgent !== 'complete' && (
-              <span className="ml-1 px-2 py-0.5 bg-red-500/20 rounded-full text-xs">
-                узел: {currentAgent}
-              </span>
-            )}
-          </div>
-          <p className="text-red-300/80 text-sm font-mono mt-2">
-            {runError || error?.message}
-          </p>
-        </div>
+        <ErrorBanner
+          title="Ошибка выполнения"
+          message={runError || error?.message || 'Неизвестная ошибка'}
+          badge={currentAgent && currentAgent !== 'complete' ? `узел: ${currentAgent}` : undefined}
+          className="mb-6"
+        />
       )}
 
       {/* Main content */}

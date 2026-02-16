@@ -9,13 +9,16 @@ Graph Endpoints
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import structlog
-import yaml
 from fastapi import APIRouter, Depends, HTTPException
 
 from gateway.auth import get_current_user
+from gateway.graph_loader import (
+    load_manifests,
+    load_agents_yaml,
+    load_prompt_info,
+    get_graphs_dir,
+)
 from gateway.models import (
     AgentBrief,
     AgentConfig,
@@ -30,59 +33,6 @@ from gateway.models import (
 logger = structlog.get_logger()
 router = APIRouter(prefix="/graph", tags=["graph"])
 
-# Paths relative to the repo root
-_GRAPHS_DIR = Path(__file__).parent.parent.parent / "graphs"
-_CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
-
-
-def _load_manifests() -> list[dict]:
-    """Scan ``graphs/*/manifest.yaml`` and return parsed manifests."""
-    manifests: list[dict] = []
-    if not _GRAPHS_DIR.exists():
-        return manifests
-    for manifest_path in _GRAPHS_DIR.glob("*/manifest.yaml"):
-        try:
-            data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-            if data:
-                manifests.append(data)
-        except Exception as exc:
-            logger.warning("graph.manifest_error", path=str(manifest_path), error=str(exc))
-    return manifests
-
-
-def _load_agents_yaml() -> dict:
-    """Load ``config/agents.yaml`` for agent configuration."""
-    config_path = _CONFIG_DIR / "agents.yaml"
-    if not config_path.exists():
-        return {}
-    try:
-        return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except Exception as exc:
-        logger.warning("graph.agents_yaml_error", error=str(exc))
-        return {}
-
-
-def _load_prompt_info(graph_id: str) -> dict[str, PromptInfo]:
-    """Load prompt summaries for all agents in a graph."""
-    prompts_dir = _GRAPHS_DIR / graph_id / "prompts"
-    result: dict[str, PromptInfo] = {}
-    if not prompts_dir.exists():
-        return result
-
-    for yaml_file in prompts_dir.glob("*.yaml"):
-        agent_name = yaml_file.stem
-        try:
-            data = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
-            system = data.get("system", "")
-            templates = [k for k in data.keys() if k != "system"]
-            result[agent_name] = PromptInfo(
-                system=system[:500],  # Truncate for UI
-                templates=templates,
-            )
-        except Exception as exc:
-            logger.warning("graph.prompt_error", agent=agent_name, error=str(exc))
-    return result
-
 
 # ────────────────────── Endpoints ──────────────────────
 
@@ -90,7 +40,7 @@ def _load_prompt_info(graph_id: str) -> dict[str, PromptInfo]:
 @router.get("/list", response_model=GraphListResponse)
 async def list_graphs(_user: User = Depends(get_current_user)) -> GraphListResponse:
     """List all available graphs from their manifest.yaml files."""
-    manifests = _load_manifests()
+    manifests = load_manifests()
     items = []
     for m in manifests:
         agents = [AgentBrief(id=a["id"], display_name=a["display_name"]) for a in m.get("agents", [])]
@@ -115,7 +65,7 @@ async def graph_topology(graph_id: str, _user: User = Depends(get_current_user))
     """Return topology, agent configs, and prompt info for visualisation."""
     logger.info("graph.topology_request", graph_id=graph_id)
     # Find manifest
-    manifests = _load_manifests()
+    manifests = load_manifests()
     manifest = next((m for m in manifests if m.get("name") == graph_id), None)
     if not manifest:
         logger.warning("graph.topology_not_found", graph_id=graph_id,
@@ -123,7 +73,7 @@ async def graph_topology(graph_id: str, _user: User = Depends(get_current_user))
         raise HTTPException(status_code=404, detail=f"Graph '{graph_id}' not found")
 
     # Agent configs from agents.yaml
-    agents_yaml = _load_agents_yaml()
+    agents_yaml = load_agents_yaml()
     agent_configs: dict[str, AgentConfig] = {}
     for agent_def in manifest.get("agents", []):
         aid = agent_def["id"]
@@ -138,7 +88,12 @@ async def graph_topology(graph_id: str, _user: User = Depends(get_current_user))
         )
 
     # Prompts
-    prompts = _load_prompt_info(graph_id)
+    # Load prompt info and convert to PromptInfo models
+    raw_prompts = load_prompt_info(graph_id)
+    prompts = {
+        name: PromptInfo(system=info["system"], templates=info["templates"])
+        for name, info in raw_prompts.items()
+    }
 
     # Topology — try to get from compiled graph
     topology = _get_graph_topology(graph_id)
@@ -155,12 +110,12 @@ async def graph_topology(graph_id: str, _user: User = Depends(get_current_user))
 @router.get("/config/{graph_id}", response_model=GraphConfigResponse)
 async def graph_config(graph_id: str, _user: User = Depends(get_current_user)) -> GraphConfigResponse:
     """Return agent LLM configuration for a graph."""
-    manifests = _load_manifests()
+    manifests = load_manifests()
     manifest = next((m for m in manifests if m.get("name") == graph_id), None)
     if not manifest:
         raise HTTPException(status_code=404, detail=f"Graph '{graph_id}' not found")
 
-    agents_yaml = _load_agents_yaml()
+    agents_yaml = load_agents_yaml()
     agent_configs: dict[str, AgentConfig] = {}
     for agent_def in manifest.get("agents", []):
         aid = agent_def["id"]
@@ -207,7 +162,8 @@ def _get_graph_topology(graph_id: str) -> dict:
 
 def _build_topology_from_manifest(graph_id: str) -> dict:
     """Build a simplified topology from manifest.yaml when graph import fails."""
-    manifest_path = _GRAPHS_DIR / graph_id / "manifest.yaml"
+    import yaml
+    manifest_path = get_graphs_dir() / graph_id / "manifest.yaml"
     if not manifest_path.exists():
         return {"nodes": [], "edges": []}
 

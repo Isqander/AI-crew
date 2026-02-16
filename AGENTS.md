@@ -35,6 +35,7 @@ AI-crew — мультиагентная платформа разработки
 ```text
 AI-crew/
 ├── graphs/
+│   ├── common/          # Общий код: типы, утилиты, git, logging
 │   └── dev_team/
 │       ├── agents/
 │       ├── prompts/
@@ -70,4 +71,5 @@ AI-crew/
 - [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md) — план реализации
 - [VISUAL_QA_PLAN](docs/VISUAL_QA_PLAN.md) — план Visual QA Testing (Playwright)
 - [EVOLUTION_PLAN_V3](docs/EVOLUTION_PLAN_V3.md) — план эволюции
+- [REFACTORING_PLAN](docs/REFACTORING_PLAN.md) — план рефакторинга
 - [IDEAS](docs/IDEAS.md) — backlog идей

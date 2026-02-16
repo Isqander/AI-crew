@@ -150,7 +150,7 @@ class TestGraphNodes:
         assert "Task completed" in result["summary"]
         assert result["current_agent"] == "complete"
 
-    @patch("graphs.dev_team.graph.commit_and_create_pr")
+    @patch("dev_team.tools.git_workspace.commit_and_create_pr")
     def test_git_commit_node_with_repository(self, mock_commit_pr):
         """Test git commit node with repository and mocked commit_and_create_pr."""
         mock_commit_pr.return_value = {

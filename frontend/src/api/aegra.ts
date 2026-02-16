@@ -19,9 +19,16 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8081'
 class AegraClient {
   private baseUrl: string
   private assistantId: string = 'dev_team'
+  /** Guard against concurrent refresh requests */
+  private refreshPromise: Promise<boolean> | null = null
 
   constructor(baseUrl: string = API_BASE) {
     this.baseUrl = baseUrl
+  }
+
+  /** Public getter for the API base URL (used in UI display) */
+  getBaseUrl(): string {
+    return this.baseUrl
   }
 
   private getAuthHeaders(): Record<string, string> {
@@ -32,20 +39,74 @@ class AegraClient {
     return {}
   }
 
+  /**
+   * Try to refresh the access token using the stored refresh token.
+   * Returns true if refresh succeeded, false otherwise.
+   * Concurrent calls are coalesced into a single request.
+   */
+  private async tryRefreshToken(): Promise<boolean> {
+    if (this.refreshPromise) return this.refreshPromise
+
+    this.refreshPromise = (async () => {
+      const { refreshToken, setAuth, user, logout } = useAuthStore.getState()
+      if (!refreshToken) {
+        logout()
+        return false
+      }
+
+      try {
+        const resp = await fetch(`${this.baseUrl}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        })
+
+        if (!resp.ok) {
+          logout()
+          return false
+        }
+
+        const data: { access_token: string; refresh_token: string } = await resp.json()
+        if (user) {
+          setAuth(user, data.access_token, data.refresh_token)
+        }
+        return true
+      } catch {
+        logout()
+        return false
+      } finally {
+        this.refreshPromise = null
+      }
+    })()
+
+    return this.refreshPromise
+  }
+
   private async fetch<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
-    
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.getAuthHeaders(),
-        ...options.headers,
-      },
-    })
+
+    const doFetch = () =>
+      fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.getAuthHeaders(),
+          ...options.headers,
+        },
+      })
+
+    let response = await doFetch()
+
+    // On 401 — try refresh once, then retry the original request
+    if (response.status === 401) {
+      const refreshed = await this.tryRefreshToken()
+      if (refreshed) {
+        response = await doFetch()
+      }
+    }
 
     if (!response.ok) {
       const error = await response.text()
@@ -211,35 +272,63 @@ class AegraClient {
   // ==========================================
 
   /**
-   * Stream run events
+   * Create a raw SSE stream response for a thread run.
+   * Returns the raw Response so the caller can read the stream manually
+   * (e.g., with AbortController support in hooks).
+   *
+   * Includes 401→refresh→retry logic (same as `fetch`).
+   */
+  async createStreamResponse(
+    threadId: string,
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const url = `${this.baseUrl}/threads/${threadId}/runs/stream`
+
+    const doFetch = () =>
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          ...this.getAuthHeaders(),
+        },
+        body: JSON.stringify(body),
+        signal,
+      })
+
+    let response = await doFetch()
+
+    if (response.status === 401) {
+      const refreshed = await this.tryRefreshToken()
+      if (refreshed) {
+        response = await doFetch()
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Stream failed: ${response.status} ${response.statusText}`)
+    }
+
+    return response
+  }
+
+  /**
+   * Stream run events (async generator — for simple consumption)
    */
   async *streamRun(
     threadId: string,
-    input: CreateTaskInput
+    input: CreateTaskInput,
   ): AsyncGenerator<{ event: string; data: unknown }> {
-    const url = `${this.baseUrl}/threads/${threadId}/runs/stream`
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-        ...this.getAuthHeaders(),
+    const response = await this.createStreamResponse(threadId, {
+      assistant_id: this.assistantId,
+      input: {
+        task: input.task,
+        repository: input.repository || null,
+        context: input.context || null,
       },
-      body: JSON.stringify({
-        assistant_id: this.assistantId,
-        input: {
-          task: input.task,
-          repository: input.repository || null,
-          context: input.context || null,
-        },
-        stream_mode: 'values',
-      }),
+      stream_mode: 'values',
     })
-
-    if (!response.ok) {
-      throw new Error(`Stream error: ${response.status}`)
-    }
 
     const reader = response.body?.getReader()
     if (!reader) throw new Error('No response body')
@@ -322,6 +411,71 @@ class AegraClient {
         graph_id: input.graph_id || null,
       }),
     })
+  }
+
+  // ==========================================
+  // Auth
+  // ==========================================
+
+  /**
+   * Login with email and password
+   */
+  async login(email: string, password: string): Promise<{
+    user: { id: string; email: string; display_name: string; created_at: string; is_active: boolean }
+    access_token: string
+    refresh_token: string
+  }> {
+    // Auth endpoints don't need the auth header
+    const url = `${this.baseUrl}/auth/login`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({ detail: 'Login failed' }))
+      throw new Error(data.detail || `Login failed: ${response.status}`)
+    }
+    return response.json()
+  }
+
+  /**
+   * Register a new user
+   */
+  async register(email: string, password: string, displayName: string): Promise<{
+    user: { id: string; email: string; display_name: string; created_at: string; is_active: boolean }
+    access_token: string
+    refresh_token: string
+  }> {
+    const url = `${this.baseUrl}/auth/register`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, display_name: displayName }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({ detail: 'Registration failed' }))
+      throw new Error(data.detail || `Registration failed: ${response.status}`)
+    }
+    return response.json()
+  }
+
+  // ==========================================
+  // Graph Config (for Settings page)
+  // ==========================================
+
+  /**
+   * Get agent LLM configuration for a graph
+   */
+  async getGraphConfig(graphId: string): Promise<Record<string, unknown>> {
+    return this.fetch<Record<string, unknown>>(`/graph/config/${graphId}`)
+  }
+
+  /**
+   * Get graph topology for visualization
+   */
+  async getGraphTopology(graphId: string): Promise<Record<string, unknown>> {
+    return this.fetch<Record<string, unknown>>(`/graph/topology/${graphId}`)
   }
 
   // ==========================================

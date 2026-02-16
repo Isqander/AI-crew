@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { aegraClient } from '../api/aegra'
-import type { GraphListItem } from '../types'
+import type { GraphListItem, AgentConfig } from '../types'
 
 interface HealthStatus {
   status: string
@@ -24,12 +24,7 @@ interface HealthStatus {
 
 interface GraphConfig {
   graph_id: string
-  agents: Record<string, {
-    model: string
-    temperature: number
-    fallback_model: string | null
-    endpoint: string
-  }>
+  agents: Record<string, AgentConfig>
 }
 
 export function Settings() {
@@ -65,14 +60,8 @@ export function Settings() {
       const configs: Record<string, GraphConfig> = {}
       for (const g of list) {
         try {
-          const token = useAuthStore.getState().accessToken
-          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081'
-          const resp = await fetch(`${API_URL}/graph/config/${g.graph_id}`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          })
-          if (resp.ok) {
-            configs[g.graph_id] = await resp.json()
-          }
+          const config = await aegraClient.getGraphConfig(g.graph_id)
+          configs[g.graph_id] = config as GraphConfig
         } catch {
           // skip
         }
@@ -148,7 +137,7 @@ export function Settings() {
             <StatusCard
               name="API"
               status={health ? 'ok' : 'loading'}
-              detail={import.meta.env.VITE_API_URL || 'http://localhost:8081'}
+              detail={aegraClient.getBaseUrl()}
             />
           </div>
         </SettingsSection>

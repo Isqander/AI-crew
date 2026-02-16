@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bot, Mail, Lock, ArrowRight } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { ErrorBanner } from '../components/ErrorBanner'
 
 export function Login() {
   const [email, setEmail] = useState('')
@@ -51,11 +52,7 @@ export function Login() {
         {/* Form Card */}
         <div className="bg-midnight-900/60 backdrop-blur-sm border border-midnight-700 rounded-2xl p-8 shadow-xl shadow-midnight-950/50">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-mono">
-                {error}
-              </div>
-            )}
+            {error && <ErrorBanner message={error} />}
 
             <div>
               <label

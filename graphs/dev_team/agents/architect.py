@@ -28,7 +28,7 @@ class ArchitectAgent(BaseAgent):
         llm = get_llm_with_fallback(role="architect", temperature=0.7)
         super().__init__(name="architect", llm=llm, prompts=prompts)
     
-    def design_architecture(self, state: DevTeamState) -> dict:
+    def design_architecture(self, state: DevTeamState, config=None) -> dict:
         """
         Design the system architecture based on requirements.
         """
@@ -43,11 +43,11 @@ class ArchitectAgent(BaseAgent):
         requirements = state.get("requirements", [])
         user_stories = state.get("user_stories", [])
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "requirements": "\n".join(f"- {r}" for r in requirements),
             "user_stories": "\n".join(str(s) for s in user_stories) if user_stories else "None provided",
-        })
+        }, config=config)
         
         content = response.content
         
@@ -93,7 +93,7 @@ class ArchitectAgent(BaseAgent):
         Review QA issues after repeated Dev↔QA cycles.
         Decide which issues are truly critical vs cosmetic/acceptable.
         """
-        logger.info("architect.review_qa_escalation", qa_iter=state.get("qa_iteration_count", 0))
+        logger.info("architect.review_qa_escalation", review_iter=state.get("review_iteration_count", 0))
         prompt = create_prompt_template(
             self.system_prompt,
             self.prompts["qa_escalation"]
@@ -109,7 +109,7 @@ class ArchitectAgent(BaseAgent):
 
         response = self._invoke_chain(chain, {
             "task": state["task"],
-            "iteration_count": state.get("qa_iteration_count", 0),
+            "iteration_count": state.get("review_iteration_count", 0),
             "issues": "\n".join(
                 f"- {i}" for i in state.get("issues_found", [])
             ) or "None",
@@ -137,7 +137,7 @@ class ArchitectAgent(BaseAgent):
                 "current_agent": "architect",
                 "next_agent": "git_commit",
                 # Reset counter for any future cycles
-                "qa_iteration_count": 0,
+                "review_iteration_count": 0,
                 "architect_escalated": True,
             }
         else:
@@ -162,11 +162,11 @@ class ArchitectAgent(BaseAgent):
                 "current_agent": "architect",
                 "next_agent": "developer",
                 # Reset counter for the new round of 3
-                "qa_iteration_count": 0,
+                "review_iteration_count": 0,
                 "architect_escalated": True,
             }
 
-    def create_implementation_spec(self, state: DevTeamState) -> dict:
+    def create_implementation_spec(self, state: DevTeamState, config=None) -> dict:
         """
         Create detailed implementation specification for developers.
         """
@@ -180,13 +180,13 @@ class ArchitectAgent(BaseAgent):
         
         architecture = state.get("architecture", {})
         
-        response = chain.invoke({
+        response = self._invoke_chain(chain, {
             "task": state["task"],
             "architecture": architecture.get("design", "Not specified"),
             "file_structure": "To be determined based on architecture",
             "code_guidelines": "Follow best practices for the chosen stack",
             "important_notes": "Ensure code is well-documented and tested",
-        })
+        }, config=config)
         
         logger.debug("architect.create_implementation_spec.done")
         return {
@@ -210,7 +210,7 @@ def get_architect_agent() -> ArchitectAgent:
     return _architect_agent
 
 
-def architect_agent(state: DevTeamState) -> dict:
+def architect_agent(state: DevTeamState, config=None) -> dict:
     """
     Architect agent node function for LangGraph.
     """
@@ -220,8 +220,8 @@ def architect_agent(state: DevTeamState) -> dict:
     if state.get("clarification_response"):
         # Process approval and continue
         logger.debug("architect.route", action="design_architecture", reason="clarification")
-        return agent.design_architecture(state)
+        return agent.design_architecture(state, config=config)
     
     # Design architecture
     logger.debug("architect.route", action="design_architecture")
-    return agent.design_architecture(state)
+    return agent.design_architecture(state, config=config)

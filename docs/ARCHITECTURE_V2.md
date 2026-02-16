@@ -1533,6 +1533,7 @@ AI-crew/
 │   ├── auth.py                        # JWT auth
 │   ├── proxy.py                       # Прокси к Aegra (REST + SSE)
 │   ├── router.py                      # Switch-Agent (classify_task)
+│   ├── graph_loader.py                # Единая загрузка манифестов и конфигов
 │   ├── config.py                      # Settings (pydantic-settings)
 │   ├── models.py                      # Pydantic models
 │   ├── database.py                    # Async PostgreSQL (users)
@@ -1544,6 +1545,12 @@ AI-crew/
 │
 ├── graphs/
 │   ├── __init__.py
+│   ├── common/                        # Общий код для всех графов
+│   │   ├── __init__.py
+│   │   ├── types.py                   # CodeFile, UserStory, ArchitectureDecision
+│   │   ├── utils.py                   # build_code_summary, format_code_files
+│   │   ├── git.py                     # make_git_commit_node (фабрика)
+│   │   └── logging.py                 # configure_logging (идемпотентная)
 │   └── dev_team/
 │       ├── __init__.py
 │       ├── graph.py                   # LangGraph граф
@@ -1558,7 +1565,11 @@ AI-crew/
 │       │   ├── architect.py
 │       │   ├── developer.py
 │       │   ├── reviewer.py              # Code review (бывший qa.py)
-│       │   ├── qa.py                   # Sandbox-based testing (Волна 2)
+│       │   ├── qa.py                   # QA оркестратор (Волна 2)
+│       │   ├── qa_helpers.py           # Shared parsing: verdict, issues, defects
+│       │   ├── qa_sandbox.py           # Sandbox code testing
+│       │   ├── qa_browser.py           # Playwright E2E testing (Phase 1)
+│       │   ├── qa_exploration.py       # Guided Exploration (Phase 2)
 │       │   ├── security.py            # Волна 2
 │       │   ├── devops.py              # Волна 2
 │       │   └── cli_agent.py           # Волна 2

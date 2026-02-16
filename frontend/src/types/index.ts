@@ -1,10 +1,18 @@
 // API Types for Aegra/LangGraph integration
 
+// ── Thread metadata (typed keys we store in thread.metadata) ──
+
+export interface ThreadMetadata {
+  task?: string
+  graph_id?: string
+  [key: string]: unknown
+}
+
 export interface Thread {
   thread_id: string
   created_at: string
   updated_at: string
-  metadata: Record<string, unknown>
+  metadata: ThreadMetadata
   status: 'idle' | 'busy' | 'interrupted' | 'error'
 }
 
@@ -19,6 +27,9 @@ export interface Run {
   metadata: Record<string, unknown>
 }
 
+// ── Messages ──
+
+/** Message as stored in the frontend */
 export interface Message {
   id: string
   type: 'human' | 'ai' | 'system'
@@ -26,6 +37,15 @@ export interface Message {
   name?: string
   created_at: string
 }
+
+/** Raw message shape coming from LangGraph state (before mapping to Message) */
+export interface StateMessage {
+  type?: string
+  content: string
+  name?: string
+}
+
+// ── State ──
 
 export interface ThreadState {
   values: DevTeamState
@@ -54,7 +74,7 @@ export interface DevTeamState {
   summary: string
   
   // Messages
-  messages: Message[]
+  messages: StateMessage[]
   
   // Error
   error?: string
@@ -64,6 +84,43 @@ export interface DevTeamState {
   needs_clarification: boolean
   clarification_question?: string
   clarification_context?: string
+}
+
+// ── Graph topology types (used by GraphVisualization) ──
+
+export interface TopologyNode {
+  id: string
+  [key: string]: unknown
+}
+
+export interface TopologyEdge {
+  source: string
+  target: string
+  conditional?: boolean
+  data?: string
+}
+
+export interface AgentConfig {
+  model: string
+  temperature: number
+  fallback_model: string | null
+  endpoint: string
+}
+
+export interface PromptInfo {
+  system: string
+  templates: string[]
+}
+
+export interface GraphTopology {
+  graph_id: string
+  topology: { nodes: TopologyNode[]; edges: TopologyEdge[] }
+  agents: Record<string, AgentConfig>
+  prompts: Record<string, PromptInfo>
+  manifest: {
+    agents?: { id: string; display_name: string }[]
+    [key: string]: unknown
+  }
 }
 
 export interface UserStory {

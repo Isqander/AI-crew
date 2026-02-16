@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Activity, ArrowRight, Clock, CheckCircle, AlertCircle, Loader2, Search } from 'lucide-react'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { useState, useMemo } from 'react'
 import { useThreads } from '../hooks/useTask'
 import type { Thread } from '../types'
@@ -34,8 +35,8 @@ export function Tasks() {
     if (!threads) return []
     return threads.filter((t: Thread) => {
       // Search filter
-      const task = (t.metadata as any)?.task || ''
-      const graphId = (t.metadata as any)?.graph_id || ''
+      const task = t.metadata?.task || ''
+      const graphId = t.metadata?.graph_id || ''
       const matchesSearch = !search ||
         task.toLowerCase().includes(search.toLowerCase()) ||
         graphId.toLowerCase().includes(search.toLowerCase()) ||
@@ -109,12 +110,11 @@ export function Tasks() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2 text-red-400 font-mono text-sm">
-            <AlertCircle className="w-5 h-5" />
-            <span>Ошибка загрузки: {error.message}</span>
-          </div>
-        </div>
+        <ErrorBanner
+          title="Ошибка загрузки"
+          message={error.message}
+          className="mb-6"
+        />
       )}
 
       {/* Empty state */}
@@ -136,8 +136,8 @@ export function Tasks() {
       {!isLoading && filteredThreads.length > 0 && (
         <div className="space-y-2">
           {filteredThreads.map((t: Thread) => {
-            const task = (t.metadata as any)?.task || 'Без названия'
-            const graphId = (t.metadata as any)?.graph_id
+            const task = t.metadata?.task || 'Без названия'
+            const graphId = t.metadata?.graph_id
 
             return (
               <button

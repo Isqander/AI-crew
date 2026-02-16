@@ -13,17 +13,10 @@ These tests verify the correct wiring of the graph nodes and routing.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
-
-# Ensure graphs/ is on sys.path
-_GRAPHS_DIR = str(Path(__file__).parent.parent / "graphs")
-if _GRAPHS_DIR not in sys.path:
-    sys.path.insert(0, _GRAPHS_DIR)
 
 
 def _make_mock_agents(qa_results: list[dict] | None = None, reviewer_results: list[dict] | None = None):

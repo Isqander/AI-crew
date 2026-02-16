@@ -14,17 +14,9 @@ Covers:
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 
 import pytest
-
-# Ensure graphs/ is on sys.path
-_PROJECT_ROOT = Path(__file__).parent.parent
-_GRAPHS_DIR = str(_PROJECT_ROOT / "graphs")
-if _GRAPHS_DIR not in sys.path:
-    sys.path.insert(0, _GRAPHS_DIR)
 
 
 # ==================================================================

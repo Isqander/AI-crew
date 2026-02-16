@@ -14,18 +14,11 @@ Covers:
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
 import pytest
 import yaml
-
-# Ensure graphs/ is on sys.path (conftest.py should handle this,
-# but explicit is better in case tests run standalone)
-_GRAPHS_DIR = str(Path(__file__).parent.parent / "graphs")
-if _GRAPHS_DIR not in sys.path:
-    sys.path.insert(0, _GRAPHS_DIR)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -261,7 +254,7 @@ class TestSimpleDevGraph:
 
     def test_manifest_loads(self):
         """Manifest YAML loads correctly."""
-        manifest_path = Path(_GRAPHS_DIR) / "simple_dev" / "manifest.yaml"
+        manifest_path = Path(__file__).parent.parent / "graphs" / "simple_dev" / "manifest.yaml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         assert manifest["name"] == "simple_dev"
         assert manifest["display_name"] == "Quick Developer"
@@ -340,7 +333,7 @@ class TestStandardDevGraph:
 
     def test_manifest_loads(self):
         """Manifest YAML loads correctly."""
-        manifest_path = Path(_GRAPHS_DIR) / "standard_dev" / "manifest.yaml"
+        manifest_path = Path(__file__).parent.parent / "graphs" / "standard_dev" / "manifest.yaml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         assert manifest["name"] == "standard_dev"
         assert manifest["parameters"]["hitl_mode"] == "none"
@@ -414,7 +407,7 @@ class TestResearchGraph:
 
     def test_manifest_loads(self):
         """Manifest YAML loads correctly."""
-        manifest_path = Path(_GRAPHS_DIR) / "research" / "manifest.yaml"
+        manifest_path = Path(__file__).parent.parent / "graphs" / "research" / "manifest.yaml"
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
         assert manifest["name"] == "research"
         assert manifest["parameters"]["hitl_mode"] == "none"
@@ -424,7 +417,7 @@ class TestResearchGraph:
 
     def test_researcher_prompts_load(self):
         """Researcher prompts YAML loads correctly."""
-        prompt_path = Path(_GRAPHS_DIR) / "research" / "prompts" / "researcher.yaml"
+        prompt_path = Path(__file__).parent.parent / "graphs" / "research" / "prompts" / "researcher.yaml"
         prompts = yaml.safe_load(prompt_path.read_text(encoding="utf-8"))
         assert "system" in prompts
         assert "synthesize" in prompts
@@ -520,7 +513,7 @@ class TestDevTeamGitCommitNode:
         assert result["current_agent"] == "complete"
         assert "a.py" in result["summary"]
 
-    @patch("dev_team.graph.commit_and_create_pr")
+    @patch("dev_team.tools.git_workspace.commit_and_create_pr")
     def test_success_delegates_to_helper(self, mock_commit):
         """Successful commit delegates to commit_and_create_pr."""
         from dev_team.graph import git_commit_node
@@ -549,7 +542,7 @@ class TestDevTeamGitCommitNode:
         assert result["working_repo"] == "owner/repo"
         assert result["current_agent"] == "complete"
 
-    @patch("dev_team.graph.commit_and_create_pr")
+    @patch("dev_team.tools.git_workspace.commit_and_create_pr")
     def test_error_returns_summary(self, mock_commit):
         """commit_and_create_pr error → code returned as summary."""
         from dev_team.graph import git_commit_node
@@ -597,10 +590,10 @@ class TestManifestDiscovery:
     """Test that all manifests are discoverable by the Switch-Agent router."""
 
     def test_all_manifests_found(self):
-        """_load_graph_manifests finds all 4 manifests."""
-        from gateway.router import _load_graph_manifests
+        """load_manifests finds all 4 manifests."""
+        from gateway.graph_loader import load_manifests
 
-        manifests = _load_graph_manifests()
+        manifests = load_manifests()
         names = {m["name"] for m in manifests}
 
         assert "dev_team" in names
@@ -610,9 +603,9 @@ class TestManifestDiscovery:
 
     def test_manifests_have_required_fields(self):
         """All manifests have fields needed for routing."""
-        from gateway.router import _load_graph_manifests
+        from gateway.graph_loader import load_manifests
 
-        manifests = _load_graph_manifests()
+        manifests = load_manifests()
         for m in manifests:
             assert "name" in m, f"Missing 'name' in manifest: {m}"
             assert "display_name" in m, f"Missing 'display_name' in {m['name']}"

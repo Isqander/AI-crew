@@ -1788,6 +1788,17 @@ jobs:
 - [x] Telegram: /task, /status, /start, /help, HITL (aiogram + gateway_client) — исправлен Dockerfile (COPY . ./telegram/)
 - [x] Telegram: авто-регистрация бот-аккаунта при старте (ensure_authenticated), авто-реlogin при истечении JWT
 
+#### Рефакторинг (15 февраля 2026)
+- [x] **Критические баги**: architect `qa_iteration_count` → `review_iteration_count`, clarification routing, architect config+retry+callbacks
+- [x] **Общий модуль `graphs/common/`**: types, utils, git (make_git_commit_node), logging (idempotent)
+- [x] **Gateway `graph_loader.py`**: единая загрузка манифестов/конфигов
+- [x] **Консистентность агентов**: единые сигнатуры `(state, config=None)`, все роли в DEFAULT_MODELS
+- [x] **Frontend API**: login/register/getGraphConfig/getGraphTopology в aegraClient
+- [x] **Экспорт**: SecurityAgent в agents/__init__, web_tools в tools/__init__
+- [ ] QA-агент: разбиение на подмодули — см. [REFACTORING_PLAN.md](REFACTORING_PLAN.md)
+- [ ] Frontend: token refresh, типы, общие компоненты — см. [REFACTORING_PLAN.md](REFACTORING_PLAN.md)
+- [ ] Тесты: обновить под рефакторинг — см. [REFACTORING_PLAN.md](REFACTORING_PLAN.md)
+
 #### Инфраструктура
 - [x] docker-compose.yml обновлён (postgres, aegra, gateway, langfuse, frontend, telegram)
 - [x] Aegra healthcheck: interval 1200s (20 мин) — снижение шума в логах

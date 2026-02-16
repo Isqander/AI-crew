@@ -13,17 +13,9 @@ Covers:
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 
 import pytest
-
-# Ensure graphs/ is on sys.path
-_PROJECT_ROOT = Path(__file__).parent.parent
-_GRAPHS_DIR = str(_PROJECT_ROOT / "graphs")
-if _GRAPHS_DIR not in sys.path:
-    sys.path.insert(0, _GRAPHS_DIR)
 
 
 # ==================================================================
@@ -1153,7 +1145,7 @@ class TestExplorationStepLimit:
             "screenshots": [], "browser_console": "", "network_errors": [],
         }
 
-        with patch("dev_team.agents.qa.EXPLORATION_MAX_STEPS", 30):
+        with patch("dev_team.agents.qa_exploration.EXPLORATION_MAX_STEPS", 30):
             result = agent.test_explore(state)
 
         # The plan sent to sandbox should have been truncated

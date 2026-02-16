@@ -50,7 +50,10 @@ DEFAULT_MODELS = {
     "analyst": "gemini-claude-sonnet-4-5-thinking",
     "architect": "gemini-claude-opus-4-5-thinking",
     "developer": "gemini-3-pro-preview",
+    "reviewer": "gemini-claude-sonnet-4-5-thinking",
     "qa": "gemini-3-pro-preview",
+    "security": "gemini-claude-sonnet-4-5-thinking",
+    "router": "gemini-3-flash-preview",
 }
 
 # Available models (for reference)

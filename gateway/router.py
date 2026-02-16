@@ -22,42 +22,18 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import httpx
 import structlog
 
 from gateway.config import settings
+from gateway.graph_loader import load_manifests
 from gateway.models import TaskClassification
 
 logger = structlog.get_logger()
 
 # Router-specific model (can be a fast/cheap model for classification)
 _DEFAULT_ROUTER_MODEL = "gemini-3-flash-preview"
-
-# Paths — used to load manifests when called from gateway context
-_GRAPHS_DIR = Path(__file__).parent.parent / "graphs"
-
-
-# ────────────────────── Manifest loading ─────────────────────
-
-
-def _load_graph_manifests() -> list[dict]:
-    """Load all ``manifest.yaml`` files from ``graphs/*/``."""
-    import yaml  # noqa: WPS433 — deferred to avoid import at module load if unused
-
-    manifests: list[dict] = []
-    if not _GRAPHS_DIR.exists():
-        return manifests
-
-    for manifest_path in _GRAPHS_DIR.glob("*/manifest.yaml"):
-        try:
-            data = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-            if data:
-                manifests.append(data)
-        except Exception as exc:
-            logger.warning("router.manifest_error", path=str(manifest_path), error=str(exc))
-    return manifests
 
 
 def _manifests_to_prompt(manifests: list[dict]) -> str:
@@ -272,7 +248,7 @@ async def classify_task(
         TaskClassification with graph_id, complexity, reasoning.
     """
     # Load manifests if not provided
-    manifests = available_graphs if available_graphs is not None else _load_graph_manifests()
+    manifests = available_graphs if available_graphs is not None else load_manifests()
 
     logger.info("router.classify_task", task_len=len(task), graphs=len(manifests))
 
@@ -313,4 +289,4 @@ async def get_available_graphs() -> list[dict]:
     Convenience function for use in endpoint handlers that need
     both the manifest data and the classification result.
     """
-    return _load_graph_manifests()
+    return load_manifests()

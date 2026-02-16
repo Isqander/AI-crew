@@ -11,13 +11,21 @@ Agent tools (LangChain ``@tool`` functions).
 from .github import github_tools
 from .filesystem import filesystem_tools
 from .git_workspace import git_workspace_tools
+from .web import web_search, fetch_url, download_file
 from .sandbox import run_code, run_tests, run_lint, SandboxClient, get_sandbox_client
 from .browser_runner import build_runner_script, detect_framework_defaults
+
+# Convenient bundle for binding web tools to agents
+web_tools = [web_search, fetch_url, download_file]
 
 __all__ = [
     "github_tools",
     "filesystem_tools",
     "git_workspace_tools",
+    "web_tools",
+    "web_search",
+    "fetch_url",
+    "download_file",
     "run_code",
     "run_tests",
     "run_lint",

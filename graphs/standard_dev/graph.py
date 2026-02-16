@@ -15,7 +15,6 @@ No HITL -- fully autonomous.  After 2 Reviewer iterations the code is
 committed regardless (with a note about remaining issues).
 """
 
-import os
 import time as _time
 from typing import Literal
 
@@ -24,32 +23,18 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from standard_dev.state import StandardDevState
+from common.logging import configure_logging
+from common.git import make_git_commit_node
 
 # Reuse agents from dev_team
 from dev_team.agents.pm import pm_agent as _pm_agent
 from dev_team.agents.developer import developer_agent as _dev_agent
 from dev_team.agents.reviewer import reviewer_agent as _reviewer_agent
-from dev_team.tools.git_workspace import commit_and_create_pr
-from dev_team.logging_config import configure_logging
 
 configure_logging()
 logger = structlog.get_logger()
 
 MAX_REVIEW_ITERATIONS = 2
-
-
-def _build_code_summary(code_files: list, task: str) -> str:
-    """Format generated code files into a readable summary."""
-    if not code_files:
-        return f"Task completed: {task}\nNo code files were generated."
-    parts = [f"Task completed: {task}", f"{len(code_files)} file(s) generated:\n"]
-    for cf in code_files:
-        path = cf.get("path", "unknown")
-        lang = cf.get("language", "")
-        content = cf.get("content", "")
-        parts.append(f"### {path}")
-        parts.append(f"```{lang}\n{content}\n```\n")
-    return "\n".join(parts)
 
 
 # ---------------------- Node functions ----------------------
@@ -91,54 +76,8 @@ def reviewer_node(state: StandardDevState, config=None) -> dict:
     return result
 
 
-def git_commit_node(state: StandardDevState) -> dict:
-    """Commit code and create PR."""
-    t0 = _time.monotonic()
-    code_files = state.get("code_files", [])
-    repository = state.get("repository") or os.getenv("GITHUB_DEFAULT_REPO", "")
-    task = state.get("task", "AI-generated task")
-    github_token_set = bool(os.getenv("GITHUB_TOKEN"))
-    logger.info("standard_dev.git_commit.enter", repository=repository or "none",
-                files=len(code_files), github_token_set=github_token_set)
-
-    if not repository:
-        elapsed_ms = (_time.monotonic() - t0) * 1000
-        logger.warning("standard_dev.git_commit.skip", reason="no_repository",
-                       elapsed_ms=round(elapsed_ms))
-        return {
-            "summary": _build_code_summary(code_files, task),
-            "current_agent": "complete",
-        }
-
-    logger.info("standard_dev.git_commit.committing", repository=repository, files=len(code_files))
-    result = commit_and_create_pr(repo_name=repository, task=task, code_files=code_files)
-    elapsed_ms = (_time.monotonic() - t0) * 1000
-
-    if result.get("error") and result["files_committed"] == 0:
-        logger.error("standard_dev.git_commit.failed", error=result["error"],
-                     elapsed_ms=round(elapsed_ms))
-        return {
-            "summary": f"Warning: Git failed: {result['error']}\n\n{_build_code_summary(code_files, task)}",
-            "current_agent": "complete",
-            "error": result["error"],
-        }
-
-    logger.info("standard_dev.git_commit.success", pr_url=result.get("pr_url", ""),
-                branch=result.get("working_branch", ""),
-                files_committed=result.get("files_committed", 0),
-                elapsed_ms=round(elapsed_ms))
-    return {
-        "pr_url": result.get("pr_url", ""),
-        "commit_sha": result.get("commit_sha", ""),
-        "working_branch": result.get("working_branch", ""),
-        "working_repo": repository,
-        "summary": (
-            f"Created PR with {result['files_committed']} file(s) on {repository}\n"
-            f"Branch: {result.get('working_branch', '')}\n"
-            f"PR: {result.get('pr_url', '')}"
-        ),
-        "current_agent": "complete",
-    }
+# git_commit_node created by shared factory from common.git
+git_commit_node = make_git_commit_node("standard_dev")
 
 
 # ---------------------- Routing ----------------------------

@@ -23,9 +23,9 @@ from gateway.router import (
     _manifests_to_prompt,
     _parse_json_response,
     classify_task,
-    _load_graph_manifests,
     _get_router_model,
 )
+from gateway.graph_loader import load_manifests
 from gateway.models import TaskClassification
 
 
@@ -212,7 +212,7 @@ class TestClassifyTask:
         assert "unavailable" in result.reasoning.lower() or "defaulting" in result.reasoning.lower()
 
     @pytest.mark.asyncio
-    @patch("gateway.router._load_graph_manifests")
+    @patch("gateway.router.load_manifests")
     async def test_loads_manifests_from_disk_when_none(self, mock_load):
         """When available_graphs=None, should load from disk."""
         mock_load.return_value = [MANIFEST_DEV_TEAM]
@@ -519,8 +519,8 @@ class TestFullClassificationFlow:
 
 class TestLoadGraphManifests:
 
-    @patch("gateway.router._GRAPHS_DIR")
+    @patch("gateway.graph_loader._GRAPHS_DIR")
     def test_no_graphs_dir(self, mock_dir):
         mock_dir.exists.return_value = False
-        result = _load_graph_manifests()
+        result = load_manifests()
         assert result == []
