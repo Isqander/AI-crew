@@ -24,7 +24,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from research.state import ResearchState
 from research.agents.researcher import researcher_agent
-from dev_team.logging_config import configure_logging
+from common.logging import configure_logging
 
 configure_logging()
 logger = structlog.get_logger()

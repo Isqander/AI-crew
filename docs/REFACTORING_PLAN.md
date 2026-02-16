@@ -2,7 +2,7 @@
 
 > Рабочий документ. Содержит выполненные и оставшиеся задачи рефакторинга.
 >
-> Дата: 15 февраля 2026
+> Дата: 16 февраля 2026
 > Связанные: [ARCHITECTURE_V2.md](ARCHITECTURE_V2.md), [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 
 ---
@@ -176,13 +176,57 @@ tests/
 2. Использовать `llm.with_structured_output(model)` вместо raw string parsing
 3. Оставить fallback на string parsing для моделей, не поддерживающих structured output
 
-### Фаза 9: Telegram — устойчивость (будущее)
+### Фаза 9: Telegram — устойчивость (частично выполнено)
 
 **Приоритет: НИЗКИЙ | Сложность: 2/10 | Время: 1-2 часа**
 
 - Заменить глобальный `_active_tasks` на dict с TTL (или persistence)
 - Добавить retry при создании задачи (при ошибке Gateway)
-- Убрать хрупкий `bot.__dict__["gateway"]` → dependency injection через middleware
+- ~~Убрать хрупкий `bot.__dict__["gateway"]` → dependency injection через middleware~~ [DONE в Фазе 13]
+
+---
+
+## Выполнено (Фазы 10-14) — 16 февраля 2026
+
+### Фаза 10: Хрупкие зависимости [DONE]
+
+| # | Проблема | Исправление | Файл |
+|---|----------|-------------|------|
+| 1 | `DEFAULT_MODELS` не содержит `researcher` — подбирается fallback | Добавлен `"researcher": "gemini-claude-sonnet-4-5-thinking"` | `agents/base.py` |
+| 2 | Хрупкий путь `Path(__file__).parent.parent.parent.parent` к `config/` | Создан `PROJECT_ROOT` в `common/__init__.py` через поиск маркеров `config/` + `graphs/` | `common/__init__.py`, `agents/base.py` |
+| 3 | Импорт `from dev_team.logging_config` в `research/` и `qa_agent_test/` | Заменён на `from common.logging import configure_logging` | `research/graph.py`, `qa_agent_test/graph.py` |
+| 4 | Мёртвый код `process_clarification` в `graph.py` | Удалён (clarification обрабатывается внутри агентов) | `dev_team/graph.py` |
+| 5 | Тест `test_logging_config_exists` проверял `structlog` в реэкспорт-файле | Тест обновлён: проверяет `common/logging.py` | `tests/test_wave1_verification.py` |
+
+### Фаза 11: Устранение дублирования [DONE]
+
+| # | Проблема | Исправление | Файл |
+|---|----------|-------------|------|
+| 1 | Дублирование `format_code_files` (ручной join) в 3 агентах | Импорт и использование `format_code_files` из `common.utils` | `reviewer.py`, `security.py`, `architect.py` |
+| 2 | Мёртвый `_PROXY_PREFIXES` в Gateway | Удалён | `gateway/main.py` |
+| 3 | Дублирование логики `build_agent_configs` в 2 эндпоинтах | Вынесено в `graph_loader.build_agent_configs()` | `gateway/graph_loader.py`, `gateway/endpoints/graph.py` |
+
+### Фаза 12: Gateway cleanup [DONE]
+
+- `build_agent_configs()` — объединяет `manifest.agents` с глобальным `agents.yaml`, возвращает готовые конфиги
+- Оба эндпоинта (`graph_topology`, `graph_config`) используют единый хелпер
+
+### Фаза 13: Telegram DI [DONE]
+
+| # | Проблема | Исправление | Файл |
+|---|----------|-------------|------|
+| 1 | Хрупкий `bot.__dict__["gateway"]` для DI | Заменён на `dp["gateway"]` (aiogram 3 Dispatcher context) | `telegram/bot.py` |
+| 2 | Все хендлеры тянули gateway через `message.bot.__dict__` | Хендлеры принимают `gateway: GatewayClient` через aiogram DI | `telegram/handlers.py` |
+| 3 | Дефолтный пароль не предупреждается | Добавлен `logger.warning` при `TELEGRAM_BOT_PASSWORD == "botpassword123"` | `telegram/bot.py` |
+
+### Фаза 14: Frontend cleanup [DONE]
+
+| # | Проблема | Исправление | Файл |
+|---|----------|-------------|------|
+| 1 | Дублирование маппинга `StateMessage → Message` в 2 файлах | Вынесен `mapStateMessages()` в `types/index.ts` | `types/index.ts`, `aegra.ts`, `useTask.ts` |
+| 2 | Неиспользуемый импорт `AGENTS` в `Chat.tsx` | Убран из импорта | `components/Chat.tsx` |
+| 3 | 6 мёртвых CSS-классов (`.glow-magenta`, `.cursor-blink`, `.agent-*`) | Удалены из `index.css` | `frontend/src/index.css` |
+| 4 | `useStreamingTask` — неиспользуемый хук без пояснений | Добавлен JSDoc-комментарий о назначении (резерв для Wave 2 SSE) | `hooks/useStreamingTask.ts` |
 
 ---
 
@@ -190,54 +234,64 @@ tests/
 
 ```
 graphs/
-├── common/                     # NEW: общий код для всех графов
-│   ├── __init__.py
+├── common/                     # Общий код для всех графов
+│   ├── __init__.py             # Экспорт + PROJECT_ROOT (динамический поиск корня)
 │   ├── types.py                # CodeFile, UserStory, ArchitectureDecision
 │   ├── utils.py                # build_code_summary, format_code_files
 │   ├── git.py                  # make_git_commit_node (фабрика)
 │   └── logging.py              # configure_logging (идемпотентная)
 ├── dev_team/
-│   ├── state.py                # UPDATED: imports from common.types
-│   ├── graph.py                # UPDATED: uses common.git, common.logging
-│   ├── logging_config.py       # UPDATED: re-export from common.logging
+│   ├── state.py                # imports from common.types
+│   ├── graph.py                # uses common.git, common.logging; без мёртвого process_clarification
+│   ├── logging_config.py       # re-export from common.logging
 │   ├── agents/
-│   │   ├── __init__.py         # UPDATED: exports SecurityAgent
-│   │   ├── base.py             # UPDATED: all roles in DEFAULT_MODELS
-│   │   ├── architect.py        # FIXED: review_iteration_count, config, _invoke_chain
-│   │   ├── qa.py               # TODO: split into submodules (Phase 5)
+│   │   ├── __init__.py         # exports SecurityAgent
+│   │   ├── base.py             # all roles in DEFAULT_MODELS (incl. researcher), PROJECT_ROOT для config
+│   │   ├── architect.py        # FIXED: review_iteration_count, config, _invoke_chain; uses format_code_files
+│   │   ├── reviewer.py         # uses format_code_files from common.utils
+│   │   ├── security.py         # uses format_code_files from common.utils
 │   │   └── ...
 │   └── tools/
-│       ├── __init__.py         # UPDATED: exports web_tools
+│       ├── __init__.py         # exports web_tools
 │       └── ...
-├── simple_dev/                 # UPDATED: uses common
-├── standard_dev/               # UPDATED: uses common
-├── research/
-└── qa_agent_test/              # UPDATED: uses common.types
+├── simple_dev/                 # uses common
+├── standard_dev/               # uses common
+├── research/                   # uses common.logging (не dev_team.logging_config)
+└── qa_agent_test/              # uses common.types, common.logging
 
 gateway/
-├── graph_loader.py             # NEW: единая загрузка манифестов/конфигов
-├── endpoints/graph.py          # UPDATED: uses graph_loader
-├── router.py                   # UPDATED: uses graph_loader
+├── graph_loader.py             # Единая загрузка манифестов/конфигов + build_agent_configs()
+├── main.py                     # Без мёртвого _PROXY_PREFIXES
+├── endpoints/graph.py          # uses graph_loader.build_agent_configs()
+├── router.py                   # uses graph_loader
+└── ...
+
+telegram/
+├── bot.py                      # dp["gateway"] вместо bot.__dict__; warning при дефолтном пароле
+├── handlers.py                 # gateway через aiogram DI (параметр функции)
 └── ...
 
 frontend/src/
-├── api/aegra.ts                # UPDATED: centralized client + token refresh + streaming
-├── types/index.ts              # UPDATED: ThreadMetadata, StateMessage, GraphTopology, AgentConfig, ...
+├── api/aegra.ts                # centralized client + token refresh + streaming; uses mapStateMessages
+├── types/index.ts              # ThreadMetadata, StateMessage, mapStateMessages(), GraphTopology, AgentConfig, ...
 ├── hooks/
-│   ├── useAuth.ts              # UPDATED: uses aegraClient
-│   └── useStreamingTask.ts     # UPDATED: uses aegraClient.createStreamResponse
+│   ├── useAuth.ts              # uses aegraClient
+│   ├── useTask.ts              # uses mapStateMessages
+│   └── useStreamingTask.ts     # JSDoc: зарезервирован для Wave 2 SSE
 ├── components/
-│   ├── ErrorBanner.tsx         # NEW: reusable error display (simple + rich mode)
-│   ├── ErrorBoundary.tsx       # NEW: React Error Boundary
-│   └── GraphVisualization.tsx  # UPDATED: typed topology, uses aegraClient
+│   ├── Chat.tsx                # без неиспользуемого импорта AGENTS
+│   ├── ErrorBanner.tsx         # reusable error display (simple + rich mode)
+│   ├── ErrorBoundary.tsx       # React Error Boundary
+│   └── GraphVisualization.tsx  # typed topology, uses aegraClient
 ├── pages/
-│   ├── Tasks.tsx               # UPDATED: typed metadata, ErrorBanner
-│   ├── Home.tsx                # UPDATED: ErrorBanner
-│   ├── TaskDetail.tsx          # UPDATED: ErrorBanner
-│   ├── Login.tsx               # UPDATED: ErrorBanner
-│   ├── Register.tsx            # UPDATED: ErrorBanner
-│   └── Settings.tsx            # UPDATED: uses aegraClient.getGraphConfig
-└── App.tsx                     # UPDATED: wrapped in ErrorBoundary
+│   ├── Tasks.tsx               # typed metadata, ErrorBanner
+│   ├── Home.tsx                # ErrorBanner
+│   ├── TaskDetail.tsx          # ErrorBanner
+│   ├── Login.tsx               # ErrorBanner
+│   ├── Register.tsx            # ErrorBanner
+│   └── Settings.tsx            # uses aegraClient.getGraphConfig
+├── index.css                   # без мёртвых CSS-классов (.glow-magenta, .cursor-blink, .agent-*)
+└── App.tsx                     # wrapped in ErrorBoundary
 ```
 
 ---
@@ -247,4 +301,4 @@ frontend/src/
 1. **Фаза 7.3** — структурирование тестов (отдельные папки для common, gateway)
 2. **Фаза 6 (minor)** — `FormInput`, конфигурируемый `ProgressTracker`
 3. **Фаза 8** — structured output парсинг (надёжность)
-4. **Фаза 9** — telegram устойчивость (minor)
+4. **Фаза 9 (остаток)** — `_active_tasks` с TTL, retry создания задач

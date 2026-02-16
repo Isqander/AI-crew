@@ -34,25 +34,8 @@ body {
               0 0 30px theme('colors.accent.cyan');
 }
 
-.glow-magenta {
-  box-shadow: 0 0 10px theme('colors.accent.magenta'), 
-              0 0 20px theme('colors.accent.magenta');
-}
-
 .text-glow-cyan {
   text-shadow: 0 0 10px theme('colors.accent.cyan');
-}
-
-/* Terminal-like text animation */
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-.cursor-blink::after {
-  content: '▋';
-  animation: blink 1s infinite;
-  @apply text-accent-cyan ml-1;
 }
 
 /* Gradient backgrounds */
@@ -62,21 +45,4 @@ body {
 
 .bg-gradient-accent {
   background: linear-gradient(135deg, theme('colors.accent.cyan') 0%, theme('colors.accent.magenta') 100%);
-}
-
-/* Agent status indicators */
-.agent-active {
-  @apply bg-accent-lime/20 border-accent-lime text-accent-lime;
-}
-
-.agent-waiting {
-  @apply bg-accent-amber/20 border-accent-amber text-accent-amber;
-}
-
-.agent-complete {
-  @apply bg-accent-cyan/20 border-accent-cyan text-accent-cyan;
-}
-
-.agent-error {
-  @apply bg-red-500/20 border-red-500 text-red-500;
 }

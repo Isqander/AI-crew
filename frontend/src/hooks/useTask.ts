@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { aegraClient } from '../api/aegra'
-import type { CreateTaskInput, ThreadState, Message, StateMessage, Thread } from '../types'
+import type { CreateTaskInput, ThreadState, Message, Thread } from '../types'
+import { mapStateMessages } from '../types'
 
 interface UseTaskReturn {
   // State
@@ -73,13 +74,7 @@ export function useTask(threadId?: string): UseTaskReturn {
   })
 
   // Extract messages from state
-  const messages: Message[] = (threadState?.values?.messages || []).map((msg: StateMessage, idx: number) => ({
-    id: `msg-${idx}`,
-    type: msg.type === 'human' ? 'human' as const : 'ai' as const,
-    content: msg.content || '',
-    name: msg.name,
-    created_at: new Date().toISOString(),
-  }))
+  const messages: Message[] = mapStateMessages(threadState?.values?.messages || [])
 
   // Create task mutation — uses /api/run for proper graph routing
   const createTaskMutation = useMutation({

@@ -30,6 +30,7 @@ from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
 from ..state import DevTeamState
+from common.utils import format_code_files
 
 logger = structlog.get_logger()
 
@@ -75,11 +76,7 @@ class SecurityAgent(BaseAgent):
                 )],
             }
 
-        # Format code files for the prompt
-        code_files_str = "\n\n".join(
-            f"### {f['path']}\n```{f.get('language', '')}\n{f['content']}\n```"
-            for f in code_files
-        )
+        code_files_str = format_code_files(code_files)
 
         # Extract dependency info from code files
         dependencies_str = self._extract_dependencies(code_files)

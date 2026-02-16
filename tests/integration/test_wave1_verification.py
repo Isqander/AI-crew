@@ -66,7 +66,11 @@ class TestStructlog:
         assert path.exists(), f"Missing: {path}"
         content = path.read_text(encoding="utf-8")
         assert "configure_logging" in content
-        assert "structlog" in content
+        # structlog lives in common/logging.py; logging_config re-exports it
+        common_path = GRAPHS_DIR.parent / "common" / "logging.py"
+        assert common_path.exists(), f"Missing: {common_path}"
+        common_content = common_path.read_text(encoding="utf-8")
+        assert "structlog" in common_content
 
     def test_logging_config_importable(self):
         """logging_config module can be imported."""

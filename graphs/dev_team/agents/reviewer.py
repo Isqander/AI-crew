@@ -21,6 +21,7 @@ from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
 from ..state import DevTeamState
+from common.utils import format_code_files
 
 logger = structlog.get_logger()
 
@@ -48,16 +49,12 @@ class ReviewerAgent(BaseAgent):
         code_files = state.get("code_files", [])
         requirements = state.get("requirements", [])
 
-        # Format code files for review
-        code_files_str = "\n\n".join([
-            f"### {f['path']}\n```{f['language']}\n{f['content']}\n```"
-            for f in code_files
-        ])
+        code_files_str = format_code_files(code_files)
 
         response = self._invoke_chain(chain, {
             "task": state["task"],
             "requirements": "\n".join(f"- {r}" for r in requirements),
-            "code_files": code_files_str if code_files_str else "No code files provided",
+            "code_files": code_files_str,
         }, config=config)
 
         content = response.content
@@ -125,12 +122,7 @@ class ReviewerAgent(BaseAgent):
         chain = prompt | self.llm
 
         code_files = state.get("code_files", [])
-
-        # Format code files
-        code_files_str = "\n\n".join([
-            f"### {f['path']}\n```{f['language']}\n{f['content']}\n```"
-            for f in code_files
-        ])
+        code_files_str = format_code_files(code_files)
 
         # Previous issues (stored before clearing)
         previous_issues = state.get("_previous_issues", [])

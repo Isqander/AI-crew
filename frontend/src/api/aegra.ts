@@ -13,6 +13,7 @@ import type {
   Message,
   GraphListItem,
 } from '../types'
+import { mapStateMessages } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8081'
 
@@ -368,13 +369,7 @@ class AegraClient {
    */
   async getMessages(threadId: string): Promise<Message[]> {
     const state = await this.getThreadState(threadId)
-    return (state.values?.messages || []).map((msg, idx) => ({
-      id: `msg-${idx}`,
-      type: msg.type || 'ai',
-      content: typeof msg === 'string' ? msg : msg.content,
-      name: msg.name,
-      created_at: new Date().toISOString(),
-    }))
+    return mapStateMessages(state.values?.messages || [])
   }
 
   // ==========================================

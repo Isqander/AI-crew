@@ -37,9 +37,15 @@ class TaskCreation(StatesGroup):
 # ─────── Helpers ────────────────────────────────────────────
 
 
-def get_gateway(bot_data: dict) -> GatewayClient:
-    """Extract GatewayClient from bot context."""
-    return bot_data["gateway"]
+def get_gateway(gateway: GatewayClient) -> GatewayClient:
+    """Return the GatewayClient passed by aiogram's dependency injection.
+
+    In aiogram 3, extra keyword arguments set on the Dispatcher
+    (``dp["gateway"] = client``) are automatically passed to handler
+    functions that declare a matching parameter name.  This helper
+    exists mainly for backward-compatibility and explicit typing.
+    """
+    return gateway
 
 
 async def _fetch_graphs(gateway: GatewayClient) -> list[dict]:
@@ -114,7 +120,7 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
 
 
 @router.message(Command("task"))
-async def cmd_task(message: types.Message, state: FSMContext):
+async def cmd_task(message: types.Message, state: FSMContext, gateway: GatewayClient):
     """Start the task creation dialog.
 
     If the user typed ``/task some text``, use it as the task description
@@ -124,7 +130,7 @@ async def cmd_task(message: types.Message, state: FSMContext):
 
     if task_text:
         # Skip step 1 — go directly to graph selection
-        await _show_graph_selection(message, state, task_text)
+        await _show_graph_selection(message, state, task_text, gateway=gateway)
     else:
         await state.set_state(TaskCreation.waiting_for_task)
         await message.answer("📝 Введите описание задачи:")
@@ -134,23 +140,25 @@ async def cmd_task(message: types.Message, state: FSMContext):
 
 
 @router.message(TaskCreation.waiting_for_task)
-async def on_task_text(message: types.Message, state: FSMContext):
+async def on_task_text(message: types.Message, state: FSMContext, gateway: GatewayClient):
     """Step 1: User entered the task description."""
     task_text = (message.text or "").strip()
     if not task_text:
         await message.answer("❌ Описание задачи не может быть пустым. Попробуйте ещё раз:")
         return
 
-    await _show_graph_selection(message, state, task_text)
+    await _show_graph_selection(message, state, task_text, gateway=gateway)
 
 
 async def _show_graph_selection(
     message: types.Message,
     state: FSMContext,
     task_text: str,
+    gateway: GatewayClient | None = None,
 ):
     """Show graph selection menu and transition to waiting_for_graph state."""
-    gateway = get_gateway(message.bot.__dict__)
+    if gateway is None:
+        raise RuntimeError("GatewayClient not injected via Dispatcher")
     graphs = await _fetch_graphs(gateway)
 
     if not graphs:
@@ -166,7 +174,7 @@ async def _show_graph_selection(
 
 
 @router.message(TaskCreation.waiting_for_graph)
-async def on_graph_selection(message: types.Message, state: FSMContext):
+async def on_graph_selection(message: types.Message, state: FSMContext, gateway: GatewayClient):
     """Step 2: User picked a graph number."""
     data = await state.get_data()
     task_text = data.get("task_text", "")
@@ -180,7 +188,7 @@ async def on_graph_selection(message: types.Message, state: FSMContext):
         return
 
     graph_id = mapping[choice]
-    await _create_task(message, state, task_text, graph_id=graph_id)
+    await _create_task(message, state, task_text, graph_id=graph_id, gateway=gateway)
 
 
 # ─────── Task creation ─────────────────────────────────────
@@ -191,11 +199,13 @@ async def _create_task(
     state: FSMContext,
     task_text: str,
     graph_id: str | None,
+    gateway: GatewayClient | None = None,
 ):
     """Create the task via Gateway and report back to the user."""
     await state.clear()  # Exit FSM
 
-    gateway = get_gateway(message.bot.__dict__)
+    if gateway is None:
+        raise RuntimeError("GatewayClient not injected via Dispatcher")
     try:
         kwargs: dict = {}
         if graph_id is not None:
@@ -234,14 +244,12 @@ async def _create_task(
 
 
 @router.message(Command("status"))
-async def cmd_status(message: types.Message, state: FSMContext):
+async def cmd_status(message: types.Message, state: FSMContext, gateway: GatewayClient):
     await state.clear()  # In case user is in the middle of task creation
     thread_id = _active_tasks.get(message.chat.id)
     if not thread_id:
         await message.answer("❌ Нет активной задачи. Создайте через /task")
         return
-
-    gateway = get_gateway(message.bot.__dict__)
     try:
         thread_state = await gateway.get_thread_state(thread_id)
         values = thread_state.get("values", thread_state)
@@ -270,14 +278,12 @@ async def cmd_status(message: types.Message, state: FSMContext):
 
 
 @router.message()
-async def handle_message(message: types.Message, state: FSMContext):
+async def handle_message(message: types.Message, state: FSMContext, gateway: GatewayClient):
     """Handle free-text messages as HITL clarification responses."""
     thread_id = _active_tasks.get(message.chat.id)
     if not thread_id:
         await message.answer("💡 Используйте /task для создания задачи или /help для списка команд.")
         return
-
-    gateway = get_gateway(message.bot.__dict__)
     try:
         thread_state = await gateway.get_thread_state(thread_id)
         values = thread_state.get("values", thread_state)

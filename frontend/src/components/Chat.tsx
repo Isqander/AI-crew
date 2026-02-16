@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, User, Bot, AlertCircle, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
-import type { Message, AgentName, AGENTS } from '../types'
+import type { Message, AgentName } from '../types'
 
 interface ChatProps {
   messages: Message[]

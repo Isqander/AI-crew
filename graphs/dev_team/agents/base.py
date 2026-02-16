@@ -54,6 +54,7 @@ DEFAULT_MODELS = {
     "qa": "gemini-3-pro-preview",
     "security": "gemini-claude-sonnet-4-5-thinking",
     "router": "gemini-3-flash-preview",
+    "researcher": "gemini-claude-sonnet-4-5-thinking",
 }
 
 # Available models (for reference)
@@ -86,7 +87,8 @@ def load_agent_config() -> dict:
     if _agent_config_cache is not None:
         return _agent_config_cache
 
-    config_path = Path(__file__).parent.parent.parent.parent / "config" / "agents.yaml"
+    from common import PROJECT_ROOT
+    config_path = PROJECT_ROOT / "config" / "agents.yaml"
     if not config_path.exists():
         logger.warning("config.not_found", path=str(config_path))
         _agent_config_cache = {"defaults": {}, "endpoints": {}, "agents": {}}

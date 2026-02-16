@@ -17,7 +17,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from qa_agent_test.state import QAAgentTestState
 from dev_team.agents.developer import developer_agent as _developer_agent
 from dev_team.agents.qa import qa_agent as _qa_agent
-from dev_team.logging_config import configure_logging
+from common.logging import configure_logging
 
 configure_logging()
 logger = structlog.get_logger()

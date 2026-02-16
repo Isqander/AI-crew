@@ -15,9 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from gateway.auth import get_current_user
 from gateway.graph_loader import (
     load_manifests,
-    load_agents_yaml,
     load_prompt_info,
     get_graphs_dir,
+    build_agent_configs,
 )
 from gateway.models import (
     AgentBrief,
@@ -72,20 +72,11 @@ async def graph_topology(graph_id: str, _user: User = Depends(get_current_user))
                        available=[m.get("name") for m in manifests])
         raise HTTPException(status_code=404, detail=f"Graph '{graph_id}' not found")
 
-    # Agent configs from agents.yaml
-    agents_yaml = load_agents_yaml()
-    agent_configs: dict[str, AgentConfig] = {}
-    for agent_def in manifest.get("agents", []):
-        aid = agent_def["id"]
-        role = agent_def.get("role", aid)
-        cfg = agents_yaml.get("agents", {}).get(role, {})
-        defaults = agents_yaml.get("defaults", {})
-        agent_configs[aid] = AgentConfig(
-            model=cfg.get("model", "unknown"),
-            temperature=cfg.get("temperature", defaults.get("temperature", 0.7)),
-            fallback_model=cfg.get("fallback_model"),
-            endpoint=cfg.get("endpoint", defaults.get("endpoint", "default")),
-        )
+    # Agent configs from agents.yaml (via shared helper)
+    raw_configs = build_agent_configs(manifest)
+    agent_configs: dict[str, AgentConfig] = {
+        aid: AgentConfig(**cfg) for aid, cfg in raw_configs.items()
+    }
 
     # Prompts
     # Load prompt info and convert to PromptInfo models
@@ -115,19 +106,10 @@ async def graph_config(graph_id: str, _user: User = Depends(get_current_user)) -
     if not manifest:
         raise HTTPException(status_code=404, detail=f"Graph '{graph_id}' not found")
 
-    agents_yaml = load_agents_yaml()
-    agent_configs: dict[str, AgentConfig] = {}
-    for agent_def in manifest.get("agents", []):
-        aid = agent_def["id"]
-        role = agent_def.get("role", aid)
-        cfg = agents_yaml.get("agents", {}).get(role, {})
-        defaults = agents_yaml.get("defaults", {})
-        agent_configs[aid] = AgentConfig(
-            model=cfg.get("model", "unknown"),
-            temperature=cfg.get("temperature", defaults.get("temperature", 0.7)),
-            fallback_model=cfg.get("fallback_model"),
-            endpoint=cfg.get("endpoint", defaults.get("endpoint", "default")),
-        )
+    raw_configs = build_agent_configs(manifest)
+    agent_configs: dict[str, AgentConfig] = {
+        aid: AgentConfig(**cfg) for aid, cfg in raw_configs.items()
+    }
 
     return GraphConfigResponse(graph_id=graph_id, agents=agent_configs)
 

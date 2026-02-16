@@ -28,6 +28,10 @@ async def main():
     bot_email = os.getenv("TELEGRAM_BOT_EMAIL", "bot@ai-crew.dev")
     bot_password = os.getenv("TELEGRAM_BOT_PASSWORD", "botpassword123")
 
+    if bot_password == "botpassword123":
+        logger.warning("telegram.insecure_default_password",
+                       hint="Set TELEGRAM_BOT_PASSWORD env var for production")
+
     # Init Gateway client — auto-register bot account if it doesn't exist
     gateway = GatewayClient(gateway_url)
     try:
@@ -42,8 +46,8 @@ async def main():
 
     # Init bot
     bot = Bot(token=token)
-    bot.__dict__["gateway"] = gateway  # Inject gateway into bot context
     dp = Dispatcher()
+    dp["gateway"] = gateway  # Inject gateway via Dispatcher's context storage
     dp.include_router(router)
 
     logger.info("telegram.bot_starting")

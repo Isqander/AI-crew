@@ -16,6 +16,7 @@ from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
 from ..state import DevTeamState
+from common.utils import format_code_files
 
 logger = structlog.get_logger()
 
@@ -102,10 +103,7 @@ class ArchitectAgent(BaseAgent):
         chain = prompt | self.llm
 
         code_files = state.get("code_files", [])
-        code_files_str = "\n\n".join(
-            f"### {f['path']}\n```{f['language']}\n{f['content']}\n```"
-            for f in code_files
-        ) if code_files else "No code files"
+        code_files_str = format_code_files(code_files)
 
         response = self._invoke_chain(chain, {
             "task": state["task"],

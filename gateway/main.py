@@ -158,13 +158,6 @@ async def health():
 
 
 # ────────────────────── Aegra Proxy ───────────────────────────
-# All paths that should be proxied to Aegra transparently.
-
-_PROXY_PREFIXES = (
-    "/threads",
-    "/assistants",
-    "/store",
-)
 
 
 @app.api_route(

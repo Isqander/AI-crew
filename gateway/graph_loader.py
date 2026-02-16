@@ -87,6 +87,35 @@ def load_agents_yaml() -> dict:
         return {}
 
 
+def build_agent_configs(manifest: dict) -> dict[str, dict]:
+    """Build agent LLM configs from manifest + agents.yaml.
+
+    Combines agent definitions from a graph's manifest with
+    global LLM configuration from ``config/agents.yaml``.
+
+    Args:
+        manifest: Parsed manifest.yaml for a graph.
+
+    Returns:
+        Dict mapping agent ID to config dict with keys:
+        model, temperature, fallback_model, endpoint.
+    """
+    agents_yaml = load_agents_yaml()
+    configs: dict[str, dict] = {}
+    for agent_def in manifest.get("agents", []):
+        aid = agent_def["id"]
+        role = agent_def.get("role", aid)
+        cfg = agents_yaml.get("agents", {}).get(role, {})
+        defaults = agents_yaml.get("defaults", {})
+        configs[aid] = {
+            "model": cfg.get("model", "unknown"),
+            "temperature": cfg.get("temperature", defaults.get("temperature", 0.7)),
+            "fallback_model": cfg.get("fallback_model"),
+            "endpoint": cfg.get("endpoint", defaults.get("endpoint", "default")),
+        }
+    return configs
+
+
 # ────────────────────── Prompt loading ────────────────────────
 
 

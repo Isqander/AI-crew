@@ -1,3 +1,8 @@
+/**
+ * Hook for SSE-based real-time state streaming from Aegra.
+ * Currently unused — reserved for future SSE streaming integration
+ * (see IMPLEMENTATION_PLAN.md, Wave 2: real-time SSE updates).
+ */
 import { useState, useCallback, useRef } from 'react'
 import { aegraClient } from '../api/aegra'
 import type { DevTeamState } from '../types'

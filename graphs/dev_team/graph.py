@@ -230,19 +230,6 @@ def clarification_node(state: DevTeamState) -> dict:
     }
 
 
-def process_clarification(state: DevTeamState) -> dict:
-    """
-    Process clarification response and route to appropriate agent.
-    """
-    # Clear the clarification flag
-    current_agent = state.get("current_agent", "pm")
-    logger.info("node.process_clarification", agent=current_agent)
-
-    return {
-        "needs_clarification": False,
-    }
-
-
 def architect_escalation_node(state: DevTeamState, config=None) -> dict:
     """
     Architect reviews repeated Dev<->Reviewer failures and decides

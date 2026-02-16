@@ -45,6 +45,17 @@ export interface StateMessage {
   name?: string
 }
 
+/** Convert raw LangGraph state messages to frontend Message format. */
+export function mapStateMessages(messages: StateMessage[]): Message[] {
+  return messages.map((msg, idx) => ({
+    id: `msg-${idx}`,
+    type: msg.type === 'human' ? 'human' as const : 'ai' as const,
+    content: (typeof msg === 'string' ? msg : msg.content) || '',
+    name: msg.name,
+    created_at: new Date().toISOString(),
+  }))
+}
+
 // ── State ──
 
 export interface ThreadState {
