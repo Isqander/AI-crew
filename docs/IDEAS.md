@@ -340,6 +340,69 @@ else:
 
 ---
 
+### 17b. UI Test Contract (Developer → QA Hints)
+**Описание:** Developer-агент после создания UI генерирует `.qa-hints.yaml` — структурированный контракт с селекторами, доступными элементами и возможными тест-сценариями. QA-агент читает этот файл вместо того, чтобы угадывать селекторы из code structure.
+
+**Проблема:** Сейчас QA-агент генерирует exploration plan на основе code structure — сжатой сводки файлов. При этом LLM вынужден **угадывать** placeholder-текст, текст кнопок, CSS-классы. Это ведёт к неверным селекторам (TimeoutError, strict mode violations).
+
+**Решение — трёхуровневый контракт:**
+
+```yaml
+# .qa-hints.yaml — генерируется Developer-агентом
+selectors:
+  main_input:
+    css: "#todoInput"
+    type: text
+    placeholder: "Add a new task..."
+  add_button:
+    css: "#addBtn"
+    text: "Add Task"
+    type: button
+  task_list:
+    css: "#todoList"
+    type: list
+    item_css: "#todoList li"
+  task_checkbox:
+    css: ".todo-checkbox"
+    type: checkbox
+    note: "один на задачу — используй :first-child для первого"
+  delete_button:
+    css: ".delete-btn"
+    text: "Delete"
+    note: "один на задачу — используй li:first-child .delete-btn"
+
+test_flows:
+  add_task:
+    - { action: fill, target: main_input, value: "Buy milk" }
+    - { action: click, target: add_button }
+  complete_task:
+    - { action: click, target: "li:first-child .todo-checkbox" }
+  delete_task:
+    - { action: click, target: "li:first-child .delete-btn" }
+```
+
+**Архитектурная цепочка:**
+1. **Analyst/Architect** — при проектировании комплексных UI, могут описать ключевые user flows и ожидаемые элементы в user stories / architecture decisions
+2. **Developer** — после создания HTML/frontend кода, генерирует `.qa-hints.yaml` с реальными селекторами из написанного кода
+3. **QA (exploration)** — читает `.qa-hints.yaml` и использует точные селекторы для exploration plan
+
+**Преимущества:**
+- Устраняет угадывание — Developer ЗНАЕТ свои селекторы
+- Создаёт контракт между Developer и QA (аналог OpenAPI для UI)
+- Analyst/Architect могут добавить тестовые сценарии
+- Масштабируется на сложные UI
+
+**Реализация:**
+- Уровень графа: добавить шаг `generate_qa_hints` после Developer, перед QA
+- Промпт для Developer: "Сгенерируй .qa-hints.yaml для созданного UI"
+- QA exploration: если `.qa-hints.yaml` существует — использует его селекторы
+- Fallback: если файла нет — текущий подход (code structure → LLM guess)
+
+**Приоритет:** Высокий
+**Сложность:** Средняя (граф + промпты + QA exploration интеграция)
+
+---
+
 ## Экспериментальные идеи
 
 ### 18. Self-Improvement Loop

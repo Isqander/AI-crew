@@ -207,6 +207,10 @@ generate_exploration_plan: |
     match MULTIPLE elements and cause a strict mode violation.
     Always use a specific selector: "#todoInput", "placeholder=Enter task...",
     "input[type='text']", or "role=textbox" instead of bare "input".
+  - For LIST items (tasks, rows, cards): selectors like ".delete-btn" or
+    "li span" will match ALL items and cause strict mode violations.
+    When interacting with a SPECIFIC item, use ":first-child", ":nth-child(1)",
+    or "li:first-child .delete-btn" to target a single element.
   - If you cannot determine the exact selector, prefer semantic selectors
     (placeholder=, label=, role=) over bare CSS tags
 

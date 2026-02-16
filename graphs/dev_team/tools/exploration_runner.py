@@ -117,15 +117,19 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
                 try:
                     loc.click(timeout=MAX_STEP_TIMEOUT * 1000)
                 except Exception as _ce:
-                    if "Timeout" not in type(_ce).__name__:
-                        raise
-                    _btns = page.locator(
-                        "button:visible,input[type='submit']:visible,"
-                        "[role='button']:visible"
-                    )
-                    if _btns.count() == 1:
-                        _btns.first.click(timeout=5000)
-                        print("[exploration]   Fallback: '" + selector + "' not found, clicked only visible button", file=sys.stderr)
+                    if "strict mode violation" in str(_ce):
+                        loc.first.click(timeout=5000)
+                        print("[exploration]   Strict mode: clicked first of '" + selector + "'", file=sys.stderr)
+                    elif "Timeout" in type(_ce).__name__:
+                        _btns = page.locator(
+                            "button:visible,input[type='submit']:visible,"
+                            "[role='button']:visible"
+                        )
+                        if _btns.count() == 1:
+                            _btns.first.click(timeout=5000)
+                            print("[exploration]   Fallback: '" + selector + "' not found, clicked only visible button", file=sys.stderr)
+                        else:
+                            raise
                     else:
                         raise
             else:
@@ -141,14 +145,18 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
                     try:
                         loc.fill(str(val), timeout=MAX_STEP_TIMEOUT * 1000)
                     except Exception as _fe:
-                        if "Timeout" not in type(_fe).__name__:
+                        if "strict mode violation" in str(_fe):
+                            loc.first.fill(str(val), timeout=5000)
+                            print("[exploration]   Strict mode: filled first of '" + sel + "'", file=sys.stderr)
+                        elif "Timeout" in type(_fe).__name__:
+                            _fb = page.locator(
+                                "input:visible:not([type='checkbox']):not([type='radio'])"
+                                ":not([type='hidden']):not([type='file']),textarea:visible"
+                            ).first
+                            _fb.fill(str(val), timeout=5000)
+                            print("[exploration]   Fallback: '" + sel + "' not found, used visible text input", file=sys.stderr)
+                        else:
                             raise
-                        _fb = page.locator(
-                            "input:visible:not([type='checkbox']):not([type='radio'])"
-                            ":not([type='hidden']):not([type='file']),textarea:visible"
-                        ).first
-                        _fb.fill(str(val), timeout=5000)
-                        print("[exploration]   Fallback: '" + sel + "' not found, used visible text input", file=sys.stderr)
 
         elif action == "type":
             selector = step.get("selector", "")
@@ -158,14 +166,18 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
                 try:
                     loc.fill(str(value), timeout=MAX_STEP_TIMEOUT * 1000)
                 except Exception as _te:
-                    if "Timeout" not in type(_te).__name__:
+                    if "strict mode violation" in str(_te):
+                        loc.first.fill(str(value), timeout=5000)
+                        print("[exploration]   Strict mode: filled first of '" + selector + "'", file=sys.stderr)
+                    elif "Timeout" in type(_te).__name__:
+                        _fb = page.locator(
+                            "input:visible:not([type='checkbox']):not([type='radio'])"
+                            ":not([type='hidden']):not([type='file']),textarea:visible"
+                        ).first
+                        _fb.fill(str(value), timeout=5000)
+                        print("[exploration]   Fallback: '" + selector + "' not found, used visible text input", file=sys.stderr)
+                    else:
                         raise
-                    _fb = page.locator(
-                        "input:visible:not([type='checkbox']):not([type='radio'])"
-                        ":not([type='hidden']):not([type='file']),textarea:visible"
-                    ).first
-                    _fb.fill(str(value), timeout=5000)
-                    print("[exploration]   Fallback: '" + selector + "' not found, used visible text input", file=sys.stderr)
             else:
                 error_msg = "type action requires a selector"
 
@@ -174,7 +186,14 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
             value = step.get("value", "")
             if selector:
                 loc = _resolve_locator(page, selector)
-                loc.select_option(value, timeout=MAX_STEP_TIMEOUT * 1000)
+                try:
+                    loc.select_option(value, timeout=MAX_STEP_TIMEOUT * 1000)
+                except Exception as _se:
+                    if "strict mode violation" in str(_se):
+                        loc.first.select_option(value, timeout=5000)
+                        print("[exploration]   Strict mode: selected in first of '" + selector + "'", file=sys.stderr)
+                    else:
+                        raise
             else:
                 error_msg = "select action requires a selector"
 
@@ -182,7 +201,14 @@ def execute_step(page, step: dict, console_buf: list, network_buf: list) -> dict
             selector = step.get("selector", "")
             if selector:
                 loc = _resolve_locator(page, selector)
-                loc.hover(timeout=MAX_STEP_TIMEOUT * 1000)
+                try:
+                    loc.hover(timeout=MAX_STEP_TIMEOUT * 1000)
+                except Exception as _he:
+                    if "strict mode violation" in str(_he):
+                        loc.first.hover(timeout=5000)
+                        print("[exploration]   Strict mode: hovered first of '" + selector + "'", file=sys.stderr)
+                    else:
+                        raise
             else:
                 error_msg = "hover action requires a selector"
 

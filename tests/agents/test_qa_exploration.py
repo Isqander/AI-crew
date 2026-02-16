@@ -1636,3 +1636,15 @@ class TestTemplateFallbackFeatures:
             stop_on_error=False,
         )
         ast.parse(script)
+
+    def test_template_has_strict_mode_handling(self):
+        """Template should handle strict mode violations with .first fallback."""
+        from dev_team.tools.exploration_runner import build_exploration_runner
+
+        script = build_exploration_runner()
+        assert "strict mode violation" in script
+        assert "Strict mode:" in script
+        assert "loc.first.click" in script
+        assert "loc.first.fill" in script
+        assert "loc.first.hover" in script
+        assert "loc.first.select_option" in script
