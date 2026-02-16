@@ -72,13 +72,15 @@ class SandboxExecuteRequest(BaseModel):
     )
 
     # === Sandbox services (Module 3.7) ===
+    # Always enabled: sandbox-postgres is a permanent docker-compose dependency.
+    # Fields kept for API backward-compat but ignored by executor.
     enable_postgres: bool = Field(
-        default=False,
-        description="Inject DATABASE_URL pointing to sandbox PostgreSQL into the container",
+        default=True,
+        description="Inject DATABASE_URL pointing to sandbox PostgreSQL (always on)",
     )
     enable_network: bool = Field(
-        default=False,
-        description="Connect sandbox container to Docker network for service access",
+        default=True,
+        description="Connect sandbox container to Docker network (always on)",
     )
 
 

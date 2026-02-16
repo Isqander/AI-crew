@@ -24,9 +24,13 @@ from unittest.mock import Mock, MagicMock, patch, AsyncMock
 
 
 class TestSandboxInfraModels:
-    """Test new Pydantic model fields for sandbox services."""
+    """Test Pydantic model fields for sandbox services.
 
-    def test_enable_postgres_defaults_false(self):
+    Since sandbox-postgres is always running, both enable_postgres
+    and enable_network default to True.
+    """
+
+    def test_enable_postgres_defaults_true(self):
         from sandbox.models import SandboxExecuteRequest, CodeFileInput
 
         req = SandboxExecuteRequest(
@@ -34,10 +38,10 @@ class TestSandboxInfraModels:
             code_files=[CodeFileInput(path="main.py", content="print(1)")],
             commands=["python main.py"],
         )
-        assert req.enable_postgres is False
-        assert req.enable_network is False
+        assert req.enable_postgres is True
+        assert req.enable_network is True
 
-    def test_enable_postgres_true(self):
+    def test_enable_postgres_explicit(self):
         from sandbox.models import SandboxExecuteRequest, CodeFileInput
 
         req = SandboxExecuteRequest(
@@ -48,7 +52,7 @@ class TestSandboxInfraModels:
         )
         assert req.enable_postgres is True
 
-    def test_enable_network_true(self):
+    def test_enable_network_explicit(self):
         from sandbox.models import SandboxExecuteRequest, CodeFileInput
 
         req = SandboxExecuteRequest(
@@ -74,15 +78,13 @@ class TestSandboxInfraModels:
         assert req.enable_postgres is True
 
     def test_model_serialization_roundtrip(self):
-        """Verify new fields survive model_dump/parse cycle."""
+        """Verify fields survive model_dump/parse cycle."""
         from sandbox.models import SandboxExecuteRequest, CodeFileInput
 
         req = SandboxExecuteRequest(
             language="python",
             code_files=[CodeFileInput(path="main.py", content="x=1")],
             commands=["python main.py"],
-            enable_postgres=True,
-            enable_network=True,
         )
         data = req.model_dump()
         assert data["enable_postgres"] is True
@@ -99,7 +101,11 @@ class TestSandboxInfraModels:
 
 
 class TestExecutorPostgresIntegration:
-    """Test executor creates containers with correct postgres env vars."""
+    """Test executor always creates containers with postgres env vars and network.
+
+    Since sandbox-postgres is always running, all containers get
+    DATABASE_URL, PG* env vars, and SANDBOX_NETWORK connection.
+    """
 
     def _make_executor(self):
         """Create executor with a mocked Docker client."""
@@ -128,8 +134,8 @@ class TestExecutorPostgresIntegration:
         "SANDBOX_PG_DB": "testdb",
         "SANDBOX_NETWORK": "test-network",
     })
-    def test_postgres_env_vars_injected(self):
-        """When enable_postgres=True, DATABASE_URL and PG* vars are injected."""
+    def test_postgres_env_vars_always_injected(self):
+        """DATABASE_URL and PG* vars are always injected (no opt-in needed)."""
         # Re-import to pick up patched env
         import importlib
         import sandbox.executor
@@ -152,7 +158,6 @@ class TestExecutorPostgresIntegration:
             language="python",
             code_files=[{"path": "app.py", "content": "print(1)"}],
             commands=["python app.py"],
-            enable_postgres=True,
         )
 
         # Verify container was created with correct env vars
@@ -170,42 +175,8 @@ class TestExecutorPostgresIntegration:
         assert env["PGPASSWORD"] == "testpass"
         assert env["PGDATABASE"] == "testdb"
 
-    def test_no_postgres_env_when_disabled(self):
-        """When enable_postgres=False, no DATABASE_URL is injected."""
-        executor, mock_client, mock_container = self._make_executor()
-
-        result = executor.execute(
-            language="python",
-            code_files=[{"path": "app.py", "content": "print(1)"}],
-            commands=["python app.py"],
-            enable_postgres=False,
-        )
-
-        create_call = mock_client.containers.create.call_args
-        env = create_call.kwargs.get("environment", {})
-
-        assert "DATABASE_URL" not in env
-        assert "PGHOST" not in env
-
-    def test_network_mode_with_postgres(self):
-        """When enable_postgres=True, container uses named network (not 'none')."""
-        executor, mock_client, mock_container = self._make_executor()
-
-        result = executor.execute(
-            language="python",
-            code_files=[{"path": "app.py", "content": "print(1)"}],
-            commands=["python app.py"],
-            enable_postgres=True,
-        )
-
-        create_call = mock_client.containers.create.call_args
-        network_mode = create_call.kwargs.get("network_mode", "")
-
-        # Should NOT be "none" when postgres is enabled
-        assert network_mode != "none"
-
-    def test_network_mode_isolated_by_default(self):
-        """Default execution (no postgres, no browser) uses 'none' network."""
+    def test_network_mode_always_sandbox_network(self):
+        """All containers use SANDBOX_NETWORK (never 'none')."""
         executor, mock_client, mock_container = self._make_executor()
 
         result = executor.execute(
@@ -216,21 +187,7 @@ class TestExecutorPostgresIntegration:
 
         create_call = mock_client.containers.create.call_args
         network_mode = create_call.kwargs.get("network_mode", "")
-        assert network_mode == "none"
 
-    def test_enable_network_without_postgres(self):
-        """enable_network=True alone enables bridge networking."""
-        executor, mock_client, mock_container = self._make_executor()
-
-        result = executor.execute(
-            language="python",
-            code_files=[{"path": "app.py", "content": "print(1)"}],
-            commands=["python app.py"],
-            enable_network=True,
-        )
-
-        create_call = mock_client.containers.create.call_args
-        network_mode = create_call.kwargs.get("network_mode", "")
         assert network_mode != "none"
 
     def test_postgres_database_url_format(self):
@@ -241,7 +198,6 @@ class TestExecutorPostgresIntegration:
             language="python",
             code_files=[{"path": "app.py", "content": "print(1)"}],
             commands=["python app.py"],
-            enable_postgres=True,
         )
 
         create_call = mock_client.containers.create.call_args
@@ -304,12 +260,9 @@ class TestServerPostgresForwarding:
 
 
 class TestClientPostgresPayload:
-    """Test that SandboxClient sends correct payload for postgres."""
+    """Test that SandboxClient always sends enable_postgres/enable_network."""
 
-    def test_client_sends_enable_postgres(self):
-        """SandboxClient includes enable_postgres in payload."""
-        from graphs.dev_team.tools.sandbox import SandboxClient
-
+    def _make_mock_client(self):
         captured_payload = {}
 
         def mock_post(url, json=None, **kwargs):
@@ -323,6 +276,14 @@ class TestClientPostgresPayload:
             resp.raise_for_status = MagicMock()
             return resp
 
+        return captured_payload, mock_post
+
+    def test_client_always_sends_enable_postgres(self):
+        """SandboxClient always includes enable_postgres=True in payload."""
+        from graphs.dev_team.tools.sandbox import SandboxClient
+
+        captured_payload, mock_post = self._make_mock_client()
+
         with patch("httpx.Client") as mock_client_cls:
             mock_client_inst = MagicMock()
             mock_client_inst.post = mock_post
@@ -335,27 +296,15 @@ class TestClientPostgresPayload:
                 language="python",
                 code_files=[{"path": "app.py", "content": "x=1"}],
                 commands=["python app.py"],
-                enable_postgres=True,
             )
 
         assert captured_payload.get("enable_postgres") is True
 
-    def test_client_omits_postgres_when_disabled(self):
-        """SandboxClient does not send enable_postgres when False."""
+    def test_client_always_sends_enable_network(self):
+        """SandboxClient always includes enable_network=True in payload."""
         from graphs.dev_team.tools.sandbox import SandboxClient
 
-        captured_payload = {}
-
-        def mock_post(url, json=None, **kwargs):
-            captured_payload.update(json or {})
-            resp = MagicMock()
-            resp.json.return_value = {
-                "stdout": "", "stderr": "", "exit_code": 0,
-                "duration_seconds": 0.0, "tests_passed": None,
-                "files_output": [], "error": None,
-            }
-            resp.raise_for_status = MagicMock()
-            return resp
+        captured_payload, mock_post = self._make_mock_client()
 
         with patch("httpx.Client") as mock_client_cls:
             mock_client_inst = MagicMock()
@@ -369,41 +318,6 @@ class TestClientPostgresPayload:
                 language="python",
                 code_files=[{"path": "app.py", "content": "x=1"}],
                 commands=["python app.py"],
-            )
-
-        # enable_postgres should not be in payload when not requested
-        assert "enable_postgres" not in captured_payload
-
-    def test_client_sends_enable_network(self):
-        """SandboxClient includes enable_network when True."""
-        from graphs.dev_team.tools.sandbox import SandboxClient
-
-        captured_payload = {}
-
-        def mock_post(url, json=None, **kwargs):
-            captured_payload.update(json or {})
-            resp = MagicMock()
-            resp.json.return_value = {
-                "stdout": "", "stderr": "", "exit_code": 0,
-                "duration_seconds": 0.0, "tests_passed": None,
-                "files_output": [], "error": None,
-            }
-            resp.raise_for_status = MagicMock()
-            return resp
-
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client_inst = MagicMock()
-            mock_client_inst.post = mock_post
-            mock_client_inst.__enter__ = MagicMock(return_value=mock_client_inst)
-            mock_client_inst.__exit__ = MagicMock(return_value=False)
-            mock_client_cls.return_value = mock_client_inst
-
-            client = SandboxClient(base_url="http://test:8002")
-            client.execute(
-                language="python",
-                code_files=[{"path": "app.py", "content": "x=1"}],
-                commands=["python app.py"],
-                enable_network=True,
             )
 
         assert captured_payload.get("enable_network") is True

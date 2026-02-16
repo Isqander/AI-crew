@@ -89,11 +89,9 @@ class SandboxClient:
                 payload["app_start_command"] = app_start_command
             payload["app_ready_timeout"] = app_ready_timeout
 
-        # Sandbox services (Module 3.7)
-        if enable_postgres:
-            payload["enable_postgres"] = True
-        if enable_network:
-            payload["enable_network"] = True
+        # Sandbox services (Module 3.7) — always enabled
+        payload["enable_postgres"] = True
+        payload["enable_network"] = True
 
         logger.info(
             "sandbox.client.execute",

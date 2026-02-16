@@ -233,17 +233,11 @@ def run_sandbox_tests(agent: QAAgent, state: DevTeamState, config=None) -> dict:
         if f.get("path") and f.get("content")
     ]
 
-    needs_network = any(
-        f.get("path", "").endswith(("package.json", "requirements.txt"))
-        for f in code_files
-    )
-
     sandbox_result = agent.sandbox.execute(
         language=language,
         code_files=sandbox_files,
         commands=commands,
         timeout=120,
-        network=needs_network,
     )
 
     sandbox_results = {
