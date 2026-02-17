@@ -597,6 +597,42 @@ def commit_and_create_pr(
         except Exception as exc:
             branch_errors.append(f"list_branches: {exc}")
 
+    # Empty repo bootstrap: create initial commit + base branch.
+    # This allows the normal feature-branch workflow to continue.
+    if not resolved_base_branch:
+        bootstrap_branch = env_default or "main"
+        try:
+            bootstrap_tree = repository.create_git_tree([
+                InputGitTreeElement(
+                    path="README.md",
+                    mode="100644",
+                    type="blob",
+                    content=(
+                        "# Repository Bootstrap\n\n"
+                        "Initial commit created automatically by AI-crew "
+                        "to initialize base branch for PR workflow.\n"
+                    ),
+                )
+            ])
+            bootstrap_commit = repository.create_git_commit(
+                message="chore: bootstrap repository",
+                tree=bootstrap_tree,
+                parents=[],
+            )
+            repository.create_git_ref(
+                ref=f"refs/heads/{bootstrap_branch}",
+                sha=bootstrap_commit.sha,
+            )
+            resolved_base_branch = bootstrap_branch
+            logger.warning(
+                "git_workflow.bootstrap_empty_repo",
+                repo=repo_name,
+                base=resolved_base_branch,
+                commit=bootstrap_commit.sha[:8],
+            )
+        except Exception as exc:
+            branch_errors.append(f"bootstrap_empty_repo: {exc}")
+
     if not resolved_base_branch:
         result["error"] = (
             "Failed to resolve base branch. "
