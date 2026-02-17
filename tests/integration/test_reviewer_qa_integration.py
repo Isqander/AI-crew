@@ -191,17 +191,23 @@ class TestQASandboxFailFlow:
         assert result["current_agent"] in ("complete", "pm")
         # Developer called twice: initial + fix
         assert counts["developer"] >= 2
-        # Reviewer called twice: initial + after fix
-        assert counts["reviewer"] >= 2
-        # QA called twice: fail + pass
+        # QA called twice: fail + pass (QA runs before Reviewer in new flow)
         assert counts["qa"] == 2
+        # Reviewer called once: only after QA passes the second time
+        # (QA fail routes back to Developer, not through Reviewer)
+        assert counts["reviewer"] >= 1
 
 
 class TestReviewerRejectsAndQAPasses:
     """Test: Reviewer rejects -> Developer fixes -> Reviewer approves -> QA passes."""
 
     def test_reviewer_reject_then_approve(self):
-        """Reviewer finds issues, developer fixes, reviewer approves, QA passes."""
+        """Reviewer finds issues, developer fixes, reviewer approves, QA passes.
+
+        New flow: Dev → lint → Security → QA → Reviewer.
+        Reviewer reject → Developer → lint → Security → QA → Reviewer.
+        So QA is called on each pass through the pipeline.
+        """
         mocks = _make_mock_agents(
             qa_results=[
                 {"approved": True, "exit_code": 0, "tests_passed": True, "stdout": "OK", "stderr": ""},
@@ -217,7 +223,8 @@ class TestReviewerRejectsAndQAPasses:
         assert result["current_agent"] in ("complete", "pm")
         assert counts["developer"] >= 2
         assert counts["reviewer"] >= 2
-        assert counts["qa"] == 1
+        # QA runs before Reviewer, so it's called on each pipeline pass
+        assert counts["qa"] == 2
 
 
 class TestQASkipNoCode:

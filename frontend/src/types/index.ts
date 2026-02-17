@@ -1,5 +1,15 @@
 // API Types for Aegra/LangGraph integration
 
+// ── User ──
+
+export interface User {
+  id: string
+  email: string
+  display_name: string
+  created_at: string
+  is_active: boolean
+}
+
 // ── Thread metadata (typed keys we store in thread.metadata) ──
 
 export interface ThreadMetadata {
@@ -70,31 +80,81 @@ export interface DevTeamState {
   task: string
   repository?: string
   context?: string
-  
+
+  // Task classification (Wave 1)
+  task_type?: string
+  task_complexity?: number
+
   // Progress
   requirements: string[]
   user_stories: UserStory[]
   architecture: Record<string, unknown>
   tech_stack: string[]
+  architecture_decisions?: ArchitectureDecision[]
   code_files: CodeFile[]
+  implementation_notes?: string
   review_comments: string[]
   issues_found: string[]
-  
+
+  // Test & QA results
+  test_results?: Record<string, unknown>
+
   // Output
   pr_url?: string
+  commit_sha?: string
   summary: string
-  
+
   // Messages
   messages: StateMessage[]
-  
+
   // Error
   error?: string
 
   // Control
   current_agent: string
+  next_agent?: string
   needs_clarification: boolean
   clarification_question?: string
   clarification_context?: string
+  clarification_response?: string
+  review_iteration_count?: number
+  architect_escalated?: boolean
+  retry_count?: number
+
+  // Wave 2: Git-based workflow
+  working_branch?: string
+  working_repo?: string
+  file_manifest?: string[]
+
+  // Wave 2: Sandbox
+  sandbox_results?: {
+    stdout: string
+    stderr: string
+    exit_code: number
+    tests_passed?: boolean
+  }
+
+  // Wave 2: Security
+  security_review?: {
+    risk_level?: string
+    critical: string[]
+    warnings: string[]
+    info: string[]
+  }
+
+  // Wave 2: Deploy & CLI
+  deploy_url?: string
+  execution_mode?: 'auto' | 'internal' | 'cli'
+
+  // Visual QA
+  browser_test_results?: Record<string, unknown>
+
+  // Lint & CI
+  lint_status?: string
+  lint_log?: string
+  ci_status?: string
+  ci_log?: string
+  ci_run_url?: string
 }
 
 // ── Graph topology types (used by GraphVisualization) ──
@@ -134,12 +194,23 @@ export interface GraphTopology {
   }
 }
 
+export interface GraphConfig {
+  graph_id: string
+  agents: Record<string, AgentConfig>
+}
+
 export interface UserStory {
   id: string
   title: string
   description: string
   acceptance_criteria: string[]
   priority: 'high' | 'medium' | 'low'
+}
+
+export interface ArchitectureDecision {
+  title: string
+  decision: string
+  rationale: string
 }
 
 export interface CodeFile {
@@ -168,7 +239,19 @@ export interface CreateTaskInput {
 }
 
 // Agent types
-export type AgentName = 'pm' | 'analyst' | 'architect' | 'developer' | 'qa' | 'waiting_for_user' | 'complete'
+export type AgentName =
+  | 'pm'
+  | 'analyst'
+  | 'architect'
+  | 'developer'
+  | 'reviewer'
+  | 'qa'
+  | 'security'
+  | 'lint_check'
+  | 'ci_check'
+  | 'git_commit'
+  | 'waiting_for_user'
+  | 'complete'
 
 export interface AgentInfo {
   name: AgentName
@@ -202,11 +285,41 @@ export const AGENTS: Record<AgentName, AgentInfo> = {
     description: 'Написание кода',
     color: 'amber',
   },
+  reviewer: {
+    name: 'reviewer',
+    displayName: 'Ревьюер',
+    description: 'Код-ревью и проверка качества',
+    color: 'violet',
+  },
   qa: {
     name: 'qa',
     displayName: 'QA Инженер',
-    description: 'Тестирование и ревью',
-    color: 'cyan',
+    description: 'Тестирование в sandbox',
+    color: 'teal',
+  },
+  security: {
+    name: 'security',
+    displayName: 'Security Engineer',
+    description: 'Анализ безопасности кода',
+    color: 'red',
+  },
+  lint_check: {
+    name: 'lint_check',
+    displayName: 'Lint Check',
+    description: 'Проверка стиля и синтаксиса кода',
+    color: 'orange',
+  },
+  ci_check: {
+    name: 'ci_check',
+    displayName: 'CI Check',
+    description: 'Проверка CI/CD pipeline',
+    color: 'blue',
+  },
+  git_commit: {
+    name: 'git_commit',
+    displayName: 'Git Commit',
+    description: 'Коммит и создание PR',
+    color: 'green',
   },
   waiting_for_user: {
     name: 'waiting_for_user',

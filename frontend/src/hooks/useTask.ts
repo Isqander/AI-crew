@@ -23,7 +23,6 @@ interface UseTaskReturn {
 export function useTask(threadId?: string): UseTaskReturn {
   const queryClient = useQueryClient()
   const [activeThread, setActiveThread] = useState<Thread | null>(null)
-  const [activeRunId, setActiveRunId] = useState<string | null>(null)
 
   // Get thread
   const { data: thread } = useQuery({
@@ -93,7 +92,6 @@ export function useTask(threadId?: string): UseTaskReturn {
         status: 'busy',
       }
       setActiveThread(newThread)
-      setActiveRunId(result.run_id)
 
       return { thread: newThread, run: result }
     },
@@ -118,7 +116,6 @@ export function useTask(threadId?: string): UseTaskReturn {
         clarification_response: response,
         needs_clarification: false,
       })
-      setActiveRunId(run.run_id)
       return run
     },
     onSuccess: () => {

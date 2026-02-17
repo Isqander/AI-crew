@@ -15,16 +15,11 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { aegraClient } from '../api/aegra'
-import type { GraphListItem, AgentConfig } from '../types'
+import type { GraphListItem, GraphConfig } from '../types'
 
 interface HealthStatus {
   status: string
   aegra: string
-}
-
-interface GraphConfig {
-  graph_id: string
-  agents: Record<string, AgentConfig>
 }
 
 export function Settings() {
@@ -61,7 +56,7 @@ export function Settings() {
       for (const g of list) {
         try {
           const config = await aegraClient.getGraphConfig(g.graph_id)
-          configs[g.graph_id] = config as GraphConfig
+          configs[g.graph_id] = config
         } catch {
           // skip
         }

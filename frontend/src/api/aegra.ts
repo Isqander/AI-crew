@@ -12,6 +12,8 @@ import type {
   CreateTaskInput,
   Message,
   GraphListItem,
+  GraphTopology,
+  GraphConfig,
 } from '../types'
 import { mapStateMessages } from '../types'
 
@@ -462,15 +464,15 @@ class AegraClient {
   /**
    * Get agent LLM configuration for a graph
    */
-  async getGraphConfig(graphId: string): Promise<Record<string, unknown>> {
-    return this.fetch<Record<string, unknown>>(`/graph/config/${graphId}`)
+  async getGraphConfig(graphId: string): Promise<GraphConfig> {
+    return this.fetch<GraphConfig>(`/graph/config/${graphId}`)
   }
 
   /**
    * Get graph topology for visualization
    */
-  async getGraphTopology(graphId: string): Promise<Record<string, unknown>> {
-    return this.fetch<Record<string, unknown>>(`/graph/topology/${graphId}`)
+  async getGraphTopology(graphId: string): Promise<GraphTopology> {
+    return this.fetch<GraphTopology>(`/graph/topology/${graphId}`)
   }
 
   // ==========================================

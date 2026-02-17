@@ -463,26 +463,26 @@ class TestRouteAfterDeveloper:
             result = route_after_developer(state)
             assert result == "security_review"
 
-    def test_route_to_reviewer_fix_loop(self):
-        """During fix loops (review_iteration_count > 0), skip lint and security."""
+    def test_route_to_lint_check_fix_loop(self):
+        """During fix loops, lint still runs (gate is strict on every iteration)."""
         from dev_team.graph import route_after_developer
 
         state = {"review_iteration_count": 1}
-        # Even with lint and security enabled, skip on fix loops
+        # Lint runs on every developer iteration to keep the gate strict
         with patch("dev_team.graph.USE_LINT_CHECK", True), \
              patch("dev_team.graph.USE_SECURITY_AGENT", True):
             result = route_after_developer(state)
-            assert result == "reviewer"
+            assert result == "lint_check"
 
-    def test_route_to_reviewer_security_disabled(self):
-        """When both lint and security are disabled, route to reviewer."""
+    def test_route_to_qa_both_disabled(self):
+        """When both lint and security are disabled, route to QA (next quality gate)."""
         from dev_team.graph import route_after_developer
 
         state = {"review_iteration_count": 0}
         with patch("dev_team.graph.USE_LINT_CHECK", False), \
              patch("dev_team.graph.USE_SECURITY_AGENT", False):
             result = route_after_developer(state)
-            assert result == "reviewer"
+            assert result == "qa"
 
 
 # ==================================================================

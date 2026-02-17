@@ -210,8 +210,9 @@ class TestEndToEndWorkflow:
             assert call_count["developer"] == 2
             # Reviewer should have been called twice (reject + approve)
             assert call_count["reviewer"] == 2
-            # QA (sandbox) should have been called once (after reviewer approved)
-            assert call_count["qa"] == 1
+            # QA runs before Reviewer in new flow (Dev→lint→Security→QA→Reviewer),
+            # so QA is called on each iteration through the pipeline
+            assert call_count["qa"] == 2
             # Final state: "complete" (old flow) or "pm" (new flow with CI→pm_final)
             assert result["current_agent"] in ("complete", "pm")
 

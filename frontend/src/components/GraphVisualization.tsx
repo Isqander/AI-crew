@@ -118,7 +118,7 @@ export function GraphVisualization({ graphId, currentAgent }: Props) {
     const fetchTopology = async () => {
       try {
         const data = await aegraClient.getGraphTopology(graphId)
-        setTopology(data as GraphTopology)
+        setTopology(data)
       } catch (err) {
         console.error('Failed to fetch topology:', err)
       } finally {
