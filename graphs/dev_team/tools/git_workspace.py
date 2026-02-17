@@ -561,12 +561,34 @@ def commit_and_create_pr(
         result["error"] = str(exc)
         return result
 
-    default_branch = base_branch or repository.default_branch
+    # Resolve base branch robustly:
+    # 1) explicit base_branch
+    # 2) repository.default_branch
+    # 3) common fallbacks (main/master)
+    preferred = base_branch or repository.default_branch or ""
+    branch_candidates = [preferred, "main", "master"]
+    resolved_base_branch = ""
+    for candidate in branch_candidates:
+        if not candidate or candidate == resolved_base_branch:
+            continue
+        try:
+            repository.get_branch(candidate)
+            resolved_base_branch = candidate
+            break
+        except Exception:
+            continue
+
+    if not resolved_base_branch:
+        result["error"] = (
+            "Failed to resolve base branch. Repository may be empty "
+            "or inaccessible with current token."
+        )
+        return result
 
     # ── 1. Create branch ─────────────────────────────────────────
     branch_name = _generate_branch_name(task[:50])
     try:
-        base = repository.get_branch(default_branch)
+        base = repository.get_branch(resolved_base_branch)
         repository.create_git_ref(
             ref=f"refs/heads/{branch_name}",
             sha=base.commit.sha,
@@ -576,7 +598,7 @@ def commit_and_create_pr(
             "git_workflow.branch_created",
             repo=repo_name,
             branch=branch_name,
-            base=default_branch,
+            base=resolved_base_branch,
         )
     except Exception as exc:
         logger.error("git_workflow.branch_failed", error=str(exc))
@@ -639,7 +661,7 @@ def commit_and_create_pr(
             title=pr_title,
             body=pr_body,
             head=branch_name,
-            base=default_branch,
+            base=resolved_base_branch,
             draft=draft,
         )
         result["pr_url"] = pr.html_url

@@ -24,14 +24,20 @@ from common.logging import configure_logging
 from common.git import make_git_commit_node
 
 from dev_team.agents.developer import developer_agent as _developer_agent
-from dev_team.agents.qa import qa_agent as _qa_agent
 from dev_team.agents.devops import devops_agent as _devops_agent
 from dev_team.graph import deploy_trigger_node, deploy_verify_node
+from dev_team.tools.sandbox import get_sandbox_client
+from dev_team.agents.qa_sandbox import detect_language, build_commands
 
 configure_logging()
 logger = structlog.get_logger()
 
 MAX_QA_RETRIES = 1
+INFRA_ALLOWED_PATHS = {
+    "Dockerfile",
+    "docker-compose.prod.yml",
+    ".github/workflows/deploy.yml",
+}
 
 DEFAULT_WEBAPP_TASK = (
     "Сделай минимальное рабочее веб-приложение, готовое к быстрому деплою.\n"
@@ -86,21 +92,58 @@ def developer_node(state: WebAppDeployTestState, config=None) -> dict:
 
 
 def qa_node(state: WebAppDeployTestState, config=None) -> dict:
-    """Run QA sandbox/browser checks."""
+    """Run deterministic sandbox smoke checks (no exploration loops)."""
     t0 = _time.monotonic()
+    del config  # not used in deterministic smoke mode
     logger.info(
         "webapp_deploy_test.qa.enter",
         files=len(state.get("code_files", [])),
         retry=state.get("qa_retry_count", 0),
     )
-    result = _qa_agent(
-        {
-            **state,
-            "review_iteration_count": state.get("review_iteration_count", 0),
-            "issues_found": state.get("issues_found", []),
-        },
-        config=config,
-    )
+
+    code_files = state.get("code_files", [])
+    if not code_files:
+        result = {
+            "sandbox_results": None,
+            "test_results": {"approved": False, "reason": "no_code_files"},
+            "issues_found": ["No code files generated for QA smoke test."],
+        }
+    else:
+        language = detect_language(code_files)
+        commands = build_commands(language, code_files)
+        sandbox_files = [
+            {"path": f["path"], "content": f["content"]}
+            for f in code_files
+            if f.get("path") and f.get("content")
+        ]
+        logger.info(
+            "webapp_deploy_test.qa.execute",
+            language=language,
+            commands=len(commands),
+            files=len(sandbox_files),
+        )
+        sandbox_result = get_sandbox_client().execute(
+            language=language,
+            code_files=sandbox_files,
+            commands=commands,
+            timeout=90,
+            memory_limit="256m",
+        )
+        exit_code = sandbox_result.get("exit_code", -1)
+        approved = exit_code == 0
+        issues = [] if approved else [f"Sandbox smoke failed with exit_code={exit_code}"]
+        result = {
+            "sandbox_results": {
+                "stdout": sandbox_result.get("stdout", ""),
+                "stderr": sandbox_result.get("stderr", ""),
+                "exit_code": exit_code,
+                "tests_passed": sandbox_result.get("tests_passed"),
+                "duration_seconds": sandbox_result.get("duration_seconds", 0),
+            },
+            "test_results": {"approved": approved, "smoke_only": True},
+            "issues_found": issues,
+        }
+
     elapsed_ms = (_time.monotonic() - t0) * 1000
     logger.info(
         "webapp_deploy_test.qa.exit",
@@ -168,13 +211,51 @@ def devops_node(state: WebAppDeployTestState, config=None) -> dict:
     # DevOps always computes a target URL, but deployment is real only
     # when deploy_repo is configured and commit/deploy stages run.
     predicted_url = result.get("deploy_url", "")
+    infra_files = result.get("infra_files", []) or []
+    filtered_infra = [f for f in infra_files if f.get("path") in INFRA_ALLOWED_PATHS]
+    if len(filtered_infra) != len(infra_files):
+        logger.warning(
+            "webapp_deploy_test.devops.infra_filtered",
+            before=len(infra_files),
+            after=len(filtered_infra),
+        )
     state_update = {
         **result,
+        "infra_files": filtered_infra,
         "current_agent": "devops",
     }
+    # If a deploy repo is not set explicitly, use the working repo/repository.
+    deploy_repo = result.get("deploy_repo") or state.get("working_repo") or state.get("repository")
+    if deploy_repo:
+        state_update["deploy_repo"] = deploy_repo
     if predicted_url:
         state_update["predicted_deploy_url"] = predicted_url
     return state_update
+
+
+def route_after_git_commit(state: WebAppDeployTestState) -> Literal["deploy_trigger", "report"]:
+    """Proceed to deploy only when git commit succeeded."""
+    if state.get("error") or not state.get("working_branch"):
+        logger.warning(
+            "webapp_deploy_test.route_after_git_commit",
+            decision="report",
+            reason="git_commit_failed",
+            error=bool(state.get("error")),
+            working_branch=bool(state.get("working_branch")),
+        )
+        return "report"
+    logger.info("webapp_deploy_test.route_after_git_commit", decision="deploy_trigger")
+    return "deploy_trigger"
+
+
+def deploy_trigger_node_wrapped(state: WebAppDeployTestState, config=None) -> dict:
+    """Fill missing deploy repo/branch from git_commit output before deploy trigger."""
+    deploy_state = {
+        **state,
+        "deploy_repo": state.get("deploy_repo") or state.get("working_repo") or state.get("repository", ""),
+        "deploy_branch": state.get("deploy_branch") or state.get("working_branch", ""),
+    }
+    return deploy_trigger_node(deploy_state, config=config)
 
 
 def route_after_deploy_trigger(
@@ -240,7 +321,7 @@ def create_graph() -> StateGraph:
     builder.add_node("qa_retry", bump_qa_retry_node)
     builder.add_node("devops", devops_node)
     builder.add_node("git_commit", git_commit_node)
-    builder.add_node("deploy_trigger", deploy_trigger_node)
+    builder.add_node("deploy_trigger", deploy_trigger_node_wrapped)
     builder.add_node("deploy_verify", deploy_verify_node)
     builder.add_node("report", report_node)
 
@@ -258,7 +339,14 @@ def create_graph() -> StateGraph:
     builder.add_edge("qa_retry", "developer")
 
     builder.add_edge("devops", "git_commit")
-    builder.add_edge("git_commit", "deploy_trigger")
+    builder.add_conditional_edges(
+        "git_commit",
+        route_after_git_commit,
+        {
+            "deploy_trigger": "deploy_trigger",
+            "report": "report",
+        },
+    )
 
     builder.add_conditional_edges(
         "deploy_trigger",
