@@ -1,0 +1,40 @@
+# ===========================================
+# webapp_deploy_test Graph Manifest
+# ===========================================
+# Fast smoke-to-deploy test for web applications.
+# Flow: Developer -> QA (max 1 retry) -> DevOps -> git_commit -> deploy -> report.
+
+name: "webapp_deploy_test"
+display_name: "WebApp Deploy Test"
+description: >-
+  Fast test graph for validating web-app runtime readiness and deploy pipeline.
+  Uses a short QA gate (single retry max) and then continues to DevOps, commit,
+  CI/deploy trigger, health verification, and final report.
+version: "1.0.0"
+
+task_types:
+  - webapp_smoke
+  - deploy_test
+  - fast_validation
+
+agents:
+  - id: developer
+    display_name: "Developer"
+    role: developer
+  - id: qa
+    display_name: "QA"
+    role: qa
+  - id: devops
+    display_name: "DevOps"
+    role: devops
+
+features:
+  - sandbox_testing
+  - git_commit
+  - deploy
+  - fast_path
+
+parameters:
+  max_qa_retries: 1
+  hitl_mode: "none"
+  deploy_after_commit: true
