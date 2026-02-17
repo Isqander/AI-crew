@@ -2003,8 +2003,19 @@ jobs:
 - [ ] Multi-pass testing — 3 прохода QA (G1 #15)
 - [ ] QA-CLI-агент граф для сложных проектов (G1 #16)
 
+#### DevOps Agent (Module 3.5) `[DONE]`
+- [x] DevOps Agent: agents/devops.py — генерация Dockerfile, docker-compose, CI/CD workflow
+- [x] DevOps Agent: prompts/devops.yaml — промпты для инфра-генерации
+- [x] DevOps Agent: schemas.py — InfraFileOutput, DevOpsResponse Pydantic-модели
+- [x] DevOps Agent: интеграция в граф (reviewer → devops → git_commit)
+- [x] DevOps Agent: USE_DEVOPS_AGENT env toggle
+- [x] DevOps Agent: git_commit_node мержит infra_files в code_files
+- [x] DevOps Agent: 36 тестов (unit, parsing, routing, node, schema, git merge)
+- [x] DevOps Agent: default model в base.py (devops → gemini-claude-sonnet-4-5-thinking)
+
+**Всего тестов: 765 passing**
+
 #### Остальные модули (не начаты)
-- [ ] DevOps Agent: Dockerfile, CI/CD, secrets, branch protection
 - [ ] CLI Agents: CLI Runner API, node в графе, route_to_executor
 - [ ] Prefect: deployment на VPS деплоя (рядом)
 - [ ] E2E: полный цикл от задачи до PR (и деплоя)

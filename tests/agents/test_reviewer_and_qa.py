@@ -485,11 +485,15 @@ class TestRouteAfterReviewer:
         state = {"issues_found": ["bug"], "review_iteration_count": 3, "architect_escalated": True}
         assert route_after_reviewer(state) == "human_escalation"
 
-    def test_approved_to_qa(self):
+    def test_approved_to_devops(self):
+        from unittest.mock import patch
         from dev_team.graph import route_after_reviewer
 
         state = {"issues_found": [], "test_results": {"approved": True}}
-        assert route_after_reviewer(state) == "git_commit"
+        with patch("dev_team.graph.USE_DEVOPS_AGENT", True):
+            assert route_after_reviewer(state) == "devops"
+        with patch("dev_team.graph.USE_DEVOPS_AGENT", False):
+            assert route_after_reviewer(state) == "git_commit"
 
     def test_not_approved_to_pm(self):
         from dev_team.graph import route_after_reviewer

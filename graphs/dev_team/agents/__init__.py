@@ -14,6 +14,7 @@ from .developer import developer_agent, DeveloperAgent
 from .reviewer import reviewer_agent, ReviewerAgent
 from .qa import qa_agent, QAAgent
 from .security import security_agent, SecurityAgent
+from .devops import devops_agent, DevOpsAgent
 
 __all__ = [
     # Base
@@ -29,6 +30,7 @@ __all__ = [
     "reviewer_agent",
     "qa_agent",
     "security_agent",
+    "devops_agent",
     # Classes (for direct instantiation / testing)
     "ProjectManagerAgent",
     "AnalystAgent",
@@ -37,4 +39,5 @@ __all__ = [
     "ReviewerAgent",
     "QAAgent",
     "SecurityAgent",
+    "DevOpsAgent",
 ]

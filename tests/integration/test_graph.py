@@ -84,15 +84,18 @@ class TestGraphRouting:
 
         assert result == "developer"
 
-    def test_route_after_reviewer_to_git_commit(self):
-        """Test routing from Reviewer to git_commit when approved."""
+    def test_route_after_reviewer_to_devops_or_git_commit(self):
+        """Test routing from Reviewer to devops/git_commit when approved."""
+        from unittest.mock import patch
+
         state = create_initial_state(task="Test")
         state["issues_found"] = []
         state["test_results"] = {"approved": True}
 
-        result = route_after_reviewer(state)
-
-        assert result == "git_commit"
+        with patch("graphs.dev_team.graph.USE_DEVOPS_AGENT", True):
+            assert route_after_reviewer(state) == "devops"
+        with patch("graphs.dev_team.graph.USE_DEVOPS_AGENT", False):
+            assert route_after_reviewer(state) == "git_commit"
 
     def test_route_after_reviewer_to_pm(self):
         """Test routing from Reviewer to PM for final review."""

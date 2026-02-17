@@ -37,6 +37,7 @@ export function TaskDetail() {
   if (state?.code_files?.length) stageDetails.developer = `${state.code_files.length} файлов`
   if (state?.issues_found?.length) stageDetails.qa = `${state.issues_found.length} проблем`
   if (state?.pr_url) stageDetails.complete = 'PR создан'
+  if (state?.deploy_url) stageDetails.complete = `Deploy: ${state.deploy_url}`
 
   // Get graph_id from thread metadata (set by /api/run → _create_thread)
   const graphId = (thread?.metadata as Record<string, unknown>)?.graph_id as string | undefined
@@ -98,6 +99,20 @@ export function TaskDetail() {
               Граф
               {showGraph ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
+          )}
+
+          {/* Deploy URL */}
+          {state?.deploy_url && (
+            <a
+              href={state.deploy_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-accent-cyan/10 text-accent-cyan px-4 py-2 rounded-lg
+                         font-mono text-sm hover:bg-accent-cyan/20 transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Deploy
+            </a>
           )}
 
           {/* PR Link */}

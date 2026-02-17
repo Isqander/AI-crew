@@ -77,6 +77,8 @@ class ProjectManagerAgent(BaseAgent):
     def final_review(self, state: DevTeamState, config=None) -> dict:
         """
         Conduct final review before completion.
+
+        Includes deploy_url and pr_url in the summary if available.
         """
         logger.info("pm.final_review", code_files=len(state.get("code_files", [])))
         prompt = create_prompt_template(
@@ -93,9 +95,20 @@ class ProjectManagerAgent(BaseAgent):
             "docs_status": "Included" if state.get("implementation_notes") else "Missing",
         }, config=config)
         logger.debug("pm.final_review.done")
+
+        # Build enriched summary with deployment info
+        summary_parts = [response.content]
+        pr_url = state.get("pr_url")
+        deploy_url = state.get("deploy_url")
+        if pr_url:
+            summary_parts.append(f"\nPR: {pr_url}")
+        if deploy_url:
+            summary_parts.append(f"Deploy URL: {deploy_url}")
+        summary = "\n".join(summary_parts)
+
         return {
-            "messages": [AIMessage(content=response.content, name="pm")],
-            "summary": response.content,
+            "messages": [AIMessage(content=summary, name="pm")],
+            "summary": summary,
         }
 
 

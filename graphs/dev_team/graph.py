@@ -18,23 +18,26 @@ Graph flow::
                                         +----+----+
                                       pass?    fail?
                                         |         |
-                                    Developer  Reviewer
-                                        |     +----+----+
-                                  (after N) issues?  approved?
-                                architect_esc  |       |
-                                        |   Developer git_commit
-                                  (still stuck)    |
-                                human_esc     ci_check (if enabled)
-                                  |         +----+----+
-                               Developer  pass?    fail?
-                                            |       |
-                                         pm_final Developer
+                                    Reviewer   Developer
+                                  +----+----+
+                                issues?  approved?
+                                  |       |
+                               Developer devops (infra gen)
+                          (after N)       |
+                        architect_esc  git_commit
+                                |         |
+                          (still stuck) ci_check (if enabled)
+                          human_esc   +----+----+
+                             |      pass?    fail?
+                          Developer   |       |
+                                   pm_final Developer
 
 Nodes:
   pm, analyst, architect, developer, security_review — agent nodes
   lint_check — runs linter in sandbox (Dev↔Lint loop until clean)
   qa — quality gate: sandbox/browser testing before Reviewer
   reviewer — code review after quality gate
+  devops — generates infrastructure files (Dockerfile, CI/CD, Traefik)
   clarification — HITL interrupt for user input
   architect_escalation — architect reviews repeated Reviewer failures
   human_escalation — HITL interrupt when both Dev<->Reviewer and Architect fail
@@ -66,6 +69,7 @@ from dev_team.agents.developer import developer_agent
 from dev_team.agents.reviewer import reviewer_agent
 from dev_team.agents.qa import qa_agent
 from dev_team.agents.security import security_agent
+from dev_team.agents.devops import devops_agent
 
 
 configure_logging()
@@ -145,6 +149,9 @@ USE_CI_INTEGRATION = os.getenv("USE_CI_INTEGRATION", "true").lower() in ("true",
 
 # Lint check: enabled by env var (requires sandbox)
 USE_LINT_CHECK = os.getenv("USE_LINT_CHECK", "true").lower() in ("true", "1", "yes")
+
+# DevOps agent: generates infrastructure files (Dockerfile, CI/CD, Traefik)
+USE_DEVOPS_AGENT = os.getenv("USE_DEVOPS_AGENT", "true").lower() in ("true", "1", "yes")
 
 
 def route_after_developer(
@@ -360,9 +367,14 @@ def route_after_lint(
     return "developer"
 
 
+def _approved_next_step() -> str:
+    """Return the next node after approval: devops (if enabled) or git_commit."""
+    return "devops" if USE_DEVOPS_AGENT else "git_commit"
+
+
 def route_after_reviewer(
     state: DevTeamState,
-) -> Literal["developer", "architect_escalation", "human_escalation", "git_commit", "pm_final"]:
+) -> Literal["developer", "architect_escalation", "human_escalation", "devops", "git_commit", "pm_final"]:
     """
     Router: After Reviewer, determine next step.
 
@@ -370,7 +382,7 @@ def route_after_reviewer(
       1) <= N Dev<->Reviewer iterations -> send back to developer
       2) After N iterations (architect not yet involved) -> architect_escalation
       3) After architect intervened and another N iterations -> human_escalation
-      4) If no issues / approved -> git_commit or pm_final
+      4) If no issues / approved -> devops (if enabled) -> git_commit or pm_final
     """
     # If there are issues, apply escalation logic
     if state.get("issues_found"):
@@ -389,11 +401,12 @@ def route_after_reviewer(
                      issues=len(state.get("issues_found", [])), review_iter=review_iter)
         return "developer"
 
-    # If approved, proceed to git_commit (QA quality gate already passed)
+    # If approved, proceed to devops -> git_commit (QA quality gate already passed)
     test_results = state.get("test_results", {})
     if test_results.get("approved", False):
-        logger.debug("router.after_reviewer", decision="git_commit", approved=True)
-        return "git_commit"
+        next_step = _approved_next_step()
+        logger.debug("router.after_reviewer", decision=next_step, approved=True)
+        return next_step
 
     # Otherwise, final PM review
     logger.debug("router.after_reviewer", decision="pm_final")
@@ -457,13 +470,13 @@ def architect_escalation_node(state: DevTeamState, config=None) -> dict:
 
 def route_after_architect_escalation(
     state: DevTeamState,
-) -> Literal["developer", "git_commit"]:
+) -> Literal["developer", "devops", "git_commit"]:
     """
-    After architect escalation: if approved -> git_commit, else -> developer.
+    After architect escalation: if approved -> devops/git_commit, else -> developer.
     """
     test_results = state.get("test_results", {})
     if test_results.get("approved", False):
-        return "git_commit"
+        return _approved_next_step()
     return "developer"
 
 
@@ -624,8 +637,10 @@ def create_graph() -> StateGraph:
     6. Security review (optional)
     7. QA quality gate (sandbox/browser; may send back to developer)
     8. Reviewer checks code quality (may send back to developer)
-    9. Git commit (if approved)
-    10. PM final review
+    9. DevOps generates infrastructure (Dockerfile, CI/CD, Traefik)
+    10. Git commit (if approved)
+    11. CI check (if enabled)
+    12. PM final review
     """
 
     # Create the graph
@@ -645,6 +660,8 @@ def create_graph() -> StateGraph:
     builder.add_node("clarification", clarification_node)
     builder.add_node("architect_escalation", architect_escalation_node)
     builder.add_node("human_escalation", human_escalation_node)
+    if USE_DEVOPS_AGENT:
+        builder.add_node("devops", devops_agent)
     builder.add_node("git_commit", git_commit_node)
     builder.add_node("pm_final", pm_agent)  # Final PM review
 
@@ -712,17 +729,20 @@ def create_graph() -> StateGraph:
     # Security review -> QA quality gate
     builder.add_edge("security_review", "qa")
 
-    # Reviewer -> (developer | architect_escalation | human_escalation | git_commit | pm_final)
+    # Reviewer -> (developer | architect_escalation | human_escalation | devops | git_commit | pm_final)
+    reviewer_edges = {
+        "developer": "developer",
+        "architect_escalation": "architect_escalation",
+        "human_escalation": "human_escalation",
+        "git_commit": "git_commit",
+        "pm_final": "pm_final",
+    }
+    if USE_DEVOPS_AGENT:
+        reviewer_edges["devops"] = "devops"
     builder.add_conditional_edges(
         "reviewer",
         route_after_reviewer,
-        {
-            "developer": "developer",
-            "architect_escalation": "architect_escalation",
-            "human_escalation": "human_escalation",
-            "git_commit": "git_commit",
-            "pm_final": "pm_final",
-        }
+        reviewer_edges,
     )
 
     # QA (quality gate) -> (reviewer | developer)
@@ -735,14 +755,17 @@ def create_graph() -> StateGraph:
         }
     )
 
-    # Architect escalation -> (developer or git_commit)
+    # Architect escalation -> (developer or devops/git_commit)
+    arch_esc_edges = {
+        "developer": "developer",
+        "git_commit": "git_commit",
+    }
+    if USE_DEVOPS_AGENT:
+        arch_esc_edges["devops"] = "devops"
     builder.add_conditional_edges(
         "architect_escalation",
         route_after_architect_escalation,
-        {
-            "developer": "developer",
-            "git_commit": "git_commit",
-        }
+        arch_esc_edges,
     )
 
     # Human escalation is an interrupt point -- after user responds,
@@ -758,6 +781,10 @@ def create_graph() -> StateGraph:
             "architect": "architect",
         }
     )
+
+    # DevOps -> git_commit (if DevOps enabled)
+    if USE_DEVOPS_AGENT:
+        builder.add_edge("devops", "git_commit")
 
     # Git commit -> CI check (if enabled) or END
     if USE_CI_INTEGRATION:

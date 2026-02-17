@@ -27,7 +27,7 @@ def _make_mock_agents(qa_results: list[dict] | None = None, reviewer_results: li
         reviewer_results: List of dicts to return from Reviewer in order.
     """
     call_counts = {"pm": 0, "analyst": 0, "architect": 0, "developer": 0,
-                   "reviewer": 0, "qa": 0, "security": 0}
+                   "reviewer": 0, "qa": 0, "security": 0, "devops": 0}
 
     qa_results = qa_results or [
         {"approved": True, "exit_code": 0, "tests_passed": True, "stdout": "OK", "stderr": ""},
@@ -106,6 +106,15 @@ def _make_mock_agents(qa_results: list[dict] | None = None, reviewer_results: li
             "current_agent": "security",
         }
 
+    def mock_devops(state, config=None):
+        call_counts["devops"] += 1
+        return {
+            "messages": [AIMessage(content="Infrastructure generated", name="devops")],
+            "infra_files": [{"path": "Dockerfile", "content": "FROM python:3.12"}],
+            "deploy_url": "https://app.example.nip.io",
+            "current_agent": "devops",
+        }
+
     return {
         "pm": mock_pm,
         "analyst": mock_analyst,
@@ -114,6 +123,7 @@ def _make_mock_agents(qa_results: list[dict] | None = None, reviewer_results: li
         "reviewer": mock_reviewer,
         "qa": mock_qa,
         "security": mock_security,
+        "devops": mock_devops,
         "call_counts": call_counts,
     }
 
@@ -133,7 +143,8 @@ def _run_graph(mocks: dict, task: str = "Build API", repository: str = "test/rep
          patch("dev_team.graph.developer_agent", mocks["developer"]), \
          patch("dev_team.graph.reviewer_agent", mocks["reviewer"]), \
          patch("dev_team.graph.qa_agent", mocks["qa"]), \
-         patch("dev_team.graph.security_agent", mocks["security"]):
+         patch("dev_team.graph.security_agent", mocks["security"]), \
+         patch("dev_team.graph.devops_agent", mocks["devops"]):
 
         builder = create_graph()
         graph = builder.compile(checkpointer=MemorySaver())

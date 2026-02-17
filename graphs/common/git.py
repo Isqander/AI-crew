@@ -40,10 +40,21 @@ def make_git_commit_node(graph_name: str = "graph"):
         from dev_team.tools.git_workspace import commit_and_create_pr
 
         t0 = _time.monotonic()
-        code_files = state.get("code_files", [])
+        code_files = list(state.get("code_files", []))
+        infra_files = state.get("infra_files") or []
         repository = state.get("repository") or os.getenv("GITHUB_DEFAULT_REPO", "")
         task = state.get("task", "AI-generated task")
         github_token_set = bool(os.getenv("GITHUB_TOKEN"))
+
+        # Merge infra_files (from DevOps agent) into code_files for a single commit
+        if infra_files:
+            existing_paths = {f.get("path") for f in code_files}
+            for inf in infra_files:
+                if inf.get("path") and inf.get("path") not in existing_paths:
+                    code_files.append({"path": inf["path"], "content": inf.get("content", "")})
+            logger.info(f"{graph_name}.git_commit.infra_merged",
+                         infra_files=len(infra_files),
+                         total_files=len(code_files))
 
         logger.info(f"{graph_name}.git_commit.enter",
                      repository=repository or "none",
