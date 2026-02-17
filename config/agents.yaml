@@ -30,15 +30,17 @@ agents:
   pm:
     model: "gemini-claude-sonnet-4-5-thinking"
     temperature: 0.7
+    fallback_model: "iflow-rome-30ba3b"
 
   analyst:
     model: "gemini-claude-sonnet-4-5-thinking"
     temperature: 0.7
+    fallback_model: "iflow-rome-30ba3b"
 
   architect:
     model: "gemini-claude-opus-4-5-thinking"
     temperature: 0.7
-    fallback_model: "gemini-claude-sonnet-4-5-thinking"
+    fallback_model: "iflow-rome-30ba3b"
 
   developer:
     model: "gemini-3-pro-preview"
@@ -54,12 +56,19 @@ agents:
   router:
     model: "gemini-claude-sonnet-4-5-thinking"
     temperature: 0.1
+    fallback_model: "iflow-rome-30ba3b"
 
-  # --- Wave 2 (placeholders) ---
-  # security:
-  #   model: "gemini-claude-sonnet-4-5-thinking"
-  #   temperature: 0.3
-  #
-  # devops:
-  #   model: "gemini-claude-sonnet-4-5-thinking"
-  #   temperature: 0.5
+  reviewer:
+    model: "gemini-claude-sonnet-4-5-thinking"
+    temperature: 0.3
+    fallback_model: "iflow-rome-30ba3b"
+
+  security:
+    model: "gemini-claude-sonnet-4-5-thinking"
+    temperature: 0.2
+    fallback_model: "iflow-rome-30ba3b"
+
+  devops:
+    model: "gemini-claude-sonnet-4-5-thinking"
+    temperature: 0.3
+    fallback_model: "iflow-rome-30ba3b"
