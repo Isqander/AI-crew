@@ -45,6 +45,7 @@ class WebAppDeployTestState(TypedDict):
     # Deploy / git
     infra_files: NotRequired[list[dict]]
     deploy_url: NotRequired[str]
+    predicted_deploy_url: NotRequired[str]
     deploy_status: NotRequired[str]
     deploy_repo: NotRequired[str]
     deploy_branch: NotRequired[str]

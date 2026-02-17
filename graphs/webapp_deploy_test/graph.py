@@ -165,10 +165,16 @@ def devops_node(state: WebAppDeployTestState, config=None) -> dict:
         deploy_repo=bool(result.get("deploy_repo")),
         deploy_url=bool(result.get("deploy_url")),
     )
-    return {
+    # DevOps always computes a target URL, but deployment is real only
+    # when deploy_repo is configured and commit/deploy stages run.
+    predicted_url = result.get("deploy_url", "")
+    state_update = {
         **result,
         "current_agent": "devops",
     }
+    if predicted_url:
+        state_update["predicted_deploy_url"] = predicted_url
+    return state_update
 
 
 def route_after_deploy_trigger(
@@ -191,6 +197,7 @@ def report_node(state: WebAppDeployTestState) -> dict:
     deploy_status = state.get("deploy_status", "unknown")
     pr_url = state.get("pr_url", "")
     deploy_url = state.get("deploy_url", "")
+    predicted_deploy_url = state.get("predicted_deploy_url", "")
     qa_retry_count = state.get("qa_retry_count", 0)
 
     lines = [
@@ -202,11 +209,15 @@ def report_node(state: WebAppDeployTestState) -> dict:
     ]
     if pr_url:
         lines.append(f"PR: {pr_url}")
-    if deploy_url:
+    if deploy_status == "deployed" and deploy_url:
         lines.append(f"Deploy URL: {deploy_url}")
+    elif predicted_deploy_url:
+        lines.append(f"Predicted Deploy URL (not deployed): {predicted_deploy_url}")
 
     if not qa_approved:
         lines.append("Warning: deploy flow continued after QA retry limit for faster pipeline validation.")
+    if ci_status in ("skipped", "not_found") or deploy_status == "skipped":
+        lines.append("Warning: deployment was skipped because repository/deploy_repo is not configured.")
 
     summary = "\n".join(lines)
     return {
