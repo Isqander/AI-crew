@@ -2015,6 +2015,34 @@ jobs:
 
 **Всего тестов: 765 passing**
 
+#### Deploy Pipeline (Module 3.11) `[DONE]`
+> Полный plan: [DEPLOYMENT_PLAN.md](DEPLOYMENT_PLAN.md)
+
+- [x] state.py: deploy_status, deploy_repo, deploy_branch поля
+- [x] devops.py: гибридный домен (DEPLOY_DOMAIN env — nip.io или свой субдомен)
+- [x] devops.py: _build_deploy_url(), _get_deploy_repo_info() — запись deploy_repo/branch в state
+- [x] tools/repo_manager.py: RepoManager (single-repo strategy) + DeploySecretsManager (GitHub Secrets API + PyNaCl)
+- [x] tools/deploy_pipeline.py: verify_deploy_health() — HTTP health check с exponential backoff
+- [x] common/git.py: git_commit_node использует deploy_repo (приоритет над repository)
+- [x] graph.py: USE_DEPLOY env var + deploy_trigger_node + deploy_verify_node
+- [x] graph.py: route_after_deploy_trigger (CI pass → verify, CI fail → developer)
+- [x] graph.py: полный flow: devops → git_commit → deploy_trigger → deploy_verify → pm_final
+- [x] env.example: DEPLOY_DOMAIN, USE_DEPLOY, DEPLOY_SINGLE_REPO, DEPLOY_VPS_SSH_KEY/HOST/USER
+- [x] tools/__init__.py: экспорт RepoManager, DeploySecretsManager, verify_deploy_health
+- [x] ARCHITECTURE_V2.md: зафиксированы решения #7 (гибрид домен), #8 (single-repo), #9 (platform secrets)
+
+**Deploy flow (когда USE_DEPLOY=true):**
+```
+DevOps Agent → git_commit → deploy_trigger → deploy_verify → pm_final
+                  │              │                  │
+             push to          set secrets       health check
+             deploy repo      wait CI            exponential backoff
+```
+
+**Стратегия доменов:** `DEPLOY_DOMAIN` пусто = nip.io, задан = свой субдомен
+**Стратегия repos:** один repo `DEPLOY_SINGLE_REPO`, ветки `project/{app-name}`
+**Секреты:** платформенный код записывает VPS_SSH_KEY/HOST/USER через GitHub API (PyNaCl), ИИ не видит
+
 #### Остальные модули (не начаты)
 - [ ] CLI Agents: CLI Runner API, node в графе, route_to_executor
 - [ ] Prefect: deployment на VPS деплоя (рядом)

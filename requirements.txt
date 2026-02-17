@@ -56,6 +56,9 @@ trafilatura>=1.8.0
 # --- Sandbox ---
 docker>=7.0.0
 
+# --- Deploy Secrets (GitHub Secrets encryption) ---
+PyNaCl>=1.5.0
+
 # --- Utilities ---
 python-dotenv>=1.0.0
 pyyaml>=6.0.0

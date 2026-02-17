@@ -8,6 +8,8 @@ Agent tools (LangChain ``@tool`` functions).
 - ``sandbox``              — code execution in isolated Docker containers (Wave 2)
 - ``browser_runner``       — browser E2E test runner template (Visual QA Phase 1)
 - ``github_actions_tools`` — CI/CD integration with GitHub Actions (Module 3.8)
+- ``repo_manager``         — deploy repo management + GitHub Secrets injection
+- ``deploy_pipeline``      — deploy health verification helpers
 """
 from .github import github_tools
 from .filesystem import filesystem_tools
@@ -19,6 +21,8 @@ from .github_actions import (
     trigger_ci, wait_for_ci, get_ci_logs,
     github_actions_tools, GitHubActionsClient, get_ci_client,
 )
+from .repo_manager import RepoManager, DeploySecretsManager, get_repo_manager
+from .deploy_pipeline import verify_deploy_health
 
 # Convenient bundle for binding web tools to agents
 web_tools = [web_search, fetch_url, download_file]
@@ -45,4 +49,9 @@ __all__ = [
     "github_actions_tools",
     "GitHubActionsClient",
     "get_ci_client",
+    # Deploy pipeline
+    "RepoManager",
+    "DeploySecretsManager",
+    "get_repo_manager",
+    "verify_deploy_health",
 ]

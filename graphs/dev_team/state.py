@@ -103,6 +103,9 @@ class DevTeamState(TypedDict):
     # === Wave 2: Deploy ===
     deploy_url: NotRequired[str]                 # "https://app.31.59.58.143.nip.io"
     infra_files: NotRequired[list[dict]]         # [{path, content}]
+    deploy_status: NotRequired[str]              # "pending" | "deploying" | "deployed" | "failed"
+    deploy_repo: NotRequired[str]                # Target deploy repo ("user/ai-crew-deploy")
+    deploy_branch: NotRequired[str]              # Branch in deploy repo ("project/todo-app")
 
     # === Wave 2: Lint Check ===
     lint_status: NotRequired[str]                # "clean", "warnings", "issues", "error", "skipped"

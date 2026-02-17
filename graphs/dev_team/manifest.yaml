@@ -39,6 +39,9 @@ agents:
   - id: qa
     display_name: "QA Tester"
     role: qa
+  - id: devops
+    display_name: "DevOps Engineer"
+    role: devops
 
 features:
   - hitl_clarification
@@ -48,11 +51,13 @@ features:
   - git_commit
   - security_check
   - ci_integration             # Module 3.8: GitHub Actions CI/CD loop
+  - deploy                     # Module 3.11: Full deploy pipeline (push → CI → health check)
 
 parameters:
   max_review_iterations: 3
   use_security_agent: true     # Enable security review after Developer
   use_qa_sandbox: true         # Enable QA sandbox testing after Reviewer
   use_ci_integration: false    # Enable CI/CD loop (git_commit → CI check → developer if fail)
+  use_deploy: false            # Enable full deploy pipeline (secrets → CI → health check)
   deploy_after_commit: false
   hitl_mode: "optional"       # "required" | "optional" | "none"

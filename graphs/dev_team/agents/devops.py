@@ -51,6 +51,32 @@ def _sanitize_app_name(task: str) -> str:
     return name or "app"
 
 
+def _build_deploy_url(app_name: str) -> str:
+    """Build deployment URL using hybrid strategy.
+
+    If ``DEPLOY_DOMAIN`` is set → ``https://{app}.{domain}``
+    Otherwise → ``https://{app}.{ip}.nip.io``
+    """
+    custom_domain = os.getenv("DEPLOY_DOMAIN", "").strip()
+    if custom_domain:
+        return f"https://{app_name}.{custom_domain}"
+    deploy_ip = os.getenv("DEPLOY_VPS_IP", DEFAULT_DEPLOY_IP)
+    return f"https://{app_name}.{deploy_ip}.nip.io"
+
+
+def _get_deploy_repo_info(app_name: str) -> tuple[str, str]:
+    """Return (deploy_repo, deploy_branch) for the single-repo strategy.
+
+    Reads ``DEPLOY_SINGLE_REPO`` env var.  Branch is ``project/{app_name}``.
+    Returns empty strings if deploy repo is not configured.
+    """
+    repo = os.getenv("DEPLOY_SINGLE_REPO", "").strip()
+    if not repo:
+        return "", ""
+    branch = f"project/{app_name}"
+    return repo, branch
+
+
 class DevOpsAgent(BaseAgent):
     """DevOps Engineer agent for infrastructure generation."""
 
@@ -82,8 +108,8 @@ class DevOpsAgent(BaseAgent):
             tech_stack=tech_stack,
         )
 
-        deploy_ip = os.getenv("DEPLOY_VPS_IP", DEFAULT_DEPLOY_IP)
         app_name = _sanitize_app_name(task)
+        deploy_ip = os.getenv("DEPLOY_VPS_IP", DEFAULT_DEPLOY_IP)
 
         if not code_files:
             logger.warning("devops.generate_infra.no_code")
@@ -100,6 +126,10 @@ class DevOpsAgent(BaseAgent):
         code_files_str = format_code_files(code_files)
         arch_str = json.dumps(architecture, indent=2, default=str) if architecture else "Not specified"
         requirements_str = "\n".join(f"- {r}" for r in requirements) if requirements else "Not specified"
+
+        # Build deploy URL using hybrid strategy (nip.io or custom domain)
+        deploy_url = _build_deploy_url(app_name)
+        deploy_repo, deploy_branch = _get_deploy_repo_info(app_name)
 
         # Build and invoke chain
         prompt = create_prompt_template(
@@ -123,10 +153,15 @@ class DevOpsAgent(BaseAgent):
         # Parse structured response
         parsed = self._parse_devops_response(content, app_name, deploy_ip)
 
+        # Override deploy_url with our hybrid-computed URL (more reliable than LLM output)
+        parsed.deploy_url = deploy_url
+
         logger.info(
             "devops.generate_infra.done",
             infra_files=len(parsed.infra_files),
-            deploy_url=parsed.deploy_url,
+            deploy_url=deploy_url,
+            deploy_repo=deploy_repo or "(not configured)",
+            deploy_branch=deploy_branch or "(not configured)",
             env_vars=len(parsed.env_vars_needed),
         )
 
@@ -140,8 +175,10 @@ class DevOpsAgent(BaseAgent):
             f"Generated {len(parsed.infra_files)} infrastructure file(s):",
             *[f"  - {f.path}" for f in parsed.infra_files],
         ]
-        if parsed.deploy_url:
-            summary_parts.append(f"Deploy URL: {parsed.deploy_url}")
+        if deploy_url:
+            summary_parts.append(f"Deploy URL: {deploy_url}")
+        if deploy_repo:
+            summary_parts.append(f"Deploy repo: {deploy_repo} (branch: {deploy_branch})")
         if parsed.env_vars_needed:
             summary_parts.append(f"Required env vars: {', '.join(parsed.env_vars_needed)}")
         if parsed.notes:
@@ -149,12 +186,19 @@ class DevOpsAgent(BaseAgent):
 
         summary = "\n".join(summary_parts)
 
-        return {
+        result = {
             "infra_files": infra_files_dicts,
-            "deploy_url": parsed.deploy_url,
+            "deploy_url": deploy_url,
             "current_agent": "devops",
             "messages": [AIMessage(content=summary, name="devops")],
         }
+        # Set deploy repo/branch if configured (single-repo strategy)
+        if deploy_repo:
+            result["deploy_repo"] = deploy_repo
+            result["deploy_branch"] = deploy_branch
+            result["deploy_status"] = "pending"
+
+        return result
 
     # ------------------------------------------------------------------
     # Parsing

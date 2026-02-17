@@ -42,9 +42,16 @@ def make_git_commit_node(graph_name: str = "graph"):
         t0 = _time.monotonic()
         code_files = list(state.get("code_files", []))
         infra_files = state.get("infra_files") or []
-        repository = state.get("repository") or os.getenv("GITHUB_DEFAULT_REPO", "")
         task = state.get("task", "AI-generated task")
         github_token_set = bool(os.getenv("GITHUB_TOKEN"))
+
+        # Deploy repo takes priority (set by DevOps agent for deploy flow)
+        # Falls back to user-provided repository, then env default
+        repository = (
+            state.get("deploy_repo")
+            or state.get("repository")
+            or os.getenv("GITHUB_DEFAULT_REPO", "")
+        )
 
         # Merge infra_files (from DevOps agent) into code_files for a single commit
         if infra_files:

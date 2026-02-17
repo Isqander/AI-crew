@@ -26,11 +26,17 @@ Graph flow::
                           (after N)       |
                         architect_esc  git_commit
                                 |         |
-                          (still stuck) ci_check (if enabled)
-                          human_esc   +----+----+
-                             |      pass?    fail?
-                          Developer   |       |
-                                   pm_final Developer
+                          (still stuck) deploy_trigger (secrets + CI wait)
+                          human_esc       |
+                             |      +----+----+
+                          Developer pass?    fail?
+                                     |        |
+                              deploy_verify  Developer
+                                     |
+                               +-----+-----+
+                             healthy?    failed?
+                               |           |
+                            pm_final    pm_final (with warning)
 
 Nodes:
   pm, analyst, architect, developer, security_review — agent nodes
@@ -42,8 +48,9 @@ Nodes:
   architect_escalation — architect reviews repeated Reviewer failures
   human_escalation — HITL interrupt when both Dev<->Reviewer and Architect fail
   git_commit — pushes code to GitHub and creates a PR
-  ci_check — monitors GitHub Actions CI pipeline (Module 3.8)
-  pm_final — PM's closing summary
+  deploy_trigger — sets GitHub Secrets + waits for CI/deploy to finish
+  deploy_verify — checks deployed app health
+  pm_final — PM's closing summary with deploy URL
 """
 
 import os
@@ -152,6 +159,10 @@ USE_LINT_CHECK = os.getenv("USE_LINT_CHECK", "true").lower() in ("true", "1", "y
 
 # DevOps agent: generates infrastructure files (Dockerfile, CI/CD, Traefik)
 USE_DEVOPS_AGENT = os.getenv("USE_DEVOPS_AGENT", "true").lower() in ("true", "1", "yes")
+
+# Deploy pipeline: push to deploy repo → set secrets → CI → health check
+# When enabled, supersedes USE_CI_INTEGRATION for the post-commit flow
+USE_DEPLOY = os.getenv("USE_DEPLOY", "false").lower() in ("true", "1", "yes")
 
 
 def route_after_developer(
@@ -624,6 +635,177 @@ def route_after_ci(
     return "developer"
 
 
+# ─── Deploy pipeline nodes ───────────────────────────────────────────
+
+
+def deploy_trigger_node(state: DevTeamState, config=None) -> dict:
+    """Deploy trigger node — ensures secrets are set, then waits for CI.
+
+    Steps:
+      1. Read deploy_repo from state (set by DevOps agent)
+      2. Ensure VPS secrets are set on the repo via GitHub API
+      3. Wait for GitHub Actions workflow to complete
+      4. Return CI status (success/failure)
+
+    This node spends 0 LLM tokens — it's pure platform code.
+    """
+    import time as _time
+    from dev_team.tools.repo_manager import get_repo_manager
+    from dev_team.tools.github_actions import GitHubActionsClient
+
+    t0 = _time.monotonic()
+    deploy_repo = state.get("deploy_repo", "")
+    deploy_branch = state.get("deploy_branch", "")
+
+    if not deploy_repo:
+        logger.warning("deploy_trigger.skip", reason="no deploy_repo in state")
+        return {
+            "deploy_status": "skipped",
+            "ci_status": "skipped",
+            "ci_log": "Deploy skipped: no deploy repo configured.",
+            "current_agent": "deploy_trigger",
+        }
+
+    logger.info("deploy_trigger.start", repo=deploy_repo, branch=deploy_branch)
+
+    # 1. Ensure secrets are set (idempotent, platform-level)
+    try:
+        mgr = get_repo_manager()
+        secret_results = mgr.ensure_secrets(deploy_repo)
+        logger.info("deploy_trigger.secrets_set", results=secret_results)
+    except Exception as exc:
+        logger.error("deploy_trigger.secrets_error", error=str(exc)[:300])
+        # Continue anyway — secrets might already be set
+
+    # 2. Wait for GitHub Actions CI/deploy workflow
+    try:
+        client = GitHubActionsClient()
+        # Give GitHub Actions a moment to detect the push
+        _time.sleep(5)
+
+        latest = client.get_latest_workflow_run(deploy_repo, deploy_branch)
+        run_id = latest.get("run_id")
+
+        if run_id is None:
+            logger.info("deploy_trigger.no_ci_run", repo=deploy_repo, branch=deploy_branch)
+            elapsed_ms = (_time.monotonic() - t0) * 1000
+            logger.info("deploy_trigger.done", elapsed_ms=round(elapsed_ms))
+            return {
+                "deploy_status": "deploying",
+                "ci_status": "not_found",
+                "ci_log": f"No CI workflow run found for branch '{deploy_branch}'.",
+                "current_agent": "deploy_trigger",
+            }
+
+        result = client.wait_for_completion(deploy_repo, run_id)
+        conclusion = result.get("conclusion", "unknown")
+        ci_log = f"CI {conclusion}: run #{run_id} ({result.get('elapsed_seconds', 0)}s)"
+
+        if conclusion == "failure":
+            try:
+                logs = client.get_run_logs(deploy_repo, run_id)
+                failed_steps = []
+                for job in logs.get("jobs", []):
+                    if job.get("conclusion") != "success":
+                        for step in job.get("steps", []):
+                            if step.get("conclusion") != "success":
+                                failed_steps.append(
+                                    f"  [{job['name']}] {step['name']} — {step.get('conclusion')}"
+                                )
+                if failed_steps:
+                    ci_log += "\n\nFailed:\n" + "\n".join(failed_steps)
+            except Exception:
+                pass
+
+        deploy_status = "deploying" if conclusion == "success" else "failed"
+
+        elapsed_ms = (_time.monotonic() - t0) * 1000
+        logger.info("deploy_trigger.done", conclusion=conclusion,
+                     deploy_status=deploy_status, elapsed_ms=round(elapsed_ms))
+
+        return {
+            "deploy_status": deploy_status,
+            "ci_status": conclusion,
+            "ci_log": ci_log,
+            "ci_run_id": run_id,
+            "ci_run_url": result.get("html_url", ""),
+            "current_agent": "deploy_trigger",
+        }
+
+    except Exception as exc:
+        elapsed_ms = (_time.monotonic() - t0) * 1000
+        logger.error("deploy_trigger.error", error=str(exc)[:300],
+                      elapsed_ms=round(elapsed_ms))
+        return {
+            "deploy_status": "deploying",
+            "ci_status": "error",
+            "ci_log": f"Deploy trigger error: {str(exc)[:300]}",
+            "current_agent": "deploy_trigger",
+        }
+
+
+def route_after_deploy_trigger(
+    state: DevTeamState,
+) -> Literal["developer", "deploy_verify", "pm_final"]:
+    """Router: After deploy trigger, decide next step.
+
+    CI SUCCESS → deploy_verify (check health)
+    CI FAIL → developer (fix and retry)
+    CI SKIPPED/NOT_FOUND → pm_final (proceed without deploy verification)
+    """
+    ci_status = state.get("ci_status", "")
+
+    if ci_status == "success":
+        logger.info("router.after_deploy_trigger", decision="deploy_verify")
+        return "deploy_verify"
+
+    if ci_status in ("skipped", "not_found", "error"):
+        logger.info("router.after_deploy_trigger", decision="pm_final",
+                     ci_status=ci_status)
+        return "pm_final"
+
+    if ci_status == "failure":
+        logger.info("router.after_deploy_trigger", decision="developer",
+                     ci_status=ci_status)
+        return "developer"
+
+    logger.info("router.after_deploy_trigger", decision="pm_final",
+                 ci_status=ci_status)
+    return "pm_final"
+
+
+def deploy_verify_node(state: DevTeamState, config=None) -> dict:
+    """Deploy verification node — health-checks the deployed application.
+
+    Uses exponential backoff to give the app time to start up.
+    Spends 0 LLM tokens — pure HTTP checks.
+    """
+    import time as _time
+    from dev_team.tools.deploy_pipeline import verify_deploy_health
+
+    t0 = _time.monotonic()
+    deploy_url = state.get("deploy_url", "")
+
+    logger.info("deploy_verify.start", deploy_url=deploy_url)
+
+    result = verify_deploy_health(deploy_url)
+
+    deploy_status = "deployed" if result["healthy"] else "failed"
+
+    elapsed_ms = (_time.monotonic() - t0) * 1000
+    logger.info("deploy_verify.done",
+                 healthy=result["healthy"],
+                 status_code=result["status_code"],
+                 attempts=result["attempts"],
+                 deploy_status=deploy_status,
+                 elapsed_ms=round(elapsed_ms))
+
+    return {
+        "deploy_status": deploy_status,
+        "current_agent": "deploy_verify",
+    }
+
+
 def create_graph() -> StateGraph:
     """
     Create the development team graph.
@@ -663,6 +845,9 @@ def create_graph() -> StateGraph:
     if USE_DEVOPS_AGENT:
         builder.add_node("devops", devops_agent)
     builder.add_node("git_commit", git_commit_node)
+    if USE_DEPLOY:
+        builder.add_node("deploy_trigger", deploy_trigger_node)
+        builder.add_node("deploy_verify", deploy_verify_node)
     builder.add_node("pm_final", pm_agent)  # Final PM review
 
     # Define edges
@@ -786,8 +971,21 @@ def create_graph() -> StateGraph:
     if USE_DEVOPS_AGENT:
         builder.add_edge("devops", "git_commit")
 
-    # Git commit -> CI check (if enabled) or END
-    if USE_CI_INTEGRATION:
+    # Git commit -> deploy pipeline OR CI check OR END
+    if USE_DEPLOY:
+        # Full deploy flow: git_commit → deploy_trigger → deploy_verify → pm_final
+        builder.add_edge("git_commit", "deploy_trigger")
+        builder.add_conditional_edges(
+            "deploy_trigger",
+            route_after_deploy_trigger,
+            {
+                "developer": "developer",
+                "deploy_verify": "deploy_verify",
+                "pm_final": "pm_final",
+            }
+        )
+        builder.add_edge("deploy_verify", "pm_final")
+    elif USE_CI_INTEGRATION:
         builder.add_node("ci_check", ci_check_node)
         builder.add_edge("git_commit", "ci_check")
         builder.add_conditional_edges(
