@@ -1752,7 +1752,7 @@ jobs:
 
 ### Волна 1 — Definition of Done
 
-> Дата верификации: 13 февраля 2026 — 142 теста Волны 1 + 72 Волны 2 + 49 новые графы + 80 Sandbox/Security = **343 total** (tests/)
+> Дата верификации: 17 февраля 2026 — **729 total** (tests/) — все проходят
 
 #### Фундамент
 - [x] structlog: все модули переведены, LOCAL/PRODUCTION форматы (включая github.py)
@@ -1796,9 +1796,11 @@ jobs:
 - [x] **Консистентность агентов**: единые сигнатуры `(state, config=None)`, все роли в DEFAULT_MODELS
 - [x] **Frontend API**: login/register/getGraphConfig/getGraphTopology в aegraClient
 - [x] **Экспорт**: SecurityAgent в agents/__init__, web_tools в tools/__init__
-- [ ] QA-агент: разбиение на подмодули — см. [REFACTORING_PLAN.md](REFACTORING_PLAN.md)
-- [ ] Frontend: token refresh, типы, общие компоненты — см. [REFACTORING_PLAN.md](REFACTORING_PLAN.md)
-- [ ] Тесты: обновить под рефакторинг — см. [REFACTORING_PLAN.md](REFACTORING_PLAN.md)
+- [ ] QA-агент: разбиение на подмодули (TODO)
+- [x] Frontend: token refresh (уже реализован — tryRefreshToken + 401 retry в aegra.ts)
+- [x] Frontend: типы обновлены (DevTeamState Wave 2 поля, AGENTS +reviewer/security/lint_check/ci_check/git_commit, GraphConfig, User дедупликация)
+- [x] Тесты: обновлены под lint_check node (5 тестов: route_after_developer, integration flow counts)
+- [x] Gateway API: 24 HTTP-теста (auth register/login/refresh/me, health, protected endpoints, graph list/topology/config)
 
 #### Инфраструктура
 - [x] docker-compose.yml обновлён (postgres, aegra, gateway, langfuse, frontend, telegram)
@@ -1810,7 +1812,7 @@ jobs:
 - [x] docker-compose.prod.yml — production override
 - [x] env.example обновлён (CORS_ORIGINS, LANGFUSE_NEXTAUTH_URL, FRONTEND_DOCKERFILE)
 - [x] CORS настроен через gateway (CORS_ORIGINS env — JSON array или comma-separated)
-- [x] Все 449 тестов проходят (0 failures)
+- [x] Все 729 тестов проходят (0 failures) — обновлено 17 фев 2026
 
 ### Волна 2 — Definition of Done
 
