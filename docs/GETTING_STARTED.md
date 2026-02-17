@@ -44,20 +44,20 @@ LANGFUSE_PUBLIC_KEY=pk-lf-...
 
 Система использует OpenAI-совместимый прокси API с разными моделями для разных агентов:
 
-| Агент | Модель по умолчанию | Назначение |
-|-------|---------------------|------------|
+| Агент | Модель по умолчанию        | Назначение |
+|-------|----------------------------|------------|
 | PM | claude-sonnet-4-5-thinking | Декомпозиция задач |
 | Analyst | claude-sonnet-4-5-thinking | Сбор требований |
-| Architect | claude-opus-4-5-thinking | Проектирование архитектуры |
-| Developer | gemini-3-pro-high | Генерация кода |
-| QA | gemini-3-flash-preview | Ревью кода |
+| Architect | claude-opus-4-6-thinking   | Проектирование архитектуры |
+| Developer | gemini-3-pro-high          | Генерация кода |
+| QA | gemini-3-flash-preview     | Ревью кода |
 
 ### Переопределение моделей
 
 Можно переопределить модель для любого агента через переменные окружения:
 
 ```bash
-LLM_MODEL_ARCHITECT=claude-opus-4-5-thinking
+LLM_MODEL_ARCHITECT=claude-opus-4-6-thinking
 LLM_MODEL_DEVELOPER=gemini-3-pro-high
 ```
 
@@ -77,7 +77,7 @@ LLM_BACKUP_KEY=backup-key
 
 ### Доступные модели
 
-- `claude-opus-4-5-thinking` - самая мощная, для сложных задач
+- `claude-opus-4-6-thinking` - самая мощная, для сложных задач
 - `claude-sonnet-4-5-thinking` - сбалансированная
 - `gemini-3-pro-high` - хороша для генерации кода
 - `gemini-3-flash-preview` - быстрая, для простых задач

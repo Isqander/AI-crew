@@ -454,7 +454,7 @@ class QAAgent(BaseAgent):
 ```bash
 # .env — переопределить модель для конкретного агента
 LLM_MODEL_DEVELOPER=gemini-3-pro-high
-LLM_MODEL_ARCHITECT=claude-opus-4-5-thinking
+LLM_MODEL_ARCHITECT=claude-opus-4-6-thinking
 
 # Или глобальный fallback
 LLM_DEFAULT_MODEL=claude-sonnet-4-5-thinking

@@ -1145,7 +1145,7 @@ agents:
     temperature: 0.7
     fallback_model: gemini-3-flash-preview
   architect:
-    model: gemini-claude-opus-4-5-thinking
+    model: gemini-claude-opus-4-6-thinking
     temperature: 0.7
     fallback_model: gemini-claude-sonnet-4-5-thinking
   developer:

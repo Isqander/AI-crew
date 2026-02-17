@@ -38,7 +38,7 @@ agents:
     fallback_model: "iflow-rome-30ba3b"
 
   architect:
-    model: "gemini-claude-opus-4-5-thinking"
+    model: "gemini-claude-opus-4-6-thinking"
     temperature: 0.7
     fallback_model: "iflow-rome-30ba3b"
 

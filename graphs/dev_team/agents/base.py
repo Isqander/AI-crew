@@ -48,7 +48,7 @@ DEFAULT_MODELS = {
     "default": "gemini-claude-sonnet-4-5-thinking",
     "pm": "gemini-claude-sonnet-4-5-thinking",
     "analyst": "gemini-claude-sonnet-4-5-thinking",
-    "architect": "gemini-claude-opus-4-5-thinking",
+    "architect": "gemini-claude-opus-4-6-thinking",
     "developer": "gemini-3-pro-preview",
     "reviewer": "gemini-claude-sonnet-4-5-thinking",
     "qa": "gemini-3-pro-preview",
@@ -60,7 +60,7 @@ DEFAULT_MODELS = {
 
 # Available models (for reference)
 AVAILABLE_MODELS = [
-    "gemini-claude-opus-4-5-thinking",
+    "gemini-claude-opus-4-6-thinking",
     "gemini-claude-sonnet-4-5-thinking",
     "gemini-3-pro-preview",
     "gemini-3-pro-high",

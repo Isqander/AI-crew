@@ -119,13 +119,13 @@ START
 
 Настраиваются через env-переменные `LLM_MODEL_<ROLE>` или `DEFAULT_MODELS` в `base.py`.
 
-| Роль | Модель по умолчанию |
-|------|---------------------|
+| Роль | Модель по умолчанию                 |
+|------|-------------------------------------|
 | PM | `gemini-claude-sonnet-4-5-thinking` |
 | Analyst | `gemini-claude-sonnet-4-5-thinking` |
-| Architect | `gemini-claude-opus-4-5-thinking` |
-| Developer | `glm-4.7` |
-| QA | `glm-4.7` |
+| Architect | `gemini-claude-opus-4-6-thinking`   |
+| Developer | `glm-4.7`                           |
+| QA | `glm-4.7`                           |
 
 ### Паттерн агента
 
