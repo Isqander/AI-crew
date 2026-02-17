@@ -13,6 +13,7 @@ Flow::
 """
 
 import time as _time
+import uuid
 from typing import Literal
 
 import structlog
@@ -52,11 +53,13 @@ DEFAULT_WEBAPP_TASK = (
 def developer_node(state: WebAppDeployTestState, config=None) -> dict:
     """Generate web app code or fix QA issues."""
     t0 = _time.monotonic()
+    run_suffix = state.get("run_suffix") or uuid.uuid4().hex[:8]
     user_task = (state.get("task") or "").strip()
+    base_task = f"[run-{run_suffix}] {DEFAULT_WEBAPP_TASK}"
     effective_task = (
-        f"{DEFAULT_WEBAPP_TASK}\n\nДополнительный запрос пользователя:\n{user_task}"
+        f"{base_task}\n\nДополнительный запрос пользователя:\n{user_task}"
         if user_task
-        else DEFAULT_WEBAPP_TASK
+        else base_task
     )
 
     logger.info(
@@ -86,6 +89,7 @@ def developer_node(state: WebAppDeployTestState, config=None) -> dict:
     return {
         **result,
         "task": effective_task,
+        "run_suffix": run_suffix,
         "tech_stack": tech_stack,
         "current_agent": "developer",
     }

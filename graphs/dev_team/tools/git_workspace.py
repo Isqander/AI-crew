@@ -25,6 +25,7 @@ Environment variables:
 from __future__ import annotations
 
 import base64
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -566,22 +567,42 @@ def commit_and_create_pr(
     # 2) repository.default_branch
     # 3) common fallbacks (main/master)
     preferred = base_branch or repository.default_branch or ""
-    branch_candidates = [preferred, "main", "master"]
+    env_default = os.getenv("GITHUB_DEFAULT_BRANCH", "").strip()
+    branch_candidates = [preferred, env_default, "main", "master"]
+    # Preserve order, remove empties/duplicates
+    branch_candidates = list(dict.fromkeys([b for b in branch_candidates if b]))
     resolved_base_branch = ""
+    branch_errors: list[str] = []
     for candidate in branch_candidates:
-        if not candidate or candidate == resolved_base_branch:
-            continue
         try:
             repository.get_branch(candidate)
             resolved_base_branch = candidate
             break
-        except Exception:
+        except Exception as exc:
+            branch_errors.append(f"{candidate}: {exc}")
             continue
+
+    # Fallback: pick first existing branch if direct checks failed
+    if not resolved_base_branch:
+        try:
+            branches = list(repository.get_branches())
+            if branches:
+                resolved_base_branch = branches[0].name
+                logger.info(
+                    "git_workflow.base_branch_fallback",
+                    repo=repo_name,
+                    base=resolved_base_branch,
+                    checked=branch_candidates,
+                )
+        except Exception as exc:
+            branch_errors.append(f"list_branches: {exc}")
 
     if not resolved_base_branch:
         result["error"] = (
-            "Failed to resolve base branch. Repository may be empty "
-            "or inaccessible with current token."
+            "Failed to resolve base branch. "
+            f"Checked={branch_candidates}. "
+            f"Errors={'; '.join(branch_errors[-3:]) or 'n/a'}. "
+            "Repository may be empty or inaccessible with current token."
         )
         return result
 

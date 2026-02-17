@@ -67,3 +67,4 @@ class WebAppDeployTestState(TypedDict):
     current_agent: str
     next_agent: NotRequired[str]
     error: NotRequired[str]
+    run_suffix: NotRequired[str]
