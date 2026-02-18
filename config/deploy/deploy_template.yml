@@ -44,7 +44,12 @@ jobs:
         #   cache: npm
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found, skipping dependency install"
+          fi
         # Node.js: npm ci
 
       - name: Lint
