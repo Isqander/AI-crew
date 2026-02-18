@@ -110,6 +110,15 @@ class DeploySecretsManager:
 
         Returns dict of {secret_name: success_bool}.
         """
+        skip_secrets = os.getenv("DEPLOY_SKIP_SECRETS", "").strip().lower() in ("1", "true", "yes")
+        if skip_secrets:
+            logger.warning(
+                "deploy_secrets.skipped",
+                repo=repo,
+                reason="DEPLOY_SKIP_SECRETS=true",
+            )
+            return {}
+
         secrets = self.get_deploy_secrets()
         if not secrets:
             logger.warning("deploy_secrets.no_secrets",
@@ -125,7 +134,12 @@ class DeploySecretsManager:
             if resp.status_code != 200:
                 logger.error("deploy_secrets.get_public_key_failed",
                              repo=repo, status=resp.status_code,
-                             body=resp.text[:200])
+                             body=resp.text[:200],
+                             hint=(
+                                 "Token needs access to repo Actions secrets API. "
+                                 "Fine-grained PAT: Actions=Read (get key) and Write (set secret), "
+                                 "plus repository access. Classic PAT: repo scope."
+                             ))
                 return {name: False for name in secrets}
 
             key_data = resp.json()
