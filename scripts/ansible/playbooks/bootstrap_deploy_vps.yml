@@ -1,0 +1,230 @@
+---
+- name: Bootstrap deploy VPS for AI-crew
+  hosts: deploy_vps
+  become: true
+  gather_facts: true
+
+  vars:
+    deploy_user_effective: "{{ deploy_user | default('deploy', true) }}"
+    traefik_email_effective: "{{ traefik_email | default('admin@example.com', true) }}"
+    domain_ip_effective: "{{ domain_ip | default(ansible_default_ipv4.address, true) }}"
+    apps_dir: "/home/{{ deploy_user_effective }}/apps"
+    traefik_dir: "/home/{{ deploy_user_effective }}/traefik"
+    traefik_acme_file: "{{ traefik_dir }}/acme/acme.json"
+    docker_arch_map:
+      x86_64: amd64
+      aarch64: arm64
+      armv7l: armhf
+    docker_arch: "{{ docker_arch_map.get(ansible_architecture, 'amd64') }}"
+    docker_repo_url: "deb [arch={{ docker_arch }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+
+  tasks:
+    - name: Install Docker from official Docker repository with distro fallback
+      block:
+        - name: Install prerequisites
+          ansible.builtin.apt:
+            name:
+              - ca-certificates
+              - curl
+              - gnupg
+            state: present
+            update_cache: true
+
+        - name: Ensure apt keyrings directory exists
+          ansible.builtin.file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: "0755"
+
+        - name: Add Docker GPG key
+          ansible.builtin.get_url:
+            url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+            dest: /etc/apt/keyrings/docker.asc
+            mode: "0644"
+
+        - name: Add Docker apt repository
+          ansible.builtin.apt_repository:
+            repo: "{{ docker_repo_url }}"
+            state: present
+            filename: docker
+
+        - name: Install Docker engine and compose plugin
+          ansible.builtin.apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-compose-plugin
+            state: present
+            update_cache: true
+      rescue:
+        - name: Fallback install Docker engine from distro repo
+          ansible.builtin.apt:
+            name:
+              - docker.io
+            state: present
+            update_cache: true
+
+        - name: Try install docker-compose-v2
+          ansible.builtin.apt:
+            name:
+              - docker-compose-v2
+            state: present
+          register: compose_v2_result
+          failed_when: false
+
+        - name: Fallback install classic docker-compose
+          ansible.builtin.apt:
+            name:
+              - docker-compose
+            state: present
+          when: compose_v2_result.rc != 0
+
+    - name: Ensure Docker service enabled and started
+      ansible.builtin.service:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Check docker compose command
+      ansible.builtin.command: docker compose version
+      register: docker_compose_cmd
+      changed_when: false
+      failed_when: false
+
+    - name: Check classic docker-compose binary
+      ansible.builtin.command: which docker-compose
+      register: classic_docker_compose
+      changed_when: false
+      failed_when: false
+      when: docker_compose_cmd.rc != 0
+
+    - name: Ensure docker cli plugins directory exists
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        mode: "0755"
+      when:
+        - docker_compose_cmd.rc != 0
+        - classic_docker_compose.rc == 0
+
+    - name: Create docker compose plugin shim from classic docker-compose
+      ansible.builtin.copy:
+        dest: /usr/local/lib/docker/cli-plugins/docker-compose
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          exec {{ classic_docker_compose.stdout }} "$@"
+      when:
+        - docker_compose_cmd.rc != 0
+        - classic_docker_compose.rc == 0
+
+    - name: Ensure deploy user exists
+      ansible.builtin.user:
+        name: "{{ deploy_user_effective }}"
+        shell: /bin/bash
+        create_home: true
+        groups: docker
+        append: true
+
+    - name: Ensure .ssh directory exists for deploy user
+      ansible.builtin.file:
+        path: "/home/{{ deploy_user_effective }}/.ssh"
+        state: directory
+        owner: "{{ deploy_user_effective }}"
+        group: "{{ deploy_user_effective }}"
+        mode: "0700"
+
+    - name: Ensure deploy SSH key exists
+      community.crypto.openssh_keypair:
+        path: "/home/{{ deploy_user_effective }}/.ssh/id_ed25519"
+        type: ed25519
+        owner: "{{ deploy_user_effective }}"
+        group: "{{ deploy_user_effective }}"
+        mode: "0600"
+
+    - name: Ensure apps directory exists
+      ansible.builtin.file:
+        path: "{{ apps_dir }}"
+        state: directory
+        owner: "{{ deploy_user_effective }}"
+        group: "{{ deploy_user_effective }}"
+        mode: "0755"
+
+    - name: Ensure Traefik directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ deploy_user_effective }}"
+        group: "{{ deploy_user_effective }}"
+        mode: "0755"
+      loop:
+        - "{{ traefik_dir }}"
+        - "{{ traefik_dir }}/config"
+        - "{{ traefik_dir }}/acme"
+
+    - name: Ensure Traefik ACME file exists with secure permissions
+      ansible.builtin.file:
+        path: "{{ traefik_acme_file }}"
+        state: touch
+        owner: "{{ deploy_user_effective }}"
+        group: "{{ deploy_user_effective }}"
+        mode: "0600"
+
+    - name: Render Traefik docker compose file
+      ansible.builtin.template:
+        src: "../templates/traefik-docker-compose.yml.j2"
+        dest: "{{ traefik_dir }}/docker-compose.yml"
+        owner: "{{ deploy_user_effective }}"
+        group: "{{ deploy_user_effective }}"
+        mode: "0644"
+
+    - name: Ensure traefik-public docker network exists
+      ansible.builtin.command: docker network create traefik-public
+      register: traefik_network_create
+      changed_when: traefik_network_create.rc == 0
+      failed_when:
+        - traefik_network_create.rc != 0
+        - "'already exists' not in traefik_network_create.stderr"
+
+    - name: Start Traefik with docker compose
+      ansible.builtin.command: docker compose up -d
+      args:
+        chdir: "{{ traefik_dir }}"
+      register: traefik_up
+      changed_when: "'Creating' in traefik_up.stdout or 'Recreating' in traefik_up.stdout or 'Starting' in traefik_up.stdout"
+
+    - name: Install and configure UFW (optional)
+      when: (setup_ufw | default(false)) | bool
+      block:
+        - name: Ensure ufw package installed
+          ansible.builtin.apt:
+            name: ufw
+            state: present
+            update_cache: true
+
+        - name: Allow required UFW ports
+          community.general.ufw:
+            rule: allow
+            port: "{{ item }}"
+            proto: tcp
+          loop: "{{ ufw_allowed_ports | default(['22', '80', '443']) }}"
+
+        - name: Enable UFW
+          community.general.ufw:
+            state: enabled
+            policy: deny
+
+    - name: Read deploy user public key
+      ansible.builtin.slurp:
+        src: "/home/{{ deploy_user_effective }}/.ssh/id_ed25519.pub"
+      register: deploy_pubkey
+
+    - name: Print next steps
+      ansible.builtin.debug:
+        msg:
+          - "Bootstrap completed on {{ inventory_hostname }}"
+          - "VPS_HOST: {{ domain_ip_effective }}"
+          - "VPS_USER: {{ deploy_user_effective }}"
+          - "Deploy URL pattern: https://<app-name>.{{ domain_ip_effective }}.nip.io"
+          - "Public key (add to authorized_keys where needed): {{ deploy_pubkey.content | b64decode | trim }}"

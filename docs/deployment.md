@@ -222,3 +222,16 @@ LANGFUSE_HOST=http://127.0.0.1:3001
 ```bash
 docker build --build-arg AEGRA_PIP_SOURCE=git+https://github.com/ibbybuilds/aegra.git -t aicrew .
 ```
+
+---
+
+## 6. Bootstrap VPS для автодеплоя приложений (Ansible)
+
+Для инфраструктурной подготовки deploy-серверов используй Ansible playbook:
+
+- `scripts/ansible/playbooks/bootstrap_deploy_vps.yml`
+- инструкция: `docs/DEPLOY_VPS_ANSIBLE.md`
+
+Важно:
+- Ansible запускается для первичной настройки сервера (Docker, Traefik, deploy user).
+- После этого деплой новых приложений из новых веток выполняется автоматически из графа через GitHub Actions.

@@ -55,6 +55,7 @@ cd frontend && npm install && npm run dev
 | [Разработка](docs/DEVELOPMENT.md) | Как добавить агента, изменить промпты, настроить LLM |
 | [Тестирование](docs/TESTING.md) | Запуск тестов, фикстуры, CI/CD |
 | [Развёртывание](docs/deployment.md) | Docker Compose (dev) и Dockerfile (prod) |
+| [Bootstrap deploy VPS (Ansible)](docs/DEPLOY_VPS_ANSIBLE.md) | Подготовка серверов для автодеплоя приложений |
 | [Roadmap](docs/IDEAS.md) | Идеи для развития проекта |
 
 ## Стек

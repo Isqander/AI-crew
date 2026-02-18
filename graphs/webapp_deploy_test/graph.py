@@ -50,6 +50,28 @@ DEFAULT_WEBAPP_TASK = (
 )
 
 
+def _normalize_deploy_workflow(content: str) -> str:
+    """Ensure deploy workflow runs on AI working branches and supports manual dispatch."""
+    if "on:" not in content:
+        return content
+
+    # Replace restrictive branch filter from template (`[main]`) with ai/* support.
+    if "branches: [main]" in content:
+        content = content.replace(
+            "branches: [main]",
+            "branches: [main, master, ai/**, project/**]",
+        )
+
+    # Ensure workflow_dispatch is present
+    if "workflow_dispatch:" not in content:
+        content = content.replace(
+            "on:\n  push:",
+            "on:\n  push:\n  workflow_dispatch:\n",
+            1,
+        )
+    return content
+
+
 def developer_node(state: WebAppDeployTestState, config=None) -> dict:
     """Generate web app code or fix QA issues."""
     t0 = _time.monotonic()
@@ -223,6 +245,11 @@ def devops_node(state: WebAppDeployTestState, config=None) -> dict:
             before=len(infra_files),
             after=len(filtered_infra),
         )
+    # Harden deploy workflow trigger so CI is discoverable for ai/* working branches.
+    for f in filtered_infra:
+        if f.get("path") == ".github/workflows/deploy.yml":
+            f["content"] = _normalize_deploy_workflow(f.get("content", ""))
+
     state_update = {
         **result,
         "infra_files": filtered_infra,
@@ -254,12 +281,78 @@ def route_after_git_commit(state: WebAppDeployTestState) -> Literal["deploy_trig
 
 def deploy_trigger_node_wrapped(state: WebAppDeployTestState, config=None) -> dict:
     """Fill missing deploy repo/branch from git_commit output before deploy trigger."""
+    from dev_team.tools.github_actions import GitHubActionsClient
+
     deploy_state = {
         **state,
         "deploy_repo": state.get("deploy_repo") or state.get("working_repo") or state.get("repository", ""),
         "deploy_branch": state.get("deploy_branch") or state.get("working_branch", ""),
     }
-    return deploy_trigger_node(deploy_state, config=config)
+    result = deploy_trigger_node(deploy_state, config=config)
+
+    # Fallback 1: give GitHub Actions more time to register push-triggered run.
+    if (
+        result.get("ci_status") == "not_found"
+        and deploy_state.get("deploy_repo")
+        and deploy_state.get("deploy_branch")
+    ):
+        repo = deploy_state["deploy_repo"]
+        branch = deploy_state["deploy_branch"]
+        try:
+            client = GitHubActionsClient()
+            for _ in range(4):  # ~40s additional wait
+                _time.sleep(10)
+                latest_push = client.get_latest_workflow_run(repo, branch, event="push")
+                run_id = latest_push.get("run_id")
+                if run_id is not None:
+                    waited = client.wait_for_completion(repo, run_id)
+                    conclusion = waited.get("conclusion", "unknown")
+                    deploy_status = "deploying" if conclusion == "success" else "failed"
+                    logger.info(
+                        "webapp_deploy_test.deploy_push_run_found_late",
+                        repo=repo,
+                        branch=branch,
+                        run_id=run_id,
+                        conclusion=conclusion,
+                    )
+                    return {
+                        **result,
+                        "ci_status": conclusion,
+                        "ci_run_id": run_id,
+                        "ci_run_url": waited.get("html_url", ""),
+                        "deploy_status": deploy_status,
+                    }
+
+            # Fallback 2: no push-run found -> try workflow_dispatch on this branch.
+            dispatch = client.trigger_workflow_dispatch(repo, "deploy.yml", branch)
+            if dispatch.get("triggered"):
+                logger.info(
+                    "webapp_deploy_test.deploy_dispatch.triggered",
+                    repo=repo,
+                    branch=branch,
+                )
+                _time.sleep(5)
+                latest = client.get_latest_workflow_run(repo, branch, event="workflow_dispatch")
+                run_id = latest.get("run_id")
+                if run_id is not None:
+                    waited = client.wait_for_completion(repo, run_id)
+                    conclusion = waited.get("conclusion", "unknown")
+                    deploy_status = "deploying" if conclusion == "success" else "failed"
+                    return {
+                        **result,
+                        "ci_status": conclusion,
+                        "ci_run_id": run_id,
+                        "ci_run_url": waited.get("html_url", ""),
+                        "deploy_status": deploy_status,
+                    }
+        except Exception as exc:
+            logger.warning(
+                "webapp_deploy_test.deploy_dispatch.failed",
+                repo=deploy_state.get("deploy_repo"),
+                branch=deploy_state.get("deploy_branch"),
+                error=str(exc)[:200],
+            )
+    return result
 
 
 def route_after_deploy_trigger(
@@ -301,8 +394,10 @@ def report_node(state: WebAppDeployTestState) -> dict:
 
     if not qa_approved:
         lines.append("Warning: deploy flow continued after QA retry limit for faster pipeline validation.")
-    if ci_status in ("skipped", "not_found") or deploy_status == "skipped":
+    if ci_status == "skipped" or deploy_status == "skipped":
         lines.append("Warning: deployment was skipped because repository/deploy_repo is not configured.")
+    elif ci_status == "not_found":
+        lines.append("Warning: no GitHub Actions run found for deploy branch (check deploy.yml branch triggers).")
 
     summary = "\n".join(lines)
     return {

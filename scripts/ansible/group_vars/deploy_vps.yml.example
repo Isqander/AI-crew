@@ -1,0 +1,10 @@
+deploy_user: deploy
+traefik_email: admin@example.com
+domain_ip: ""
+
+# Optional hardening
+setup_ufw: false
+ufw_allowed_ports:
+  - "22"
+  - "80"
+  - "443"
