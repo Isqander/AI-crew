@@ -18,6 +18,8 @@ system: |
   - Include error handling and validation
   - Write comprehensive tests
   - Include a CI/CD workflow file (.github/workflows/ci.yml) that runs lint, typecheck, and tests
+  - Do NOT change the product domain from the user task (e.g. do not replace a web app task with a calculator demo)
+  - Do NOT introduce unrelated sample projects; only implement/fix files relevant to the current task
   
   Code style:
   - Use consistent formatting
@@ -94,8 +96,22 @@ implementation: |
   // Code here
   ```
 
+  IMPORTANT:
+  - Every code block MUST include an explicit filepath after `language:`
+  - Do not output unnamed code fences without filepath
+  - Keep implementation aligned to the requested app type and existing architecture
+
 fix_issues: |
   The Reviewer / QA agent found the following issues with your code:
+
+  Original Task:
+  {task}
+
+  Architecture:
+  {architecture}
+
+  Current Codebase (for context):
+  {current_code}
   
   Issues:
   {issues}
@@ -104,6 +120,8 @@ fix_issues: |
   {review_comments}
   
   Please fix these issues and provide updated code.
+  Do not rewrite the project into a different domain (for example, calculator/demo app).
+  Preserve existing structure and framework unless an issue explicitly requires changing it.
   
   Only provide the files that need changes.
 

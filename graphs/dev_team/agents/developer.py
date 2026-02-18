@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessage
 
 from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template, CODE_TEMPERATURE
 from ..state import DevTeamState, CodeFile
+from common.utils import format_code_files
 
 logger = structlog.get_logger()
 
@@ -80,6 +81,9 @@ class DeveloperAgent(BaseAgent):
         review_comments = state.get("review_comments", [])
         
         response = self._invoke_chain(chain, {
+            "task": state.get("task", ""),
+            "architecture": state.get("architecture", {}),
+            "current_code": format_code_files(state.get("code_files", [])),
             "issues": "\n".join(f"- {i}" for i in issues),
             "review_comments": "\n".join(f"- {c}" for c in review_comments),
         }, config=config)
@@ -176,24 +180,42 @@ class DeveloperAgent(BaseAgent):
         ```
         """
         files = []
+        skipped_unnamed = 0
         
         # Pattern to match code blocks with language and optional path
         pattern = r"```(\w+)(?::([^\n]+))?\n(.*?)```"
         matches = re.findall(pattern, content, re.DOTALL)
         
-        for i, (language, filepath, code) in enumerate(matches):
-            # Generate filepath if not provided
+        for language, filepath, code in matches:
+            # Enforce explicit filepath to avoid garbage generated_file_* artifacts.
             if not filepath:
-                ext = self._get_extension(language)
-                filepath = f"generated_file_{i + 1}{ext}"
+                skipped_unnamed += 1
+                continue
+            normalized_path = self._normalize_path(filepath)
+            if not normalized_path:
+                continue
             
             files.append(CodeFile(
-                path=filepath.strip(),
+                path=normalized_path,
                 content=code.strip(),
                 language=language.lower(),
             ))
+
+        if skipped_unnamed:
+            logger.warning("developer.parse_code_files.skipped_unnamed_blocks", count=skipped_unnamed)
         
         return files
+
+    @staticmethod
+    def _normalize_path(filepath: str) -> str:
+        """Normalize paths for repository-safe relative file references."""
+        path = filepath.strip().replace("\\", "/")
+        while path.startswith("/"):
+            path = path[1:]
+        path = re.sub(r"/{2,}", "/", path)
+        if not path or path.startswith("../") or "/../" in path:
+            return ""
+        return path
     
     def _get_extension(self, language: str) -> str:
         """Get file extension for a language."""
