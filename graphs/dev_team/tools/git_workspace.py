@@ -86,6 +86,20 @@ def _get_repo(repo_name: str):
     return client.get_repo(repo_name)
 
 
+def _normalize_repo_path(path: str) -> str:
+    """Normalize repository file paths for Git tree API safety.
+
+    - Convert Windows separators to POSIX.
+    - Remove leading slashes/backslashes.
+    - Collapse repeated slashes.
+    """
+    p = (path or "").strip().replace("\\", "/")
+    while p.startswith("/"):
+        p = p[1:]
+    p = re.sub(r"/{2,}", "/", p)
+    return p
+
+
 # ──────────────────────── Branch management ──────────────────────
 
 
@@ -551,9 +565,26 @@ def commit_and_create_pr(
     }
 
     # ── Validate inputs ──────────────────────────────────────────
-    valid_files = [
-        f for f in code_files if f.get("path") and f.get("content")
-    ]
+    valid_files: list[dict] = []
+    dropped_paths: list[str] = []
+    for f in code_files:
+        raw_path = f.get("path", "")
+        content = f.get("content")
+        if not raw_path or content is None:
+            continue
+        norm_path = _normalize_repo_path(raw_path)
+        # Guard against unsafe/invalid paths for Git trees.
+        if not norm_path or norm_path.startswith("../") or "/../" in norm_path:
+            dropped_paths.append(raw_path)
+            continue
+        valid_files.append({**f, "path": norm_path})
+
+    if dropped_paths:
+        logger.warning(
+            "git_workflow.invalid_paths_dropped",
+            count=len(dropped_paths),
+            sample=dropped_paths[:5],
+        )
     if not valid_files:
         result["error"] = "No valid files to commit"
         return result
