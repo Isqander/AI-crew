@@ -15,6 +15,7 @@ Flow::
 import time as _time
 import uuid
 import re
+from pathlib import Path
 from typing import Literal
 
 import structlog
@@ -50,6 +51,27 @@ DEFAULT_WEBAPP_TASK = (
     "3) Учитывай deploy-ready структуру (Dockerfile/CI могут быть добавлены DevOps-узлом).\n"
     "4) Не добавляй лишние файлы-шаблоны и псевдофайлы generated_file_*.txt.\n"
 )
+
+
+def _load_default_deploy_workflow() -> str:
+    """Load deterministic deploy workflow template as fallback."""
+    template_path = Path(__file__).resolve().parents[2] / "config" / "deploy" / "deploy_template.yml"
+    try:
+        return template_path.read_text(encoding="utf-8")
+    except Exception:
+        return (
+            "name: Deploy\n"
+            "on:\n"
+            "  push:\n"
+            "    branches: [main, master, ai/**, project/**]\n"
+            "  workflow_dispatch:\n"
+            "jobs:\n"
+            "  smoke:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - run: echo \"deploy workflow placeholder\"\n"
+        )
 
 
 def _normalize_deploy_workflow(content: str) -> str:
@@ -262,6 +284,16 @@ def devops_node(state: WebAppDeployTestState, config=None) -> dict:
             before=len(infra_files),
             after=len(filtered_infra),
         )
+    # Ensure deploy workflow exists and is hardened for ai/* working branches.
+    deploy_paths = {f.get("path") for f in filtered_infra}
+    if ".github/workflows/deploy.yml" not in deploy_paths and ".github/workflows/deploy.yaml" not in deploy_paths:
+        filtered_infra.append(
+            {
+                "path": ".github/workflows/deploy.yml",
+                "content": _normalize_deploy_workflow(_load_default_deploy_workflow()),
+            }
+        )
+
     # Harden deploy workflow trigger so CI is discoverable for ai/* working branches.
     for f in filtered_infra:
         if f.get("path") in {".github/workflows/deploy.yml", ".github/workflows/deploy.yaml"}:

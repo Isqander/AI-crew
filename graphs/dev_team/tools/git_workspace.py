@@ -27,6 +27,7 @@ from __future__ import annotations
 import base64
 import os
 from datetime import datetime, timezone
+import re
 from typing import Optional
 
 import structlog
@@ -55,9 +56,11 @@ def _generate_branch_name(task_summary: str = "") -> str:
     timestamp = now.strftime("%Y%m%d-%H%M%S")
     # Create a short slug from the task summary
     slug = task_summary.lower().strip()
-    # Keep only alphanumeric + spaces, then join with dashes
-    slug = "".join(c if c.isalnum() or c == " " else "" for c in slug)
+    # Keep branch names ASCII-safe to avoid provider edge-cases with unicode refs.
+    slug = slug.encode("ascii", errors="ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9\s-]+", " ", slug)
     slug = "-".join(slug.split()[:5])  # max 5 words
+    slug = re.sub(r"-{2,}", "-", slug).strip("-")
     if not slug:
         slug = "task"
     return f"ai/{slug}-{timestamp}"

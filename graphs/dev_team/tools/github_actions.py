@@ -253,7 +253,30 @@ class GitHubActionsClient:
         gh_repo = self._gh.get_repo(repo)
 
         try:
-            workflow = gh_repo.get_workflow(workflow_file)
+            workflow = None
+            try:
+                workflow = gh_repo.get_workflow(workflow_file)
+            except Exception:
+                # Fallback: try resolve by iterating known workflows and matching file name suffix.
+                try:
+                    target = workflow_file.lower().split("/")[-1]
+                    for wf in gh_repo.get_workflows():
+                        wf_path = (getattr(wf, "path", "") or "").lower()
+                        wf_name = (getattr(wf, "name", "") or "").lower()
+                        if wf_path.endswith(f"/{target}") or wf_path.endswith(target) or wf_name == target.replace(".yml", "").replace(".yaml", ""):
+                            workflow = wf
+                            break
+                except Exception:
+                    workflow = None
+
+            if workflow is None:
+                return {
+                    "triggered": False,
+                    "workflow": workflow_file,
+                    "branch": branch,
+                    "error": f"workflow '{workflow_file}' not found (or inaccessible) in repo metadata",
+                }
+
             success = workflow.create_dispatch(branch, inputs or {})
 
             logger.info(
