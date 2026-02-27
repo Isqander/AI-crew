@@ -1,0 +1,10 @@
+deploy_user: root
+traefik_email: isqander@gmail.com
+domain_ip: ""
+
+# Optional hardening
+setup_ufw: false
+ufw_allowed_ports:
+  - "22"
+  - "80"
+  - "443"

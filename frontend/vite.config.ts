@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    allowedHosts: ['ai-crew-front.31.59.58.143.nip.io'],
+    allowedHosts: ['ai-crew-front.31.59.58.143.nip.io', 'ai-crew.aistithy.com'],
     proxy: {
       // Proxy /api/* to Gateway (which handles auth + proxies to Aegra)
       '/api': {
