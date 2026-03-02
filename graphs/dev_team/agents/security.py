@@ -28,9 +28,10 @@ The agent populates ``state["security_review"]`` with::
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts
 from .schemas import SecurityReviewResponse
 from ..state import DevTeamState
+from ..language_policy import choose_user_text
 from common.utils import format_code_files
 
 logger = structlog.get_logger()
@@ -72,7 +73,11 @@ class SecurityAgent(BaseAgent):
                 },
                 "current_agent": "security",
                 "messages": [AIMessage(
-                    content="Security review skipped: no code files provided.",
+                    content=choose_user_text(
+                        state,
+                        en="Security review skipped: no code files provided.",
+                        ru="Проверка безопасности пропущена: не переданы файлы кода.",
+                    ),
                     name="security",
                 )],
             }
@@ -83,8 +88,8 @@ class SecurityAgent(BaseAgent):
         dependencies_str = self._extract_dependencies(code_files)
 
         # Build and invoke chain
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["security_static_review"],
         )
         chain = prompt | self.llm
@@ -138,7 +143,11 @@ class SecurityAgent(BaseAgent):
                 },
                 "current_agent": "security",
                 "messages": [AIMessage(
-                    content="Security runtime check skipped: no infrastructure files.",
+                    content=choose_user_text(
+                        state,
+                        en="Security runtime check skipped: no infrastructure files.",
+                        ru="Runtime-проверка безопасности пропущена: нет инфраструктурных файлов.",
+                    ),
                     name="security",
                 )],
             }
@@ -148,8 +157,8 @@ class SecurityAgent(BaseAgent):
             for f in infra_files
         )
 
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["security_runtime_check"],
         )
         chain = prompt | self.llm

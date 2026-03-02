@@ -141,17 +141,27 @@ class QAAgent(BaseAgent):
         from .qa_exploration import _generate_exploration_plan
         return _generate_exploration_plan(self, state, config)
 
-    def _analyse_exploration(self, task: str, report: dict, sandbox_result: dict, config=None) -> dict:
+    def _analyse_exploration(self, state_or_task: DevTeamState | str, report: dict, sandbox_result: dict, config=None) -> dict:
         from .qa_exploration import _analyse_exploration
-        return _analyse_exploration(self, task, report, sandbox_result, config)
+        state: DevTeamState | dict
+        if isinstance(state_or_task, str):
+            state = {"task": state_or_task}
+        else:
+            state = state_or_task
+        return _analyse_exploration(self, state, report, sandbox_result, config)
 
     def _generate_browser_test(self, state: DevTeamState, config=None) -> str:
         from .qa_browser import _generate_browser_test
         return _generate_browser_test(self, state, config)
 
-    def _analyse_browser_results(self, task: str, sandbox_result: dict, config=None) -> dict:
+    def _analyse_browser_results(self, state_or_task: DevTeamState | str, sandbox_result: dict, config=None) -> dict:
         from .qa_browser import _analyse_browser_results
-        return _analyse_browser_results(self, task, sandbox_result, config)
+        state: DevTeamState | dict
+        if isinstance(state_or_task, str):
+            state = {"task": state_or_task}
+        else:
+            state = state_or_task
+        return _analyse_browser_results(self, state, sandbox_result, config)
 
     # ------------------------------------------------------------------
     # Merge results

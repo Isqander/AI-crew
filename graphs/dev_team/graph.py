@@ -68,6 +68,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from dev_team.state import DevTeamState
 from common.logging import configure_logging
 from common.git import make_git_commit_node
+from dev_team.language_policy import choose_user_text
 
 from dev_team.agents.pm import pm_agent
 from dev_team.agents.analyst import analyst_agent
@@ -504,14 +505,26 @@ def human_escalation_node(state: DevTeamState) -> dict:
 
     logger.info("node.human_escalation", review_iter=review_iter, issues=len(issues))
 
-    question = (
-        f"Dev and Reviewer could not resolve the following issues after "
-        f"multiple iterations (including Architect review):\n\n"
-        f"{issues_text}\n\n"
-        f"Please advise:\n"
-        f"1. Which issues can be waived / accepted as-is?\n"
-        f"2. How should the remaining issues be fixed?\n"
-        f"3. Or should we proceed with the current code?"
+    question = choose_user_text(
+        state,
+        en=(
+            "Dev and Reviewer could not resolve the following issues after "
+            "multiple iterations (including Architect review):\n\n"
+            f"{issues_text}\n\n"
+            "Please advise:\n"
+            "1. Which issues can be waived / accepted as-is?\n"
+            "2. How should the remaining issues be fixed?\n"
+            "3. Or should we proceed with the current code?"
+        ),
+        ru=(
+            "Developer и Reviewer не смогли закрыть следующие проблемы после "
+            "нескольких итераций (включая эскалацию к Архитектору):\n\n"
+            f"{issues_text}\n\n"
+            "Пожалуйста, подскажите:\n"
+            "1. Какие проблемы можно принять как есть (waive)?\n"
+            "2. Как исправить оставшиеся проблемы?\n"
+            "3. Или можно продолжить с текущим кодом?"
+        ),
     )
 
     return {
@@ -548,7 +561,11 @@ def ci_check_node(state: DevTeamState, config=None) -> dict:
         logger.warning("ci_check.skip", reason="no repo or branch in state")
         return {
             "ci_status": "skipped",
-            "ci_log": "CI check skipped: no repository or branch configured.",
+            "ci_log": choose_user_text(
+                state,
+                en="CI check skipped: no repository or branch configured.",
+                ru="Проверка CI пропущена: не задан репозиторий или ветка.",
+            ),
             "current_agent": "ci_check",
         }
 
@@ -565,14 +582,22 @@ def ci_check_node(state: DevTeamState, config=None) -> dict:
             logger.info("ci_check.no_run_found", repo=repo, branch=branch)
             return {
                 "ci_status": "not_found",
-                "ci_log": f"No CI workflow run found for branch '{branch}'.",
+                "ci_log": choose_user_text(
+                    state,
+                    en=f"No CI workflow run found for branch '{branch}'.",
+                    ru=f"Для ветки '{branch}' не найден запуск CI workflow.",
+                ),
                 "current_agent": "ci_check",
             }
 
         # 2. Wait for completion
         result = client.wait_for_completion(repo, run_id)
         conclusion = result.get("conclusion", "unknown")
-        ci_log = f"CI {conclusion}: run #{run_id} ({result.get('elapsed_seconds', 0)}s)"
+        ci_log = choose_user_text(
+            state,
+            en=f"CI {conclusion}: run #{run_id} ({result.get('elapsed_seconds', 0)}s)",
+            ru=f"CI {conclusion}: запуск #{run_id} ({result.get('elapsed_seconds', 0)}с)",
+        )
 
         # 3. If failed, get detailed logs
         if conclusion == "failure":
@@ -588,7 +613,11 @@ def ci_check_node(state: DevTeamState, config=None) -> dict:
                                     f"{step['name']} — {step.get('conclusion', 'unknown')}"
                                 )
                 if failed_steps:
-                    ci_log += "\n\nFailed steps:\n" + "\n".join(failed_steps)
+                    ci_log += choose_user_text(
+                        state,
+                        en="\n\nFailed steps:\n",
+                        ru="\n\nУпавшие шаги:\n",
+                    ) + "\n".join(failed_steps)
             except Exception as log_err:
                 logger.warning("ci_check.logs_error", error=str(log_err)[:200])
 
@@ -606,7 +635,11 @@ def ci_check_node(state: DevTeamState, config=None) -> dict:
         logger.error("ci_check.error", error=str(exc)[:300])
         return {
             "ci_status": "error",
-            "ci_log": f"CI check error: {str(exc)[:300]}",
+            "ci_log": choose_user_text(
+                state,
+                en=f"CI check error: {str(exc)[:300]}",
+                ru=f"Ошибка проверки CI: {str(exc)[:300]}",
+            ),
             "current_agent": "ci_check",
         }
 
@@ -662,7 +695,11 @@ def deploy_trigger_node(state: DevTeamState, config=None) -> dict:
         return {
             "deploy_status": "skipped",
             "ci_status": "skipped",
-            "ci_log": "Deploy skipped: no deploy repo configured.",
+            "ci_log": choose_user_text(
+                state,
+                en="Deploy skipped: no deploy repo configured.",
+                ru="Деплой пропущен: не настроен репозиторий деплоя.",
+            ),
             "current_agent": "deploy_trigger",
         }
 
@@ -693,13 +730,21 @@ def deploy_trigger_node(state: DevTeamState, config=None) -> dict:
             return {
                 "deploy_status": "deploying",
                 "ci_status": "not_found",
-                "ci_log": f"No CI workflow run found for branch '{deploy_branch}'.",
+                "ci_log": choose_user_text(
+                    state,
+                    en=f"No CI workflow run found for branch '{deploy_branch}'.",
+                    ru=f"Для ветки '{deploy_branch}' не найден запуск CI workflow.",
+                ),
                 "current_agent": "deploy_trigger",
             }
 
         result = client.wait_for_completion(deploy_repo, run_id)
         conclusion = result.get("conclusion", "unknown")
-        ci_log = f"CI {conclusion}: run #{run_id} ({result.get('elapsed_seconds', 0)}s)"
+        ci_log = choose_user_text(
+            state,
+            en=f"CI {conclusion}: run #{run_id} ({result.get('elapsed_seconds', 0)}s)",
+            ru=f"CI {conclusion}: запуск #{run_id} ({result.get('elapsed_seconds', 0)}с)",
+        )
 
         if conclusion == "failure":
             try:
@@ -713,7 +758,11 @@ def deploy_trigger_node(state: DevTeamState, config=None) -> dict:
                                     f"  [{job['name']}] {step['name']} — {step.get('conclusion')}"
                                 )
                 if failed_steps:
-                    ci_log += "\n\nFailed:\n" + "\n".join(failed_steps)
+                    ci_log += choose_user_text(
+                        state,
+                        en="\n\nFailed:\n",
+                        ru="\n\nОшибки:\n",
+                    ) + "\n".join(failed_steps)
             except Exception:
                 pass
 
@@ -739,7 +788,11 @@ def deploy_trigger_node(state: DevTeamState, config=None) -> dict:
         return {
             "deploy_status": "deploying",
             "ci_status": "error",
-            "ci_log": f"Deploy trigger error: {str(exc)[:300]}",
+            "ci_log": choose_user_text(
+                state,
+                en=f"Deploy trigger error: {str(exc)[:300]}",
+                ru=f"Ошибка запуска деплоя: {str(exc)[:300]}",
+            ),
             "current_agent": "deploy_trigger",
         }
 

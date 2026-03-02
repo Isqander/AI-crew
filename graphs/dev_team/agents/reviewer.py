@@ -19,7 +19,7 @@ Note:
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts
 from .schemas import ReviewerResponse, ReviewerVerifyResponse
 from ..state import DevTeamState
 from common.utils import format_code_files
@@ -64,8 +64,8 @@ class ReviewerAgent(BaseAgent):
         Review the implemented code.
         """
         logger.info("reviewer.review_code", code_files=len(state.get("code_files", [])))
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["code_review"]
         )
 
@@ -147,8 +147,8 @@ class ReviewerAgent(BaseAgent):
         Verify that previous issues have been fixed.
         """
         logger.info("reviewer.verify_fixes")
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["verify_fixes"]
         )
 
@@ -183,8 +183,8 @@ class ReviewerAgent(BaseAgent):
         Give final approval for deployment.
         """
         logger.info("reviewer.final_approval")
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["final_approval"]
         )
 

@@ -13,7 +13,7 @@ LangGraph node function: ``analyst_agent(state, config=None) -> dict``
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts
 from .schemas import AnalystResponse
 from ..state import DevTeamState, UserStory
 
@@ -46,8 +46,8 @@ class AnalystAgent(BaseAgent):
     def gather_requirements(self, state: DevTeamState, config=None) -> dict:
         """Analyze the task and extract requirements."""
         logger.info("analyst.gather_requirements", task_len=len(state.get("task", "")))
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["requirements_gathering"]
         )
 
@@ -104,8 +104,8 @@ class AnalystAgent(BaseAgent):
             f"User clarification: {clarification}"
         )
 
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["requirements_gathering"]
         )
 

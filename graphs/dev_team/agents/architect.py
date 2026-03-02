@@ -14,7 +14,7 @@ LangGraph node function: ``architect_agent(state, config=None) -> dict``
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts
 from .schemas import ArchitectDesignResponse, ArchitectReviewResponse
 from ..state import DevTeamState
 from common.utils import format_code_files
@@ -65,8 +65,8 @@ class ArchitectAgent(BaseAgent):
         Design the system architecture based on requirements.
         """
         logger.info("architect.design_architecture")
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["architecture_design"]
         )
         
@@ -117,8 +117,8 @@ class ArchitectAgent(BaseAgent):
         Decide which issues are truly critical vs cosmetic/acceptable.
         """
         logger.info("architect.review_qa_escalation", review_iter=state.get("review_iteration_count", 0))
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["qa_escalation"]
         )
 
@@ -176,8 +176,8 @@ class ArchitectAgent(BaseAgent):
         Create detailed implementation specification for developers.
         """
         logger.info("architect.create_implementation_spec")
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["implementation_spec"]
         )
         

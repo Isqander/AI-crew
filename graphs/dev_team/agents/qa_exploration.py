@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from .base import create_prompt_template
 from .qa_helpers import (
     parse_verdict,
     parse_issues,
@@ -51,8 +50,8 @@ def _generate_exploration_plan(
 
     Returns the parsed plan dict, or ``None`` on failure.
     """
-    prompt = create_prompt_template(
-        agent.system_prompt,
+    prompt = agent.create_prompt(
+        state,
         agent.prompts["generate_exploration_plan"],
     )
     chain = prompt | agent.llm
@@ -109,7 +108,7 @@ def _generate_exploration_plan(
 
 def _analyse_exploration(
     agent: QAAgent,
-    task: str,
+    state: DevTeamState,
     report: dict,
     sandbox_result: dict,
     config=None,
@@ -118,8 +117,8 @@ def _analyse_exploration(
 
     Returns ``{"approved": bool, "issues": list[str], "defects": list[dict]}``.
     """
-    prompt = create_prompt_template(
-        agent.system_prompt,
+    prompt = agent.create_prompt(
+        state,
         agent.prompts["analyse_exploration"],
     )
     chain = prompt | agent.llm
@@ -156,7 +155,7 @@ def _analyse_exploration(
 
     try:
         response = agent._invoke_chain(chain, {
-            "task": task,
+            "task": state.get("task", ""),
             "plan_name": report.get("plan_name", "Unknown"),
             "total_steps": str(report.get("total_steps", 0)),
             "executed_steps": str(report.get("executed_steps", 0)),
@@ -218,7 +217,6 @@ def run_exploration_tests(agent: QAAgent, state: DevTeamState, config=None) -> d
     Returns a dict with ``browser_test_results`` and ``issues_found``.
     """
     code_files = state.get("code_files", [])
-    task = state.get("task", "")
     tech_stack = state.get("tech_stack", [])
 
     logger.info(
@@ -358,7 +356,7 @@ def run_exploration_tests(agent: QAAgent, state: DevTeamState, config=None) -> d
     # ── 6. LLM analyses exploration results ──
     verdict = _analyse_exploration(
         agent=agent,
-        task=task,
+        state=state,
         report=report,
         sandbox_result=sandbox_result,
         config=config,

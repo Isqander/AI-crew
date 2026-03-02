@@ -24,9 +24,10 @@ import re
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts
 from .schemas import DevOpsResponse, InfraFileOutput
 from ..state import DevTeamState
+from ..language_policy import choose_user_text, resolve_user_language
 from common.utils import format_code_files
 
 logger = structlog.get_logger()
@@ -118,7 +119,11 @@ class DevOpsAgent(BaseAgent):
                 "deploy_url": "",
                 "current_agent": "devops",
                 "messages": [AIMessage(
-                    content="DevOps: no code files to generate infrastructure for.",
+                    content=choose_user_text(
+                        state,
+                        en="DevOps: no code files to generate infrastructure for.",
+                        ru="DevOps: нет файлов кода для генерации инфраструктуры.",
+                    ),
                     name="devops",
                 )],
             }
@@ -132,8 +137,8 @@ class DevOpsAgent(BaseAgent):
         deploy_repo, deploy_branch = _get_deploy_repo_info(app_name)
 
         # Build and invoke chain
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["generate_infra"],
         )
         chain = prompt | self.llm
@@ -171,18 +176,48 @@ class DevOpsAgent(BaseAgent):
             for f in parsed.infra_files
         ]
 
-        summary_parts = [
-            f"Generated {len(parsed.infra_files)} infrastructure file(s):",
-            *[f"  - {f.path}" for f in parsed.infra_files],
-        ]
+        if resolve_user_language(state) == "ru":
+            summary_parts = [
+                f"Сгенерировано инфраструктурных файлов: {len(parsed.infra_files)}",
+                *[f"  - {f.path}" for f in parsed.infra_files],
+            ]
+        else:
+            summary_parts = [
+                f"Generated {len(parsed.infra_files)} infrastructure file(s):",
+                *[f"  - {f.path}" for f in parsed.infra_files],
+            ]
         if deploy_url:
-            summary_parts.append(f"Deploy URL: {deploy_url}")
+            summary_parts.append(
+                choose_user_text(
+                    state,
+                    en=f"Deploy URL: {deploy_url}",
+                    ru=f"URL деплоя: {deploy_url}",
+                )
+            )
         if deploy_repo:
-            summary_parts.append(f"Deploy repo: {deploy_repo} (branch: {deploy_branch})")
+            summary_parts.append(
+                choose_user_text(
+                    state,
+                    en=f"Deploy repo: {deploy_repo} (branch: {deploy_branch})",
+                    ru=f"Репозиторий деплоя: {deploy_repo} (ветка: {deploy_branch})",
+                )
+            )
         if parsed.env_vars_needed:
-            summary_parts.append(f"Required env vars: {', '.join(parsed.env_vars_needed)}")
+            summary_parts.append(
+                choose_user_text(
+                    state,
+                    en=f"Required env vars: {', '.join(parsed.env_vars_needed)}",
+                    ru=f"Обязательные переменные окружения: {', '.join(parsed.env_vars_needed)}",
+                )
+            )
         if parsed.notes:
-            summary_parts.append(f"Notes: {parsed.notes}")
+            summary_parts.append(
+                choose_user_text(
+                    state,
+                    en=f"Notes: {parsed.notes}",
+                    ru=f"Примечания: {parsed.notes}",
+                )
+            )
 
         summary = "\n".join(summary_parts)
 

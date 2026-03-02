@@ -23,12 +23,14 @@ import os
 import yaml
 from pathlib import Path
 from string import Template
-from typing import Optional
+from typing import Optional, Any
 
 import structlog
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+
+from ..language_policy import build_user_language_system_instruction
 
 logger = structlog.get_logger()
 
@@ -448,6 +450,14 @@ class BaseAgent:
         self.prompts = prompts
         self.system_prompt = prompts.get("system", "")
         logger.info("agent.initialized", agent=self.name)
+
+    def create_prompt(self, state: dict[str, Any], human_template: str) -> ChatPromptTemplate:
+        """Create a prompt with dynamic user-language policy injected."""
+        system_prompt = self.system_prompt
+        language_policy = build_user_language_system_instruction(state)
+        if language_policy:
+            system_prompt = f"{system_prompt}\n\n{language_policy}"
+        return create_prompt_template(system_prompt, human_template)
 
     # ------------------------------------------------------------------
     # Langfuse / callback helpers  (Wave 1 — module 2.4)

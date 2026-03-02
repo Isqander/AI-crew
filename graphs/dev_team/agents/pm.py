@@ -11,9 +11,9 @@ LangGraph node function: ``pm_agent(state) -> dict``
 """
 
 import structlog
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template
+from .base import BaseAgent, get_llm_with_fallback, load_prompts
 from ..state import DevTeamState
 
 logger = structlog.get_logger()
@@ -32,8 +32,8 @@ class ProjectManagerAgent(BaseAgent):
         Decompose the incoming task into subtasks.
         """
         logger.info("pm.decompose_task", task_len=len(state.get("task", "")))
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["task_decomposition"]
         )
         
@@ -55,8 +55,8 @@ class ProjectManagerAgent(BaseAgent):
         Check the progress of the current task.
         """
         logger.info("pm.check_progress")
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["progress_check"]
         )
         
@@ -81,8 +81,8 @@ class ProjectManagerAgent(BaseAgent):
         Includes deploy_url and pr_url in the summary if available.
         """
         logger.info("pm.final_review", code_files=len(state.get("code_files", [])))
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["final_review"]
         )
         

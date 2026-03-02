@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import create_prompt_template
+from ..language_policy import choose_user_text
 from .qa_helpers import parse_verdict, parse_issues
 
 if TYPE_CHECKING:
@@ -149,10 +149,15 @@ def build_commands(language: str, code_files: list[dict]) -> list[str]:
     return commands
 
 
-def make_skip_result(reason: str) -> dict:
+def make_skip_result(reason: str, state: DevTeamState | None = None) -> dict:
     """Return a pass-through result when there is nothing to test."""
+    message = choose_user_text(
+        state,
+        en=f"QA skipped: {reason}",
+        ru=f"QA пропущен: {reason}",
+    )
     return {
-        "messages": [AIMessage(content=f"QA skipped: {reason}", name="qa")],
+        "messages": [AIMessage(content=message, name="qa")],
         "sandbox_results": None,
         "test_results": {"approved": True, "skipped": True},
         "issues_found": [],
@@ -163,14 +168,15 @@ def make_skip_result(reason: str) -> dict:
 
 def _analyse_results(
     agent: QAAgent,
+    state: DevTeamState,
     task: str,
     code_files: list[dict],
     sandbox_results: dict,
     config=None,
 ) -> dict:
     """Use LLM to interpret sandbox output and decide pass/fail."""
-    prompt = create_prompt_template(
-        agent.system_prompt,
+    prompt = agent.create_prompt(
+        state,
         agent.prompts["analyse_sandbox"],
     )
     chain = prompt | agent.llm
@@ -214,7 +220,14 @@ def run_sandbox_tests(agent: QAAgent, state: DevTeamState, config=None) -> dict:
 
     if not code_files:
         logger.info("qa.test_code.skip", reason="no_code_files")
-        return make_skip_result("No code files to test.")
+        return make_skip_result(
+            choose_user_text(
+                state,
+                en="No code files to test.",
+                ru="Нет файлов кода для тестирования.",
+            ),
+            state=state,
+        )
 
     language = detect_language(code_files)
     commands = build_commands(language, code_files)
@@ -266,6 +279,7 @@ def run_sandbox_tests(agent: QAAgent, state: DevTeamState, config=None) -> dict:
     # ── LLM analyses results ──
     verdict = _analyse_results(
         agent=agent,
+        state=state,
         task=task,
         code_files=code_files,
         sandbox_results=sandbox_results,

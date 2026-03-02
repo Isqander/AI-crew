@@ -15,7 +15,7 @@ import re
 import structlog
 from langchain_core.messages import AIMessage
 
-from .base import BaseAgent, get_llm_with_fallback, load_prompts, create_prompt_template, CODE_TEMPERATURE
+from .base import BaseAgent, get_llm_with_fallback, load_prompts, CODE_TEMPERATURE
 from ..state import DevTeamState, CodeFile
 from common.utils import format_code_files
 
@@ -36,8 +36,8 @@ class DeveloperAgent(BaseAgent):
         Implement code based on architecture specification.
         """
         logger.info("developer.implement")
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["implementation"]
         )
         
@@ -70,8 +70,8 @@ class DeveloperAgent(BaseAgent):
         Fix issues found by QA.
         """
         logger.info("developer.fix_issues", issues=len(state.get("issues_found", [])))
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["fix_issues"]
         )
         
@@ -113,8 +113,8 @@ class DeveloperAgent(BaseAgent):
         ci_status = state.get("ci_status", "")
         logger.info("developer.fix_ci", ci_status=ci_status)
 
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["fix_ci"]
         )
         chain = prompt | self.llm
@@ -145,8 +145,8 @@ class DeveloperAgent(BaseAgent):
         lint_iter = state.get("lint_iteration_count", 0)
         logger.info("developer.fix_lint", lint_iteration=lint_iter)
 
-        prompt = create_prompt_template(
-            self.system_prompt,
+        prompt = self.create_prompt(
+            state,
             self.prompts["fix_lint"]
         )
         chain = prompt | self.llm
