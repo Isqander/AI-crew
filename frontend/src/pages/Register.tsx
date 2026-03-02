@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bot, Mail, Lock, User, ArrowRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../hooks/useAuth'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { FormInput } from '../components/FormInput'
+import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
 export function Register() {
   const [email, setEmail] = useState('')
@@ -11,6 +13,7 @@ export function Register() {
   const [displayName, setDisplayName] = useState('')
   const { register, loading, error } = useAuth()
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,6 +27,9 @@ export function Register() {
 
   return (
     <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4 py-12">
+      <div className="absolute top-4 right-4">
+        <LanguageSwitcher />
+      </div>
       <div className="w-full max-w-md">
         {/* Logo & Header */}
         <div className="text-center mb-10">
@@ -39,15 +45,15 @@ export function Register() {
                 AI-crew
               </h1>
               <p className="text-sm text-midnight-400 font-mono">
-                Мультиагентная платформа
+                {t('common.platform')}
               </p>
             </div>
           </Link>
           <h2 className="text-xl font-mono font-semibold text-midnight-100">
-            Регистрация
+            {t('register.signUp')}
           </h2>
           <p className="text-midnight-400 text-sm mt-1 font-mono">
-            Создайте новый аккаунт
+            {t('register.signUpDesc')}
           </p>
         </div>
 
@@ -58,14 +64,14 @@ export function Register() {
 
             <FormInput
               id="displayName"
-              label="Отображаемое имя"
+              label={t('register.displayName')}
               type="text"
               icon={<User />}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
               autoComplete="name"
-              placeholder="Иван Иванов"
+              placeholder={t('register.namePlaceholder')}
             />
 
             <FormInput
@@ -82,7 +88,7 @@ export function Register() {
 
             <FormInput
               id="password"
-              label="Пароль"
+              label={t('register.password')}
               type="password"
               icon={<Lock />}
               value={password}
@@ -98,10 +104,10 @@ export function Register() {
               className="w-full py-3 px-4 bg-accent-cyan text-midnight-950 font-mono font-semibold rounded-xl hover:bg-accent-cyan/90 focus:outline-none focus:ring-2 focus:ring-accent-cyan focus:ring-offset-2 focus:ring-offset-midnight-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 group"
             >
               {loading ? (
-                <span className="animate-pulse">Регистрация...</span>
+                <span className="animate-pulse">{t('register.signingUp')}</span>
               ) : (
                 <>
-                  Зарегистрироваться
+                  {t('register.signUpBtn')}
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -109,12 +115,12 @@ export function Register() {
           </form>
 
           <p className="mt-6 text-center text-midnight-400 text-sm font-mono">
-            Уже есть аккаунт?{' '}
+            {t('register.haveAccount')}{' '}
             <Link
               to="/login"
               className="text-accent-cyan hover:text-accent-cyan/80 font-medium transition-colors"
             >
-              Войти
+              {t('register.signIn')}
             </Link>
           </p>
         </div>

@@ -13,6 +13,7 @@ import {
   ChevronUp,
   Info,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../store/authStore'
 import { aegraClient } from '../api/aegra'
 import type { GraphListItem, GraphConfig } from '../types'
@@ -30,8 +31,10 @@ export function Settings() {
   const [graphConfigs, setGraphConfigs] = useState<Record<string, GraphConfig>>({})
   const [expandedGraph, setExpandedGraph] = useState<string | null>(null)
   const [loadingGraphs, setLoadingGraphs] = useState(true)
+  const { t, i18n } = useTranslation()
 
-  // Fetch health status
+  const dateLocale = i18n.language === 'ru' ? 'ru-RU' : 'en-US'
+
   const checkHealth = async () => {
     setHealthLoading(true)
     try {
@@ -44,14 +47,12 @@ export function Settings() {
     }
   }
 
-  // Fetch available graphs
   const loadGraphs = async () => {
     setLoadingGraphs(true)
     try {
       const list = await aegraClient.getGraphList()
       setGraphs(list)
 
-      // Load config for each graph
       const configs: Record<string, GraphConfig> = {}
       for (const g of list) {
         try {
@@ -80,33 +81,33 @@ export function Settings() {
       <div className="flex items-center gap-3 mb-8">
         <SettingsIcon className="w-6 h-6 text-accent-cyan" />
         <h1 className="text-2xl font-mono font-semibold text-midnight-100">
-          Настройки
+          {t('settings.title')}
         </h1>
       </div>
 
       <div className="space-y-6">
-        {/* ── Profile ── */}
+        {/* Profile */}
         <SettingsSection
           icon={<User className="w-5 h-5" />}
-          title="Профиль"
-          description="Информация о вашем аккаунте"
+          title={t('settings.profile')}
+          description={t('settings.profileDesc')}
         >
           <div className="grid sm:grid-cols-2 gap-4">
-            <InfoField label="Имя" value={user?.display_name || '—'} />
+            <InfoField label={t('settings.name')} value={user?.display_name || '—'} />
             <InfoField label="Email" value={user?.email || '—'} />
             <InfoField label="ID" value={user?.id?.slice(0, 8) + '...' || '—'} mono />
             <InfoField
-              label="Создан"
-              value={user?.created_at ? new Date(user.created_at).toLocaleString('ru-RU') : '—'}
+              label={t('settings.created')}
+              value={user?.created_at ? new Date(user.created_at).toLocaleString(dateLocale) : '—'}
             />
           </div>
         </SettingsSection>
 
-        {/* ── System Status ── */}
+        {/* System Status */}
         <SettingsSection
           icon={<Server className="w-5 h-5" />}
-          title="Статус системы"
-          description="Состояние сервисов платформы"
+          title={t('settings.systemStatus')}
+          description={t('settings.systemStatusDesc')}
           action={
             <button
               onClick={checkHealth}
@@ -116,7 +117,7 @@ export function Settings() {
                          transition-colors font-mono text-xs disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${healthLoading ? 'animate-spin' : ''}`} />
-              Обновить
+              {t('settings.refresh')}
             </button>
           }
         >
@@ -137,19 +138,19 @@ export function Settings() {
           </div>
         </SettingsSection>
 
-        {/* ── Graphs & LLM Config ── */}
+        {/* Graphs & LLM Config */}
         <SettingsSection
           icon={<Cpu className="w-5 h-5" />}
-          title="Графы и модели"
-          description="Доступные графы и конфигурация LLM моделей"
+          title={t('settings.graphsAndModels')}
+          description={t('settings.graphsAndModelsDesc')}
         >
           {loadingGraphs ? (
             <div className="flex items-center gap-2 text-midnight-400 py-4">
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="font-mono text-sm">Загрузка...</span>
+              <span className="font-mono text-sm">{t('common.loading')}</span>
             </div>
           ) : graphs.length === 0 ? (
-            <p className="text-midnight-500 font-mono text-sm py-4">Графы не найдены</p>
+            <p className="text-midnight-500 font-mono text-sm py-4">{t('settings.noGraphs')}</p>
           ) : (
             <div className="space-y-3">
               {graphs.map((g) => {
@@ -191,7 +192,7 @@ export function Settings() {
                         {/* Agents */}
                         <div>
                           <h4 className="text-xs font-mono text-midnight-400 uppercase tracking-wider mb-2">
-                            Агенты
+                            {t('settings.agents')}
                           </h4>
                           <div className="space-y-2">
                             {g.agents.map((a) => {
@@ -228,12 +229,12 @@ export function Settings() {
                         {/* Task types */}
                         <div>
                           <h4 className="text-xs font-mono text-midnight-400 uppercase tracking-wider mb-2">
-                            Типы задач
+                            {t('settings.taskTypes')}
                           </h4>
                           <div className="flex flex-wrap gap-2">
-                            {g.task_types.map((t) => (
-                              <span key={t} className="px-2 py-1 bg-midnight-800 text-midnight-300 text-xs font-mono rounded">
-                                {t}
+                            {g.task_types.map((tt) => (
+                              <span key={tt} className="px-2 py-1 bg-midnight-800 text-midnight-300 text-xs font-mono rounded">
+                                {tt}
                               </span>
                             ))}
                           </div>
@@ -243,7 +244,7 @@ export function Settings() {
                         {g.features.length > 0 && (
                           <div>
                             <h4 className="text-xs font-mono text-midnight-400 uppercase tracking-wider mb-2">
-                              Возможности
+                              {t('settings.features')}
                             </h4>
                             <div className="flex flex-wrap gap-2">
                               {g.features.map((f) => (
@@ -263,26 +264,25 @@ export function Settings() {
           )}
         </SettingsSection>
 
-        {/* ── About ── */}
+        {/* About */}
         <SettingsSection
           icon={<Info className="w-5 h-5" />}
-          title="О системе"
-          description="Информация о платформе AI-crew"
+          title={t('settings.about')}
+          description={t('settings.aboutDesc')}
         >
           <div className="grid sm:grid-cols-2 gap-4">
-            <InfoField label="Платформа" value="AI-crew" />
-            <InfoField label="Версия" value="1.0.0 (Wave 2)" />
+            <InfoField label={t('settings.platformLabel')} value="AI-crew" />
+            <InfoField label={t('settings.version')} value="1.0.0 (Wave 2)" />
             <InfoField label="Runtime" value="LangGraph + Aegra" />
             <InfoField label="Gateway" value="FastAPI" />
           </div>
           <div className="mt-4 p-3 bg-midnight-800/50 border border-midnight-700/50 rounded-lg">
-            <p className="text-midnight-400 text-xs font-mono leading-relaxed">
-              <strong className="text-midnight-300">Примечание:</strong> Конфигурация LLM-моделей задаётся 
-              в <code className="text-accent-cyan">config/agents.yaml</code> и переменных окружения. 
-              Изменение моделей требует перезапуска контейнеров. 
-              Перезапуск с сайта пока не поддерживается — используйте{' '}
-              <code className="text-accent-cyan">docker-compose restart</code>.
-            </p>
+            <p
+              className="text-midnight-400 text-xs font-mono leading-relaxed [&>code]:text-accent-cyan"
+              dangerouslySetInnerHTML={{
+                __html: `<strong class="text-midnight-300">${t('settings.note')}</strong> ${t('settings.noteText')}`,
+              }}
+            />
           </div>
         </SettingsSection>
       </div>

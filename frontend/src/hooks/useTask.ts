@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { aegraClient } from '../api/aegra'
 import type { CreateTaskInput, ThreadState, Message, Thread } from '../types'
 import { mapStateMessages } from '../types'
@@ -22,6 +23,7 @@ interface UseTaskReturn {
 
 export function useTask(threadId?: string): UseTaskReturn {
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
   const [activeThread, setActiveThread] = useState<Thread | null>(null)
 
   // Get thread
@@ -45,7 +47,7 @@ export function useTask(threadId?: string): UseTaskReturn {
   })
 
   const runError = latestRun?.status === 'error'
-    ? (latestRun.error_message || 'Неизвестная ошибка выполнения')
+    ? (latestRun.error_message || t('useTask.unknownRunError'))
     : null
 
   // Get thread state

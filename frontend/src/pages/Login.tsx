@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bot, Mail, Lock, ArrowRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../hooks/useAuth'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { FormInput } from '../components/FormInput'
+import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
 export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const { login, loading, error } = useAuth()
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,6 +26,9 @@ export function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4 py-12">
+      <div className="absolute top-4 right-4">
+        <LanguageSwitcher />
+      </div>
       <div className="w-full max-w-md">
         {/* Logo & Header */}
         <div className="text-center mb-10">
@@ -38,15 +44,15 @@ export function Login() {
                 AI-crew
               </h1>
               <p className="text-sm text-midnight-400 font-mono">
-                Мультиагентная платформа
+                {t('common.platform')}
               </p>
             </div>
           </Link>
           <h2 className="text-xl font-mono font-semibold text-midnight-100">
-            Вход в систему
+            {t('login.signIn')}
           </h2>
           <p className="text-midnight-400 text-sm mt-1 font-mono">
-            Введите данные для входа
+            {t('login.signInDesc')}
           </p>
         </div>
 
@@ -69,7 +75,7 @@ export function Login() {
 
             <FormInput
               id="password"
-              label="Пароль"
+              label={t('login.password')}
               type="password"
               icon={<Lock />}
               value={password}
@@ -85,10 +91,10 @@ export function Login() {
               className="w-full py-3 px-4 bg-accent-cyan text-midnight-950 font-mono font-semibold rounded-xl hover:bg-accent-cyan/90 focus:outline-none focus:ring-2 focus:ring-accent-cyan focus:ring-offset-2 focus:ring-offset-midnight-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 group"
             >
               {loading ? (
-                <span className="animate-pulse">Вход...</span>
+                <span className="animate-pulse">{t('login.signingIn')}</span>
               ) : (
                 <>
-                  Войти
+                  {t('login.signInBtn')}
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -96,12 +102,12 @@ export function Login() {
           </form>
 
           <p className="mt-6 text-center text-midnight-400 text-sm font-mono">
-            Нет аккаунта?{' '}
+            {t('login.noAccount')}{' '}
             <Link
               to="/register"
               className="text-accent-cyan hover:text-accent-cyan/80 font-medium transition-colors"
             >
-              Зарегистрироваться
+              {t('login.register')}
             </Link>
           </p>
         </div>

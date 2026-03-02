@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AlertCircle, Send, Loader2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface ClarificationPanelProps {
   question: string
@@ -15,6 +16,7 @@ export function ClarificationPanel({
   isLoading = false,
 }: ClarificationPanelProps) {
   const [response, setResponse] = useState('')
+  const { t } = useTranslation()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,32 +31,29 @@ export function ClarificationPanel({
       <div className="bg-accent-amber/10 px-4 py-3 flex items-center gap-3">
         <AlertCircle className="w-5 h-5 text-accent-amber" />
         <h3 className="font-mono font-medium text-accent-amber">
-          Требуется уточнение
+          {t('clarification.title')}
         </h3>
       </div>
       
       {/* Content */}
       <div className="p-4 space-y-4">
-        {/* Context */}
         {context && (
           <div className="text-xs text-midnight-500 font-mono uppercase tracking-wider">
             {context}
           </div>
         )}
         
-        {/* Question */}
         <div className="bg-midnight-900 rounded-lg p-4">
           <p className="text-midnight-100 font-mono text-sm whitespace-pre-wrap">
             {question}
           </p>
         </div>
         
-        {/* Response form */}
         <form onSubmit={handleSubmit} className="space-y-3">
           <textarea
             value={response}
             onChange={(e) => setResponse(e.target.value)}
-            placeholder="Введите ваш ответ..."
+            placeholder={t('clarification.placeholder')}
             className="w-full bg-midnight-900 border border-midnight-700 rounded-lg px-4 py-3
                        text-midnight-100 placeholder-midnight-500 font-mono text-sm
                        focus:outline-none focus:border-accent-amber focus:ring-1 focus:ring-accent-amber
@@ -75,7 +74,7 @@ export function ClarificationPanel({
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              {isLoading ? 'Отправка...' : 'Отправить ответ'}
+              {isLoading ? t('clarification.sending') : t('clarification.submit')}
             </button>
           </div>
         </form>

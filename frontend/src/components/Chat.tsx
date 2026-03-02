@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, User, Bot, AlertCircle, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 import type { Message, AgentName } from '../types'
 
 interface ChatProps {
@@ -22,8 +23,8 @@ export function Chat({
 }: ChatProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const { t } = useTranslation()
 
-  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -43,7 +44,7 @@ export function Chat({
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-midnight-500">
             <Bot className="w-12 h-12 mb-4 opacity-50" />
-            <p className="font-mono text-sm">Здесь будут сообщения агентов</p>
+            <p className="font-mono text-sm">{t('chat.emptyState')}</p>
           </div>
         ) : (
           messages.map((message) => (
@@ -51,17 +52,15 @@ export function Chat({
           ))
         )}
         
-        {/* Clarification prompt */}
         {needsClarification && clarificationQuestion && (
           <ClarificationPrompt question={clarificationQuestion} />
         )}
         
-        {/* Loading indicator */}
         {isLoading && !needsClarification && (
           <div className="flex items-center gap-2 text-accent-cyan">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span className="font-mono text-sm">
-              {currentAgent ? `${currentAgent} думает...` : 'Обработка...'}
+              {currentAgent ? t('chat.thinking', { agent: currentAgent }) : t('chat.processing')}
             </span>
           </div>
         )}
@@ -79,7 +78,7 @@ export function Chat({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={needsClarification ? "Введите ответ..." : "Отправить сообщение..."}
+            placeholder={needsClarification ? t('chat.replyPlaceholder') : t('chat.messagePlaceholder')}
             className="flex-1 bg-midnight-800 border border-midnight-700 rounded-lg px-4 py-2
                        text-midnight-100 placeholder-midnight-500 font-mono text-sm
                        focus:outline-none focus:border-accent-cyan"
@@ -132,14 +131,12 @@ function ChatMessage({ message }: ChatMessageProps) {
         isHuman ? 'bg-accent-magenta/10 border border-accent-magenta/30' : 'bg-midnight-800',
         isSystem && 'bg-midnight-700/50 border border-midnight-600'
       )}>
-        {/* Agent name */}
         {message.name && !isHuman && (
           <p className="text-xs text-accent-cyan font-mono mb-1 uppercase">
             {message.name}
           </p>
         )}
         
-        {/* Message content */}
         <div className="text-midnight-100 font-mono text-sm whitespace-pre-wrap">
           {message.content}
         </div>
@@ -153,13 +150,14 @@ interface ClarificationPromptProps {
 }
 
 function ClarificationPrompt({ question }: ClarificationPromptProps) {
+  const { t } = useTranslation()
   return (
     <div className="bg-accent-amber/10 border border-accent-amber/30 rounded-lg p-4">
       <div className="flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-accent-amber flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-accent-amber font-mono text-sm font-medium mb-2">
-            Требуется ваш ввод
+            {t('chat.inputRequired')}
           </p>
           <p className="text-midnight-200 font-mono text-sm whitespace-pre-wrap">
             {question}

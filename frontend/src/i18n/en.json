@@ -1,0 +1,184 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "untitled": "Untitled",
+    "platform": "Multi-Agent Platform",
+    "poweredBy": "Powered by"
+  },
+
+  "layout": {
+    "home": "Home",
+    "tasks": "Tasks",
+    "settings": "Settings",
+    "logout": "Log out"
+  },
+
+  "home": {
+    "hero": "Multi-Agent Development Team",
+    "description": "Describe your task and a team of AI agents — analyst, architect, developer, and QA — will build a solution for you. Full development cycle with a human in the loop.",
+    "newTask": "New Task",
+    "createError": "Failed to create task",
+    "featureAgents": "5 Specialized Agents",
+    "featureAgentsDesc": "PM, Analyst, Architect, Developer, and QA working together",
+    "featureHitl": "Human-in-the-Loop",
+    "featureHitlDesc": "Agents ask clarifying questions at every stage",
+    "featureGithub": "GitHub Integration",
+    "featureGithubDesc": "Automatic pull request creation with production-ready code",
+    "recentTasks": "Recent Tasks"
+  },
+
+  "tasks": {
+    "title": "Tasks",
+    "searchPlaceholder": "Search tasks...",
+    "all": "All",
+    "statusBusy": "In Progress",
+    "statusIdle": "Completed",
+    "statusInterrupted": "Awaiting Response",
+    "statusError": "Error",
+    "loadingTasks": "Loading tasks...",
+    "loadError": "Failed to load",
+    "noTasksFound": "No tasks found",
+    "noTasksYet": "No tasks yet",
+    "tryDifferentFilters": "Try adjusting your filters",
+    "createFirstTask": "Create your first task on the home page"
+  },
+
+  "taskDetail": {
+    "requirementsCount": "{{count}} requirements",
+    "architectureDefined": "Architecture defined",
+    "filesCount": "{{count}} files",
+    "issuesCount": "{{count}} issues",
+    "prCreated": "PR created",
+    "graph": "Graph",
+    "openPR": "Open PR",
+    "executionError": "Execution error",
+    "unknownError": "Unknown error",
+    "node": "node: {{name}}",
+    "techStack": "Tech Stack",
+    "files": "Files ({{count}})",
+    "summary": "Summary"
+  },
+
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "profileDesc": "Your account information",
+    "name": "Name",
+    "created": "Created",
+    "systemStatus": "System Status",
+    "systemStatusDesc": "Platform service health",
+    "refresh": "Refresh",
+    "graphsAndModels": "Graphs & Models",
+    "graphsAndModelsDesc": "Available graphs and LLM model configuration",
+    "noGraphs": "No graphs found",
+    "agents": "Agents",
+    "taskTypes": "Task Types",
+    "features": "Features",
+    "about": "About",
+    "aboutDesc": "Information about the AI-crew platform",
+    "platformLabel": "Platform",
+    "version": "Version",
+    "note": "Note:",
+    "noteText": "LLM model configuration is set in <code>config/agents.yaml</code> and environment variables. Changing models requires a container restart. Restarting from the web UI is not yet supported — use <code>docker-compose restart</code>."
+  },
+
+  "login": {
+    "signIn": "Sign In",
+    "signInDesc": "Enter your credentials to continue",
+    "password": "Password",
+    "signingIn": "Signing in...",
+    "signInBtn": "Sign In",
+    "noAccount": "Don't have an account?",
+    "register": "Sign Up"
+  },
+
+  "register": {
+    "signUp": "Sign Up",
+    "signUpDesc": "Create a new account",
+    "displayName": "Display Name",
+    "namePlaceholder": "John Doe",
+    "password": "Password",
+    "signingUp": "Signing up...",
+    "signUpBtn": "Sign Up",
+    "haveAccount": "Already have an account?",
+    "signIn": "Sign In"
+  },
+
+  "taskForm": {
+    "placeholder": "Describe the task for the agent team...",
+    "launching": "Launching...",
+    "launch": "Launch",
+    "graphSelect": "Select graph (agent team)",
+    "llmAuto": "Let the LLM choose (default)",
+    "llmAutoHint": "The LLM will automatically pick the best graph for your task",
+    "advancedOptions": "Advanced options",
+    "repository": "GitHub repository (optional)",
+    "additionalContext": "Additional context",
+    "contextPlaceholder": "Technical constraints, preferences, documentation links..."
+  },
+
+  "chat": {
+    "emptyState": "Agent messages will appear here",
+    "thinking": "{{agent}} is thinking...",
+    "processing": "Processing...",
+    "replyPlaceholder": "Type your reply...",
+    "messagePlaceholder": "Send a message...",
+    "inputRequired": "Your input is needed"
+  },
+
+  "clarification": {
+    "title": "Clarification Needed",
+    "placeholder": "Type your response...",
+    "sending": "Sending...",
+    "submit": "Submit Response"
+  },
+
+  "progress": {
+    "title": "Progress",
+    "pm": "Decomposition",
+    "analyst": "Requirements",
+    "architect": "Architecture",
+    "developer": "Development",
+    "qa": "Testing",
+    "complete": "Done"
+  },
+
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred while rendering the page.",
+    "reload": "Reload",
+    "logout": "Log out"
+  },
+
+  "agents": {
+    "pm": "Project Manager",
+    "pmDesc": "Task coordination and management",
+    "analyst": "Analyst",
+    "analystDesc": "Requirements gathering and refinement",
+    "architect": "Architect",
+    "architectDesc": "System design",
+    "developer": "Developer",
+    "developerDesc": "Code implementation",
+    "reviewer": "Reviewer",
+    "reviewerDesc": "Code review and quality assurance",
+    "qa": "QA Engineer",
+    "qaDesc": "Sandbox testing",
+    "security": "Security Engineer",
+    "securityDesc": "Code security analysis",
+    "lintCheck": "Lint Check",
+    "lintCheckDesc": "Code style and syntax verification",
+    "ciCheck": "CI Check",
+    "ciCheckDesc": "CI/CD pipeline verification",
+    "gitCommit": "Git Commit",
+    "gitCommitDesc": "Commit and PR creation",
+    "waitingForUser": "Awaiting Response",
+    "waitingForUserDesc": "Your input is needed",
+    "complete": "Completed",
+    "completeDesc": "Task completed"
+  },
+
+  "useTask": {
+    "unknownRunError": "Unknown execution error"
+  }
+}

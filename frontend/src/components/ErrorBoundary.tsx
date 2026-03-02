@@ -2,6 +2,7 @@ import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { AlertCircle, RefreshCw, LogOut } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import i18n from '../i18n'
 
 interface Props {
   children: ReactNode
@@ -44,6 +45,7 @@ class ErrorBoundaryInner extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const t = i18n.t.bind(i18n)
       return (
         <div className="min-h-screen bg-gradient-dark flex items-center justify-center px-4">
           <div className="max-w-md w-full bg-midnight-900/60 backdrop-blur-sm border border-midnight-700 rounded-2xl p-8 shadow-xl text-center">
@@ -52,10 +54,10 @@ class ErrorBoundaryInner extends Component<Props, State> {
             </div>
 
             <h1 className="text-xl font-mono font-semibold text-midnight-100 mb-2">
-              Что-то пошло не так
+              {t('errorBoundary.title')}
             </h1>
             <p className="text-midnight-400 text-sm font-mono mb-6">
-              Произошла непредвиденная ошибка при отображении страницы.
+              {t('errorBoundary.description')}
             </p>
 
             {this.state.error && (
@@ -72,14 +74,14 @@ class ErrorBoundaryInner extends Component<Props, State> {
                 className="flex items-center gap-2 px-4 py-2.5 bg-accent-cyan text-midnight-950 font-mono font-semibold rounded-xl hover:bg-accent-cyan/90 transition-all text-sm"
               >
                 <RefreshCw className="w-4 h-4" />
-                Перезагрузить
+                {t('errorBoundary.reload')}
               </button>
               <button
                 onClick={this.handleLogout}
                 className="flex items-center gap-2 px-4 py-2.5 bg-midnight-800 border border-midnight-700 text-midnight-300 font-mono rounded-xl hover:border-midnight-600 transition-all text-sm"
               >
                 <LogOut className="w-4 h-4" />
-                Выйти
+                {t('errorBoundary.logout')}
               </button>
             </div>
           </div>

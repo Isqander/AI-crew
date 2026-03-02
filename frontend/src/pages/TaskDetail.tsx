@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, Copy, Check, Network, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Chat } from '../components/Chat'
 import { ProgressTracker } from '../components/ProgressTracker'
 import { ClarificationPanel } from '../components/ClarificationPanel'
@@ -23,6 +24,7 @@ export function TaskDetail() {
   
   const [copied, setCopied] = useState(false)
   const [showGraph, setShowGraph] = useState(true)
+  const { t } = useTranslation()
 
   const state = threadState?.values
   const currentAgent = (state?.current_agent || 'pm') as AgentName
@@ -30,16 +32,14 @@ export function TaskDetail() {
   const clarificationQuestion = state?.clarification_question
   const clarificationContext = state?.clarification_context
 
-  // Build stage details from state for ProgressTracker
   const stageDetails: Record<string, string> = {}
-  if (state?.requirements?.length) stageDetails.analyst = `${state.requirements.length} требований`
-  if (state?.architecture && Object.keys(state.architecture).length > 0) stageDetails.architect = 'Архитектура определена'
-  if (state?.code_files?.length) stageDetails.developer = `${state.code_files.length} файлов`
-  if (state?.issues_found?.length) stageDetails.qa = `${state.issues_found.length} проблем`
-  if (state?.pr_url) stageDetails.complete = 'PR создан'
+  if (state?.requirements?.length) stageDetails.analyst = t('taskDetail.requirementsCount', { count: state.requirements.length })
+  if (state?.architecture && Object.keys(state.architecture).length > 0) stageDetails.architect = t('taskDetail.architectureDefined')
+  if (state?.code_files?.length) stageDetails.developer = t('taskDetail.filesCount', { count: state.code_files.length })
+  if (state?.issues_found?.length) stageDetails.qa = t('taskDetail.issuesCount', { count: state.issues_found.length })
+  if (state?.pr_url) stageDetails.complete = t('taskDetail.prCreated')
   if (state?.deploy_url) stageDetails.complete = `Deploy: ${state.deploy_url}`
 
-  // Get graph_id from thread metadata (set by /api/run → _create_thread)
   const graphId = (thread?.metadata as Record<string, unknown>)?.graph_id as string | undefined
 
   const handleCopy = () => {
@@ -63,7 +63,7 @@ export function TaskDetail() {
           </Link>
           <div>
             <h1 className="text-xl font-mono font-semibold text-midnight-100">
-              {state?.task ? state.task.slice(0, 50) + (state.task.length > 50 ? '...' : '') : 'Загрузка...'}
+              {state?.task ? state.task.slice(0, 50) + (state.task.length > 50 ? '...' : '') : t('common.loading')}
             </h1>
             <div className="flex items-center gap-2 mt-1">
               <code className="text-xs text-midnight-500 font-mono">
@@ -85,7 +85,6 @@ export function TaskDetail() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Graph Visualization Toggle */}
           {graphId && (
             <button
               onClick={() => setShowGraph(!showGraph)}
@@ -96,12 +95,11 @@ export function TaskDetail() {
                 }`}
             >
               <Network className="w-4 h-4" />
-              Граф
+              {t('taskDetail.graph')}
               {showGraph ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
           )}
 
-          {/* Deploy URL */}
           {state?.deploy_url && (
             <a
               href={state.deploy_url}
@@ -115,7 +113,6 @@ export function TaskDetail() {
             </a>
           )}
 
-          {/* PR Link */}
           {state?.pr_url && (
             <a
               href={state.pr_url}
@@ -125,25 +122,23 @@ export function TaskDetail() {
                          font-mono text-sm hover:bg-accent-lime/20 transition-colors"
             >
               <ExternalLink className="w-4 h-4" />
-              Открыть PR
+              {t('taskDetail.openPR')}
             </a>
           )}
         </div>
       </div>
 
-      {/* Graph Visualization (collapsible) */}
       {showGraph && graphId && (
         <div className="mb-6">
           <GraphVisualization graphId={graphId} currentAgent={currentAgent} />
         </div>
       )}
 
-      {/* Error banner */}
       {(error || runError) && (
         <ErrorBanner
-          title="Ошибка выполнения"
-          message={runError || error?.message || 'Неизвестная ошибка'}
-          badge={currentAgent && currentAgent !== 'complete' ? `узел: ${currentAgent}` : undefined}
+          title={t('taskDetail.executionError')}
+          message={runError || error?.message || t('taskDetail.unknownError')}
+          badge={currentAgent && currentAgent !== 'complete' ? t('taskDetail.node', { name: currentAgent }) : undefined}
           className="mb-6"
         />
       )}
@@ -152,7 +147,6 @@ export function TaskDetail() {
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Left column - Chat */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Clarification panel */}
           {needsClarification && clarificationQuestion && (
             <ClarificationPanel
               question={clarificationQuestion}
@@ -162,7 +156,6 @@ export function TaskDetail() {
             />
           )}
           
-          {/* Chat */}
           <div className="h-[600px]">
             <Chat
               messages={messages}
@@ -177,18 +170,16 @@ export function TaskDetail() {
 
         {/* Right column - Progress & Details */}
         <div className="space-y-6">
-          {/* Progress tracker */}
           <ProgressTracker
             currentAgent={currentAgent}
             stageDetails={stageDetails}
             error={runError || state?.error || error?.message}
           />
 
-          {/* Tech stack */}
           {state?.tech_stack && state.tech_stack.length > 0 && (
             <div className="bg-midnight-900 rounded-lg border border-midnight-800 p-4">
               <h3 className="text-sm font-mono text-midnight-300 mb-3 uppercase tracking-wider">
-                Технологии
+                {t('taskDetail.techStack')}
               </h3>
               <div className="flex flex-wrap gap-2">
                 {state.tech_stack.map((tech, idx) => (
@@ -203,11 +194,10 @@ export function TaskDetail() {
             </div>
           )}
 
-          {/* Code files */}
           {state?.code_files && state.code_files.length > 0 && (
             <div className="bg-midnight-900 rounded-lg border border-midnight-800 p-4">
               <h3 className="text-sm font-mono text-midnight-300 mb-3 uppercase tracking-wider">
-                Файлы ({state.code_files.length})
+                {t('taskDetail.files', { count: state.code_files.length })}
               </h3>
               <div className="space-y-1 max-h-[200px] overflow-y-auto">
                 {state.code_files.map((file, idx) => (
@@ -223,11 +213,10 @@ export function TaskDetail() {
             </div>
           )}
 
-          {/* Summary */}
           {state?.summary && (
             <div className="bg-midnight-900 rounded-lg border border-midnight-800 p-4">
               <h3 className="text-sm font-mono text-midnight-300 mb-3 uppercase tracking-wider">
-                Итог
+                {t('taskDetail.summary')}
               </h3>
               <p className="text-sm text-midnight-200 font-mono whitespace-pre-wrap">
                 {state.summary}

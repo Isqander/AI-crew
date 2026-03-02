@@ -1,4 +1,5 @@
 import { clsx } from 'clsx'
+import { useTranslation } from 'react-i18next'
 import { 
   CheckCircle, 
   Circle, 
@@ -13,31 +14,29 @@ import {
 } from 'lucide-react'
 import type { AgentName } from '../types'
 
-/** A single pipeline stage definition. */
 export interface Stage {
   id: string
-  name: string
+  nameKey: string
   agent: AgentName
   icon: React.ReactNode
-  /** Optional detail text shown when the stage is complete or active. */
   detail?: string
 }
 
-/** Default stages for the dev_team graph. */
-export const DEV_TEAM_STAGES: Stage[] = [
-  { id: 'pm', name: 'Декомпозиция', agent: 'pm', icon: <User className="w-4 h-4" /> },
-  { id: 'analyst', name: 'Требования', agent: 'analyst', icon: <FileSearch className="w-4 h-4" /> },
-  { id: 'architect', name: 'Архитектура', agent: 'architect', icon: <Layers className="w-4 h-4" /> },
-  { id: 'developer', name: 'Разработка', agent: 'developer', icon: <Code className="w-4 h-4" /> },
-  { id: 'qa', name: 'Тестирование', agent: 'qa', icon: <TestTube className="w-4 h-4" /> },
-  { id: 'complete', name: 'Готово', agent: 'complete', icon: <GitPullRequest className="w-4 h-4" /> },
-]
+function useDevTeamStages(): Stage[] {
+  const { t } = useTranslation()
+  return [
+    { id: 'pm', nameKey: t('progress.pm'), agent: 'pm', icon: <User className="w-4 h-4" /> },
+    { id: 'analyst', nameKey: t('progress.analyst'), agent: 'analyst', icon: <FileSearch className="w-4 h-4" /> },
+    { id: 'architect', nameKey: t('progress.architect'), agent: 'architect', icon: <Layers className="w-4 h-4" /> },
+    { id: 'developer', nameKey: t('progress.developer'), agent: 'developer', icon: <Code className="w-4 h-4" /> },
+    { id: 'qa', nameKey: t('progress.qa'), agent: 'qa', icon: <TestTube className="w-4 h-4" /> },
+    { id: 'complete', nameKey: t('progress.complete'), agent: 'complete', icon: <GitPullRequest className="w-4 h-4" /> },
+  ]
+}
 
 interface ProgressTrackerProps {
   currentAgent: AgentName
-  /** Pipeline stages to display. Defaults to DEV_TEAM_STAGES. */
   stages?: Stage[]
-  /** Map of stageId → detail text (e.g. "3 требований", "PR создан"). */
   stageDetails?: Record<string, string>
   error?: string
 }
@@ -90,26 +89,28 @@ const statusTextCls: Record<StageStatus, string> = {
 
 export function ProgressTracker({
   currentAgent,
-  stages = DEV_TEAM_STAGES,
+  stages,
   stageDetails,
   error,
 }: ProgressTrackerProps) {
-  const currentIndex = stages.findIndex(s => s.agent === currentAgent)
+  const { t } = useTranslation()
+  const defaultStages = useDevTeamStages()
+  const effectiveStages = stages ?? defaultStages
+  const currentIndex = effectiveStages.findIndex(s => s.agent === currentAgent)
 
   return (
     <div className="bg-midnight-900 rounded-lg border border-midnight-800 p-4">
       <h3 className="text-sm font-mono text-midnight-300 mb-4 uppercase tracking-wider">
-        Прогресс выполнения
+        {t('progress.title')}
       </h3>
       
       <div className="space-y-3">
-        {stages.map((stage, index) => {
+        {effectiveStages.map((stage, index) => {
           const status = getStageStatus(index, currentIndex, currentAgent, error)
           const detail = stage.detail || stageDetails?.[stage.id]
           
           return (
             <div key={stage.id} className="flex items-center gap-3">
-              {/* Status icon */}
               <div className={clsx(
                 'w-8 h-8 rounded-lg flex items-center justify-center border transition-all',
                 statusBoxCls[status],
@@ -117,16 +118,14 @@ export function ProgressTracker({
                 {statusIcon[status]}
               </div>
               
-              {/* Stage info */}
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <span className={clsx('font-mono text-sm', statusTextCls[status])}>
-                    {stage.name}
+                    {stage.nameKey}
                   </span>
                   {stage.icon}
                 </div>
                 
-                {/* Stage details */}
                 {status === 'error' && error && (
                   <p className="text-xs text-red-400/80 font-mono mt-0.5 break-all">
                     {error.length > 120 ? error.slice(0, 120) + '...' : error}

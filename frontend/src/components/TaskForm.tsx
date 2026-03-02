@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Send, GitBranch, FileText, Loader2, Cpu, ChevronDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { CreateTaskInput, GraphListItem } from '../types'
 import { aegraClient } from '../api/aegra'
 
@@ -18,8 +19,8 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
   const [graphs, setGraphs] = useState<GraphListItem[]>([])
   const [graphsLoading, setGraphsLoading] = useState(true)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const { t } = useTranslation()
 
-  // Fetch available graphs on mount
   useEffect(() => {
     let cancelled = false
     async function loadGraphs() {
@@ -62,7 +63,7 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
         <textarea
           value={task}
           onChange={(e) => setTask(e.target.value)}
-          placeholder="Опишите задачу для команды агентов..."
+          placeholder={t('taskForm.placeholder')}
           className="w-full bg-midnight-900 border border-midnight-700 rounded-lg px-10 py-4 
                      text-midnight-100 placeholder-midnight-500 font-mono text-sm
                      focus:outline-none focus:border-accent-cyan focus:ring-1 focus:ring-accent-cyan
@@ -82,7 +83,7 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
             ) : (
               <Send className="w-4 h-4" />
             )}
-            {isLoading ? 'Запуск...' : 'Запустить'}
+            {isLoading ? t('taskForm.launching') : t('taskForm.launch')}
           </button>
         </div>
       </div>
@@ -91,7 +92,7 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
       <div>
         <label className="flex items-center gap-2 text-sm text-midnight-300 font-mono mb-2">
           <Cpu className="w-4 h-4 text-accent-magenta" />
-          Выбор графа (команды агентов)
+          {t('taskForm.graphSelect')}
         </label>
         <div className="relative">
           <select
@@ -104,7 +105,7 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
             disabled={isLoading || graphsLoading}
           >
             <option value={LLM_AUTO_VALUE}>
-              🤖 Предоставить выбор ЛЛМ (по умолчанию)
+              🤖 {t('taskForm.llmAuto')}
             </option>
             {graphs.map((g) => (
               <option key={g.graph_id} value={g.graph_id}>
@@ -116,7 +117,6 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-midnight-400 pointer-events-none" />
         </div>
 
-        {/* Show selected graph details */}
         {graphId !== LLM_AUTO_VALUE && selectedGraph && (
           <div className="mt-2 p-3 bg-midnight-900/50 rounded-lg border border-midnight-800 text-xs font-mono">
             <div className="text-accent-cyan mb-1">{selectedGraph.display_name} v{selectedGraph.version}</div>
@@ -133,7 +133,7 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
 
         {graphId === LLM_AUTO_VALUE && (
           <p className="text-xs text-midnight-500 font-mono mt-1">
-            ЛЛМ автоматически выберет оптимальный граф на основе задачи
+            {t('taskForm.llmAutoHint')}
           </p>
         )}
       </div>
@@ -145,7 +145,7 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
         className="text-midnight-400 hover:text-accent-cyan text-sm font-mono flex items-center gap-2"
       >
         <span className="text-accent-cyan">{showAdvanced ? '[-]' : '[+]'}</span>
-        Дополнительные параметры
+        {t('taskForm.advancedOptions')}
       </button>
 
       {/* Advanced options */}
@@ -155,7 +155,7 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
           <div>
             <label className="flex items-center gap-2 text-sm text-midnight-300 font-mono mb-2">
               <GitBranch className="w-4 h-4 text-accent-lime" />
-              GitHub репозиторий (опционально)
+              {t('taskForm.repository')}
             </label>
             <input
               type="text"
@@ -173,12 +173,12 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
           <div>
             <label className="flex items-center gap-2 text-sm text-midnight-300 font-mono mb-2">
               <FileText className="w-4 h-4 text-accent-amber" />
-              Дополнительный контекст
+              {t('taskForm.additionalContext')}
             </label>
             <textarea
               value={context}
               onChange={(e) => setContext(e.target.value)}
-              placeholder="Технические ограничения, предпочтения, ссылки на документацию..."
+              placeholder={t('taskForm.contextPlaceholder')}
               className="w-full bg-midnight-900 border border-midnight-700 rounded-lg px-4 py-3
                          text-midnight-100 placeholder-midnight-500 font-mono text-sm
                          focus:outline-none focus:border-accent-cyan resize-none min-h-[80px]"

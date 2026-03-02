@@ -1,0 +1,184 @@
+{
+  "common": {
+    "loading": "Загрузка...",
+    "error": "Ошибка",
+    "untitled": "Без названия",
+    "platform": "Мультиагентная платформа",
+    "poweredBy": "Powered by"
+  },
+
+  "layout": {
+    "home": "Главная",
+    "tasks": "Задачи",
+    "settings": "Настройки",
+    "logout": "Выйти"
+  },
+
+  "home": {
+    "hero": "Мультиагентная команда разработки",
+    "description": "Опишите задачу — и команда ИИ-агентов (аналитик, архитектор, разработчик, тестировщик) создаст для вас решение. Полный цикл разработки с человеком в процессе.",
+    "newTask": "Новая задача",
+    "createError": "Ошибка создания задачи",
+    "featureAgents": "5 специализированных агентов",
+    "featureAgentsDesc": "PM, Аналитик, Архитектор, Разработчик и QA работают вместе",
+    "featureHitl": "Human-in-the-Loop",
+    "featureHitlDesc": "Агенты задают уточняющие вопросы на каждом этапе",
+    "featureGithub": "GitHub интеграция",
+    "featureGithubDesc": "Автоматическое создание PR с готовым кодом",
+    "recentTasks": "Недавние задачи"
+  },
+
+  "tasks": {
+    "title": "Задачи",
+    "searchPlaceholder": "Поиск по задачам...",
+    "all": "Все",
+    "statusBusy": "В работе",
+    "statusIdle": "Завершена",
+    "statusInterrupted": "Ожидает ответа",
+    "statusError": "Ошибка",
+    "loadingTasks": "Загрузка задач...",
+    "loadError": "Ошибка загрузки",
+    "noTasksFound": "Задачи не найдены",
+    "noTasksYet": "Пока нет задач",
+    "tryDifferentFilters": "Попробуйте изменить фильтры",
+    "createFirstTask": "Создайте первую задачу на главной странице"
+  },
+
+  "taskDetail": {
+    "requirementsCount": "{{count}} требований",
+    "architectureDefined": "Архитектура определена",
+    "filesCount": "{{count}} файлов",
+    "issuesCount": "{{count}} проблем",
+    "prCreated": "PR создан",
+    "graph": "Граф",
+    "openPR": "Открыть PR",
+    "executionError": "Ошибка выполнения",
+    "unknownError": "Неизвестная ошибка",
+    "node": "узел: {{name}}",
+    "techStack": "Технологии",
+    "files": "Файлы ({{count}})",
+    "summary": "Итог"
+  },
+
+  "settings": {
+    "title": "Настройки",
+    "profile": "Профиль",
+    "profileDesc": "Информация о вашем аккаунте",
+    "name": "Имя",
+    "created": "Создан",
+    "systemStatus": "Статус системы",
+    "systemStatusDesc": "Состояние сервисов платформы",
+    "refresh": "Обновить",
+    "graphsAndModels": "Графы и модели",
+    "graphsAndModelsDesc": "Доступные графы и конфигурация LLM моделей",
+    "noGraphs": "Графы не найдены",
+    "agents": "Агенты",
+    "taskTypes": "Типы задач",
+    "features": "Возможности",
+    "about": "О системе",
+    "aboutDesc": "Информация о платформе AI-crew",
+    "platformLabel": "Платформа",
+    "version": "Версия",
+    "note": "Примечание:",
+    "noteText": "Конфигурация LLM-моделей задаётся в <code>config/agents.yaml</code> и переменных окружения. Изменение моделей требует перезапуска контейнеров. Перезапуск с сайта пока не поддерживается — используйте <code>docker-compose restart</code>."
+  },
+
+  "login": {
+    "signIn": "Вход в систему",
+    "signInDesc": "Введите данные для входа",
+    "password": "Пароль",
+    "signingIn": "Вход...",
+    "signInBtn": "Войти",
+    "noAccount": "Нет аккаунта?",
+    "register": "Зарегистрироваться"
+  },
+
+  "register": {
+    "signUp": "Регистрация",
+    "signUpDesc": "Создайте новый аккаунт",
+    "displayName": "Отображаемое имя",
+    "namePlaceholder": "Иван Иванов",
+    "password": "Пароль",
+    "signingUp": "Регистрация...",
+    "signUpBtn": "Зарегистрироваться",
+    "haveAccount": "Уже есть аккаунт?",
+    "signIn": "Войти"
+  },
+
+  "taskForm": {
+    "placeholder": "Опишите задачу для команды агентов...",
+    "launching": "Запуск...",
+    "launch": "Запустить",
+    "graphSelect": "Выбор графа (команды агентов)",
+    "llmAuto": "Предоставить выбор ЛЛМ (по умолчанию)",
+    "llmAutoHint": "ЛЛМ автоматически выберет оптимальный граф на основе задачи",
+    "advancedOptions": "Дополнительные параметры",
+    "repository": "GitHub репозиторий (опционально)",
+    "additionalContext": "Дополнительный контекст",
+    "contextPlaceholder": "Технические ограничения, предпочтения, ссылки на документацию..."
+  },
+
+  "chat": {
+    "emptyState": "Здесь будут сообщения агентов",
+    "thinking": "{{agent}} думает...",
+    "processing": "Обработка...",
+    "replyPlaceholder": "Введите ответ...",
+    "messagePlaceholder": "Отправить сообщение...",
+    "inputRequired": "Требуется ваш ввод"
+  },
+
+  "clarification": {
+    "title": "Требуется уточнение",
+    "placeholder": "Введите ваш ответ...",
+    "sending": "Отправка...",
+    "submit": "Отправить ответ"
+  },
+
+  "progress": {
+    "title": "Прогресс выполнения",
+    "pm": "Декомпозиция",
+    "analyst": "Требования",
+    "architect": "Архитектура",
+    "developer": "Разработка",
+    "qa": "Тестирование",
+    "complete": "Готово"
+  },
+
+  "errorBoundary": {
+    "title": "Что-то пошло не так",
+    "description": "Произошла непредвиденная ошибка при отображении страницы.",
+    "reload": "Перезагрузить",
+    "logout": "Выйти"
+  },
+
+  "agents": {
+    "pm": "Project Manager",
+    "pmDesc": "Координация и управление задачами",
+    "analyst": "Аналитик",
+    "analystDesc": "Сбор и уточнение требований",
+    "architect": "Архитектор",
+    "architectDesc": "Проектирование системы",
+    "developer": "Разработчик",
+    "developerDesc": "Написание кода",
+    "reviewer": "Ревьюер",
+    "reviewerDesc": "Код-ревью и проверка качества",
+    "qa": "QA Инженер",
+    "qaDesc": "Тестирование в sandbox",
+    "security": "Security Engineer",
+    "securityDesc": "Анализ безопасности кода",
+    "lintCheck": "Lint Check",
+    "lintCheckDesc": "Проверка стиля и синтаксиса кода",
+    "ciCheck": "CI Check",
+    "ciCheckDesc": "Проверка CI/CD pipeline",
+    "gitCommit": "Git Commit",
+    "gitCommitDesc": "Коммит и создание PR",
+    "waitingForUser": "Ожидание ответа",
+    "waitingForUserDesc": "Требуется ваш ввод",
+    "complete": "Завершено",
+    "completeDesc": "Задача выполнена"
+  },
+
+  "useTask": {
+    "unknownRunError": "Неизвестная ошибка выполнения"
+  }
+}

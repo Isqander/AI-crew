@@ -1,7 +1,9 @@
 import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Bot, Home, Activity, Settings, LogOut } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../store/authStore'
+import { LanguageSwitcher } from './LanguageSwitcher'
 
 interface LayoutProps {
   children: ReactNode
@@ -9,6 +11,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const { isAuthenticated, user, logout } = useAuthStore()
+  const { t } = useTranslation()
 
   return (
     <div className="min-h-screen bg-gradient-dark">
@@ -24,7 +27,7 @@ export function Layout({ children }: LayoutProps) {
                 AI-crew
               </h1>
               <p className="text-xs text-midnight-400 font-mono">
-                Мультиагентная платформа
+                {t('common.platform')}
               </p>
             </div>
           </Link>
@@ -32,25 +35,26 @@ export function Layout({ children }: LayoutProps) {
           {isAuthenticated && (
             <nav className="flex items-center gap-6">
               <NavLink to="/" icon={<Home className="w-4 h-4" />}>
-                Главная
+                {t('layout.home')}
               </NavLink>
               <NavLink to="/tasks" icon={<Activity className="w-4 h-4" />}>
-                Задачи
+                {t('layout.tasks')}
               </NavLink>
               <NavLink to="/settings" icon={<Settings className="w-4 h-4" />}>
-                Настройки
+                {t('layout.settings')}
               </NavLink>
               <div className="flex items-center gap-4 pl-4 border-l border-midnight-700">
                 <span className="text-midnight-300 font-mono text-sm">
                   {user?.display_name || user?.email}
                 </span>
+                <LanguageSwitcher />
                 <button
                   onClick={logout}
                   className="flex items-center gap-2 text-midnight-400 hover:text-red-400 transition-colors font-mono text-sm"
-                  title="Выйти"
+                  title={t('layout.logout')}
                 >
                   <LogOut className="w-4 h-4" />
-                  Выйти
+                  {t('layout.logout')}
                 </button>
               </div>
             </nav>
@@ -67,7 +71,7 @@ export function Layout({ children }: LayoutProps) {
       <footer className="border-t border-midnight-800 mt-auto">
         <div className="container mx-auto px-4 py-4 text-center text-midnight-500 text-sm font-mono">
           <p>
-            Powered by{' '}
+            {t('common.poweredBy')}{' '}
             <span className="text-accent-cyan">LangGraph</span>
             {' + '}
             <span className="text-accent-magenta">Aegra</span>
