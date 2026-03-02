@@ -7,11 +7,12 @@ import { aegraClient } from '../api/aegra'
 interface TaskFormProps {
   onSubmit: (input: CreateTaskInput) => void
   isLoading?: boolean
+  onSelectedGraphChange?: (graph: GraphListItem | null) => void
 }
 
 const LLM_AUTO_VALUE = '__llm_auto__'
 
-export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
+export function TaskForm({ onSubmit, isLoading = false, onSelectedGraphChange }: TaskFormProps) {
   const [task, setTask] = useState('')
   const [repository, setRepository] = useState('')
   const [context, setContext] = useState('')
@@ -52,6 +53,10 @@ export function TaskForm({ onSubmit, isLoading = false }: TaskFormProps) {
   }
 
   const selectedGraph = graphs.find(g => g.graph_id === graphId)
+
+  useEffect(() => {
+    onSelectedGraphChange?.(selectedGraph ?? null)
+  }, [onSelectedGraphChange, selectedGraph])
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">

@@ -1,16 +1,18 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bot, Zap, GitBranch, MessageSquare, ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { TaskForm } from '../components/TaskForm'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { useTask, useThreads } from '../hooks/useTask'
-import type { CreateTaskInput } from '../types'
+import type { CreateTaskInput, GraphListItem } from '../types'
 
 export function Home() {
   const navigate = useNavigate()
   const { createTask, isCreating, error, thread } = useTask()
   const { data: threads } = useThreads()
   const { t, i18n } = useTranslation()
+  const [selectedGraph, setSelectedGraph] = useState<GraphListItem | null>(null)
 
   const handleSubmit = async (input: CreateTaskInput) => {
     await createTask(input)
@@ -22,6 +24,16 @@ export function Home() {
   }
 
   const dateLocale = i18n.language === 'ru' ? 'ru-RU' : 'en-US'
+  const selectedAgentsCount = selectedGraph?.agents.length
+
+  const agentsFeatureTitle =
+    selectedAgentsCount !== undefined
+      ? t('home.featureAgentsWithCount', { count: selectedAgentsCount })
+      : t('home.featureAgents')
+
+  const agentsFeatureDescription = selectedGraph
+    ? t('home.featureAgentsDescSelected', { graph: selectedGraph.display_name })
+    : t('home.featureAgentsDesc')
 
   return (
     <div className="max-w-4xl mx-auto space-y-12">
@@ -49,7 +61,11 @@ export function Home() {
           <Bot className="w-5 h-5" />
           {t('home.newTask')}
         </h2>
-        <TaskForm onSubmit={handleSubmit} isLoading={isCreating} />
+        <TaskForm
+          onSubmit={handleSubmit}
+          isLoading={isCreating}
+          onSelectedGraphChange={setSelectedGraph}
+        />
         {error && (
           <ErrorBanner
             title={t('home.createError')}
@@ -63,8 +79,8 @@ export function Home() {
       <section className="grid md:grid-cols-3 gap-6">
         <FeatureCard
           icon={<Bot className="w-6 h-6" />}
-          title={t('home.featureAgents')}
-          description={t('home.featureAgentsDesc')}
+          title={agentsFeatureTitle}
+          description={agentsFeatureDescription}
           color="cyan"
         />
         <FeatureCard
