@@ -2,32 +2,66 @@
 
 **🌐 Язык: [English](README.md) | [Русский](README.ru.md) | [中文](README.zh-CN.md)**
 
-**Мультиагентная платформа разработки на базе LangGraph**
+**Мультиагентная платформа разработки ПО на базе LangGraph**
 
-Команда из 5 ИИ-агентов (PM, Analyst, Architect, Developer, QA) совместно
-выполняет задачи по разработке — от сбора требований до создания Pull Request.
+AI-crew оркестрирует команды ИИ-агентов, которые автономно создают программное
+обеспечение — от обсуждения деталей реализации с пользователем до деплоя готового
+проекта и доставки рабочей ссылки. Платформа включает растущую коллекцию графов
+агентных команд для разных сценариев: полноценные команды разработки, быстрые
+кодинг-ассистенты и исследовательские бригады.
 
-## Возможности
+## Как это работает
 
-- **5 специализированных агентов** с разными LLM-моделями
-- **Human-in-the-Loop** — агенты задают уточняющие вопросы через Web UI
-- **Полный цикл разработки** — от идеи до PR в GitHub
+1. **Вы описываете задачу** — через Web UI или Telegram-бот
+2. **ИИ-менеджер обсуждает план** — уточняет требования, предлагает архитектуру, согласовывает детали
+3. **Команда агентов выполняет** — аналитики, архитекторы, разработчики, ревьюеры, QA работают автономно
+4. **Вы наблюдаете в реальном времени** — интерактивная визуализация графа показывает каждый шаг каждого агента
+5. **Получаете результат** — задеплоенный проект с рабочей ссылкой приходит вам
+
+## Команды агентов
+
+| Граф | Назначение |
+|------|-----------|
+| **dev_team** | Полный цикл разработки — 7 агентов (PM, Analyst, Architect, Developer, Security, Reviewer, QA). От требований до Pull Request |
+| **standard_dev** | Автономная разработка задач средней сложности. PM + Developer + Reviewer с ограниченным циклом ревью |
+| **simple_dev** | Быстрая генерация кода — один Developer-агент, без ревью. Скрипты, сниппеты, небольшие фичи за секунды |
+| **research** | Универсальное исследование по любой теме — поиск в интернете, анализ источников, структурированные отчёты со ссылками |
+
+## Ключевые возможности
+
+- **Несколько конфигураций команд** — выбирайте нужную команду под задачу: от одиночного разработчика до полной бригады из 7 агентов
+- **Доставка от идеи до продакшена** — цикл не останавливается на PR; проект деплоится, и вы получаете рабочий URL
+- **Human-in-the-Loop** — ИИ-менеджер обсуждает с вами детали реализации до начала работы команды
+- **Интерактивная визуализация графа** — наблюдайте за выполнением каждого узла агента в реальном времени на живом графе
+- **Telegram-интеграция** — создавайте и отслеживайте задачи прямо из Telegram
 - **Escalation ladder** — автоматическая эскалация при зацикливании Dev↔QA
-- **Web UI** — React-интерфейс для управления задачами
-- **Observability** — трейсинг через Langfuse
+- **Observability** — полный трейсинг и отладка через Langfuse
 - **Docker ready** — dev (docker-compose) и prod (all-in-one image)
 
 ## Архитектура
 
 ```
-  Web UI (:5173)  ──►  Aegra API (:8000)  ──►  LangGraph
-                                                    │
-    PM ─► Analyst ─► Architect ─► Developer ─► QA ──┤
-              │           │                    │    │
-         clarify?     clarify?            Dev↔QA   git_commit
-                                         cycle     ─► PR
-                            │
-        PostgreSQL (:5433)  │  Langfuse (:3001)
+  Telegram ─────┐
+                ▼
+  Web UI ──► Gateway API ──► LangGraph Engine
+                                    │
+          ┌─────────────────────────┤
+          ▼                         ▼
+   ┌─ dev_team ──────┐     ┌─ research ──────┐
+   │ PM → Analyst →  │     │ Researcher →    │
+   │ Architect →     │     │ Web Search →    │
+   │ Developer →     │     │ Report          │
+   │ Security →      │     └─────────────────┘
+   │ Reviewer → QA   │
+   └──────┬──────────┘     ┌─ simple_dev ────┐
+          │                │ Developer →     │
+          ▼                │ Commit          │
+   CI/CD → Deploy          └─────────────────┘
+          │
+          ▼
+   Live URL → User
+
+   PostgreSQL  │  Langfuse  │  GitHub
 ```
 
 ## Быстрый старт
@@ -44,7 +78,7 @@ docker-compose up -d
 cd frontend && npm install && npm run dev
 ```
 
-Откройте http://localhost:5173, введите задачу и наблюдайте за работой агентов.
+Откройте http://localhost:5173, введите задачу и наблюдайте за работой агентов на интерактивном графе.
 
 **Подробнее:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
 
@@ -69,6 +103,7 @@ cd frontend && npm install && npm run dev
 | БД | PostgreSQL + pgvector |
 | Observability | Langfuse |
 | Web UI | React + Vite + Tailwind |
+| Telegram-бот | Python (aiogram) |
 | LLM | OpenAI-совместимый прокси (Claude, Gemini, GLM, etc.) |
 | Деплой | Docker Compose / Dockerfile |
 
@@ -76,13 +111,15 @@ cd frontend && npm install && npm run dev
 
 ```
 AI-crew/
-├── graphs/dev_team/          # LangGraph граф команды
-│   ├── graph.py              #   Узлы, рёбра, роутеры
-│   ├── state.py              #   DevTeamState
-│   ├── agents/               #   PM, Analyst, Architect, Developer, QA
-│   ├── prompts/              #   YAML-промпты
-│   └── tools/                #   GitHub, Filesystem
-├── frontend/                 # React Web UI
+├── graphs/                   # Графы агентных команд
+│   ├── dev_team/             #   Полная команда из 7 агентов
+│   ├── standard_dev/         #   Разработка средней сложности
+│   ├── simple_dev/           #   Быстрый кодинг одним агентом
+│   ├── research/             #   Исследования и аналитика
+│   └── common/               #   Общие утилиты, типы, git, logging
+├── frontend/                 # React Web UI с визуализацией графа
+├── gateway/                  # API-шлюз (FastAPI)
+├── telegram/                 # Telegram-бот
 ├── tests/                    # Тесты (pytest)
 ├── vendor/aegra/             # Aegra server (vendored)
 ├── scripts/                  # Docker entrypoint, setup, nginx
@@ -102,10 +139,10 @@ pytest tests/ -v
 
 ## Кастомизация
 
-- **Промпты** — `graphs/dev_team/prompts/*.yaml`
+- **Промпты** — `graphs/*/prompts/*.yaml`
 - **Модели** — env `LLM_MODEL_PM`, `LLM_MODEL_DEVELOPER`, etc.
 - **Новый агент** — см. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
-- **Граф** — `graphs/dev_team/graph.py`
+- **Новый граф** — добавьте директорию в `graphs/` с `graph.py` и `manifest.yaml`
 
 ## Лицензия
 
