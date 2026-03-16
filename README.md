@@ -1,21 +1,23 @@
 # AI-crew
 
-**Мультиагентная платформа разработки на базе LangGraph**
+**🌐 Language: [English](README.md) | [Русский](README.ru.md) | [中文](README.zh-CN.md)**
 
-Команда из 5 ИИ-агентов (PM, Analyst, Architect, Developer, QA) совместно
-выполняет задачи по разработке — от сбора требований до создания Pull Request.
+**Multi-agent development platform powered by LangGraph**
 
-## Возможности
+A team of 5 AI agents (PM, Analyst, Architect, Developer, QA) collaboratively
+handles software development tasks — from requirements gathering to Pull Request creation.
 
-- **5 специализированных агентов** с разными LLM-моделями
-- **Human-in-the-Loop** — агенты задают уточняющие вопросы через Web UI
-- **Полный цикл разработки** — от идеи до PR в GitHub
-- **Escalation ladder** — автоматическая эскалация при зацикливании Dev↔QA
-- **Web UI** — React-интерфейс для управления задачами
-- **Observability** — трейсинг через Langfuse
-- **Docker ready** — dev (docker-compose) и prod (all-in-one image)
+## Features
 
-## Архитектура
+- **5 specialized agents** with different LLM models
+- **Human-in-the-Loop** — agents ask clarifying questions via Web UI
+- **Full development cycle** — from idea to GitHub PR
+- **Escalation ladder** — automatic escalation when Dev↔QA cycles get stuck
+- **Web UI** — React interface for task management
+- **Observability** — tracing via Langfuse
+- **Docker ready** — dev (docker-compose) and prod (all-in-one image)
+
+## Architecture
 
 ```
   Web UI (:5173)  ──►  Aegra API (:8000)  ──►  LangGraph
@@ -28,83 +30,83 @@
         PostgreSQL (:5433)  │  Langfuse (:3001)
 ```
 
-## Быстрый старт
+## Quick Start
 
 ```bash
-# 1. Настроить окружение
+# 1. Set up environment
 cp env.example .env
-# Заполнить LLM_API_KEY в .env
+# Fill in LLM_API_KEY in .env
 
-# 2. Запустить все сервисы
+# 2. Start all services
 docker-compose up -d
 
-# 3. Запустить frontend
+# 3. Start the frontend
 cd frontend && npm install && npm run dev
 ```
 
-Откройте http://localhost:5173, введите задачу и наблюдайте за работой агентов.
+Open http://localhost:5173, enter a task and watch the agents work.
 
-**Подробнее:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
+**More details:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
 
-## Документация
+## Documentation
 
-| Документ | Описание |
-|----------|----------|
-| [Быстрый старт](docs/GETTING_STARTED.md) | Установка и запуск за 10 минут |
-| [Архитектура](docs/architecture_old.md) | Детальное описание системы, граф агентов, state-модель |
-| [Разработка](docs/DEVELOPMENT.md) | Как добавить агента, изменить промпты, настроить LLM |
-| [Тестирование](docs/TESTING.md) | Запуск тестов, фикстуры, CI/CD |
-| [Развёртывание](docs/deployment.md) | Docker Compose (dev) и Dockerfile (prod) |
-| [Bootstrap deploy VPS (Ansible)](docs/DEPLOY_VPS_ANSIBLE.md) | Подготовка серверов для автодеплоя приложений |
-| [Roadmap](docs/IDEAS.md) | Идеи для развития проекта |
+| Document | Description |
+|----------|-------------|
+| [Quick Start](docs/GETTING_STARTED.md) | Installation and launch in 10 minutes |
+| [Architecture](docs/architecture_old.md) | Detailed system description, agent graph, state model |
+| [Development](docs/DEVELOPMENT.md) | How to add an agent, modify prompts, configure LLM |
+| [Testing](docs/TESTING.md) | Running tests, fixtures, CI/CD |
+| [Deployment](docs/deployment.md) | Docker Compose (dev) and Dockerfile (prod) |
+| [VPS Bootstrap (Ansible)](docs/DEPLOY_VPS_ANSIBLE.md) | Server preparation for automated app deployment |
+| [Roadmap](docs/IDEAS.md) | Ideas for project development |
 
-## Стек
+## Tech Stack
 
-| Компонент | Технология |
+| Component | Technology |
 |-----------|-----------|
-| Оркестрация | LangGraph |
+| Orchestration | LangGraph |
 | API | Aegra (FastAPI) |
-| БД | PostgreSQL + pgvector |
+| Database | PostgreSQL + pgvector |
 | Observability | Langfuse |
 | Web UI | React + Vite + Tailwind |
-| LLM | OpenAI-совместимый прокси (Claude, Gemini, GLM, etc.) |
-| Деплой | Docker Compose / Dockerfile |
+| LLM | OpenAI-compatible proxy (Claude, Gemini, GLM, etc.) |
+| Deployment | Docker Compose / Dockerfile |
 
-## Структура проекта
+## Project Structure
 
 ```
 AI-crew/
-├── graphs/dev_team/          # LangGraph граф команды
-│   ├── graph.py              #   Узлы, рёбра, роутеры
+├── graphs/dev_team/          # LangGraph team graph
+│   ├── graph.py              #   Nodes, edges, routers
 │   ├── state.py              #   DevTeamState
 │   ├── agents/               #   PM, Analyst, Architect, Developer, QA
-│   ├── prompts/              #   YAML-промпты
+│   ├── prompts/              #   YAML prompts
 │   └── tools/                #   GitHub, Filesystem
 ├── frontend/                 # React Web UI
-├── tests/                    # Тесты (pytest)
+├── tests/                    # Tests (pytest)
 ├── vendor/aegra/             # Aegra server (vendored)
 ├── scripts/                  # Docker entrypoint, setup, nginx
-├── docs/                     # Документация
+├── docs/                     # Documentation
 ├── docker-compose.yml        # Development
 ├── Dockerfile                # Production (all-in-one)
-├── aegra.json                # Конфиг Aegra
-└── env.example               # Шаблон .env
+├── aegra.json                # Aegra config
+└── env.example               # .env template
 ```
 
-## Тестирование
+## Testing
 
 ```bash
 pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-## Кастомизация
+## Customization
 
-- **Промпты** — `graphs/dev_team/prompts/*.yaml`
-- **Модели** — env `LLM_MODEL_PM`, `LLM_MODEL_DEVELOPER`, etc.
-- **Новый агент** — см. [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
-- **Граф** — `graphs/dev_team/graph.py`
+- **Prompts** — `graphs/dev_team/prompts/*.yaml`
+- **Models** — env `LLM_MODEL_PM`, `LLM_MODEL_DEVELOPER`, etc.
+- **New agent** — see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- **Graph** — `graphs/dev_team/graph.py`
 
-## Лицензия
+## License
 
 MIT
